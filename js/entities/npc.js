@@ -533,14 +533,30 @@
     if (stag > 0) ctx.translate(-Math.cos(n.staggerA - n.angle) * stag * 3, 0);   // lean away from blow
     else if (aiming) ctx.translate(r * 0.12, 0);
     const sp = spriteOf(n);
-    const useBmp = VAMP.ArtFlags && VAMP.ArtFlags.useBitmapNPCs && VAMP.Assets.ready && VAMP.Assets.has('npc_civilian')
+    const sheetKey = n.faction === 'gang' ? 'npc_gang'
+      : n.faction === 'police' ? 'npc_cop'
+      : n.faction === 'inquis' || n.faction === 'hunter' ? 'npc_hunter'
+      : n.ally ? 'npc_thrall'
+      : n.type === 'rat' ? 'rat'
+      : 'npc_civilian_walk';
+    const useSpr = VAMP.ArtFlags && VAMP.ArtFlags.useSpriter && VAMP.Spriter && VAMP.Spriter.has(sheetKey) && tier !== 'far';
+    const useBmp = !useSpr && VAMP.ArtFlags && VAMP.ArtFlags.useBitmapNPCs && VAMP.Assets.ready && VAMP.Assets.has('npc_civilian')
       && (n.type === 'ped' || n.faction === 'civ') && tier !== 'far';
 
-    if (useBmp) {
+    if (useSpr || useBmp) {
       const bob = amp ? Math.sin(n.walkPhase) * 0.5 : 0;
-      const sz = r * 2.4;
+      const sz = r * (n.type === 'rat' ? 1.8 : 2.4);
       if (n.hitFlashT > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.85; }
-      VAMP.Assets.drawKey(ctx, 'npc_civilian', 0, -bob, { w: sz, h: sz * 1.1, ax: 0.5, ay: 0.5, tint: n.shirt });
+      if (useSpr) {
+        const dir = VAMP.Spriter.dirFromAngle(n.angle);
+        const frame = amp ? VAMP.Spriter.walkFrame(game.time + n.id, 8, sheetKey === 'rat' ? 1 : 2) : 0;
+        VAMP.Spriter.draw(ctx, sheetKey, 0, -bob, {
+          dir, frame, w: sz, h: sz * 1.1, ax: 0.5, ay: 0.5, tint: n.shirt, smooth: false,
+          fallbackKey: 'npc_civilian',
+        });
+      } else {
+        VAMP.Assets.drawKey(ctx, 'npc_civilian', 0, -bob, { w: sz, h: sz * 1.1, ax: 0.5, ay: 0.5, tint: n.shirt });
+      }
       ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
       ctx.restore();
       drawOverlays(n, ctx, game);
@@ -639,14 +655,28 @@
       ctx.globalAlpha = 1;
     }
 
-    // elite ring + tag
-    if (n.elite) {
-      ctx.strokeStyle = n.elite.color; ctx.lineWidth = 2;
+    // elite / boss / nemesis ring + tag
+    if (n.elite || n.boss || n.nemesis) {
+      const col = n.elite ? n.elite.color : (n.boss ? '#ff3030' : '#c060ff');
+      const pulse = 4 + Math.sin(game.time * (n.boss ? 7 : 5)) * (n.boss ? 2.5 : 1.5);
+      if (VAMP.Assets && VAMP.Assets.glowTinted) {
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.18 + 0.08 * Math.sin(game.time * 6);
+        const gr = (n.r + pulse + 8) * 2;
+        ctx.drawImage(VAMP.Assets.glowTinted(col), n.x - gr / 2, n.y - gr / 2, gr, gr);
+        ctx.restore();
+      }
+      ctx.strokeStyle = col; ctx.lineWidth = n.boss ? 2.5 : 2;
       ctx.globalAlpha = 0.85;
-      ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 4 + Math.sin(game.time * 5) * 1.5, 0, U.TAU); ctx.stroke();
+      ctx.beginPath(); ctx.arc(n.x, n.y, n.r + pulse, 0, U.TAU); ctx.stroke();
       ctx.globalAlpha = 1;
-      ctx.fillStyle = n.elite.color; ctx.font = 'bold 8px Verdana'; ctx.textAlign = 'center';
-      ctx.fillText(n.elite.name, n.x, n.y - n.r - 16); ctx.textAlign = 'left';
+      if (n.elite) {
+        ctx.fillStyle = col; ctx.font = 'bold 8px Verdana'; ctx.textAlign = 'center';
+        ctx.fillText(n.elite.name, n.x, n.y - n.r - 16); ctx.textAlign = 'left';
+      } else if (n.boss) {
+        ctx.fillStyle = '#ff6060'; ctx.font = 'bold 9px Verdana'; ctx.textAlign = 'center';
+        ctx.fillText('BOSS', n.x, n.y - n.r - 16); ctx.textAlign = 'left';
+      }
     }
 
     // state markers (small, above head, not rotated)

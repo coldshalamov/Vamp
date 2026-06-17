@@ -532,12 +532,23 @@
     ctx.fillStyle = frenzy ? '#7a0018' : cc.cape2;
     ctx.beginPath(); ctx.moveTo(-r * 0.3, -r * 0.4); ctx.quadraticCurveTo(-r * 1.1, -r * 0.3, -r * 1.25, 0); ctx.quadraticCurveTo(-r * 1.1, r * 0.3, -r * 0.3, r * 0.4); ctx.closePath(); ctx.fill();
 
-    const useBmp = VAMP.ArtFlags && VAMP.ArtFlags.useBitmapPlayer && VAMP.Assets.ready && VAMP.Assets.has('player_vampire');
+    const useSpr = VAMP.ArtFlags && VAMP.ArtFlags.useSpriter && VAMP.Spriter && VAMP.Spriter.has('player_walk');
+    const useBmp = !useSpr && VAMP.ArtFlags && VAMP.ArtFlags.useBitmapPlayer && VAMP.Assets.ready && VAMP.Assets.has('player_vampire');
     const bob = moving ? Math.sin(wp) * 1.5 : 0;
-    if (useBmp) {
-      const sz = r * 2.85;
+    if (useSpr) {
+      const dir = VAMP.Spriter.dirFromAngle(p.facing);
+      const frame = moving ? VAMP.Spriter.walkFrame(game.time, 9, 4) : 0;
+      const sz = r * 3.6;
       const tint = frenzy ? '#8a2030' : (cc.cape || '#36223e');
-      VAMP.Assets.drawKey(ctx, 'player_vampire', r * 0.05, bob, { w: sz, h: sz, ax: 0.42, ay: 0.55, tint: tint, alpha: (p.cloaked || p.mistForm) ? 0.4 : 1 });
+      VAMP.Spriter.draw(ctx, 'player_walk', r * 0.05, bob, {
+        dir, frame, w: sz, h: sz * 1.05, ax: 0.42, ay: 0.55, tint, smooth: false,
+        alpha: (p.cloaked || p.mistForm) ? 0.4 : 1,
+        fallbackKey: 'player_vampire',
+      });
+    } else if (useBmp) {
+      const sz = r * 3.6;
+      const tint = frenzy ? '#8a2030' : (cc.cape || '#36223e');
+      VAMP.Assets.drawKey(ctx, 'player_vampire', r * 0.05, bob, { w: sz, h: sz * 1.05, ax: 0.42, ay: 0.55, tint: tint, alpha: (p.cloaked || p.mistForm) ? 0.4 : 1, smooth: false });
     } else {
       // legs / feet (stepping)
       ctx.fillStyle = '#140f1a';

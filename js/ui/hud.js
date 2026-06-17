@@ -96,6 +96,7 @@
       this.drawDamageDir(ctx, game, w, h);               // #16 — direction of incoming hits
       this.drawToasts(ctx, w, h);
       this.drawBanner(ctx, w, h);
+      if (game.districtCard && VAMP.Theme && VAMP.Theme.drawDistrictCard) VAMP.Theme.drawDistrictCard(ctx, w, h, game.districtCard);
       this.drawHudTip(ctx, game, w, h);                  // #4 — buff hover tip
 
       ctx.restore();
@@ -273,6 +274,17 @@
 
     drawVitals(ctx, game, p) {
       const x = 14, y = 14, w = 230;
+      if (p.clan && VAMP.clanEmblemKey && VAMP.Assets && VAMP.Assets.ready) {
+        const ek = VAMP.clanEmblemKey(p.clan);
+        if (ek && VAMP.Assets.has(ek)) {
+          VAMP.Assets.drawKey(ctx, ek, x + w + 8, y + 8, { w: 28, h: 28, ax: 0, ay: 0 });
+        }
+        ctx.beginPath(); ctx.arc(x + w + 36, y + 28, 10, 0, U.TAU);
+        const vg = ctx.createRadialGradient(x + w + 36, y + 28, 0, x + w + 36, y + 28, 10);
+        vg.addColorStop(0, 'rgba(255,47,110,0.9)'); vg.addColorStop(1, 'rgba(120,0,30,0.2)');
+        ctx.fillStyle = vg; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,120,160,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+      }
       this.drawBar(ctx, x, y, w, 16, p.hp / p.derived.maxHP, '#d8324a', null, 'HEALTH', Math.round(p.hp) + '/' + Math.round(p.derived.maxHP));
       this.drawBar(ctx, x, y + 20, w, 16, p.blood / p.derived.maxBlood, '#ff2f6e', null, 'VITAE', Math.round(p.blood));
       if (p.ward > 0) { ctx.fillStyle = 'rgba(122,208,255,0.7)'; ctx.font = '10px Verdana'; ctx.fillText('⛨ ' + Math.round(p.ward), x + w + 6, y + 32); }
@@ -330,11 +342,20 @@
         const id = slots[i];
         const def = id ? VAMP.Data.POWERS[id] : null;
         const disc = def ? VAMP.Data.DISCIPLINES[def.disc] : null;
-        // slot box
-        ctx.fillStyle = 'rgba(8,8,14,0.7)'; this.rr(ctx, x, y, sw, sw, 6); ctx.fill();
-        ctx.strokeStyle = def ? (disc ? disc.color : '#888') : 'rgba(255,255,255,0.1)';
-        ctx.lineWidth = (def && p.toggles[id]) ? 3 : 1.5;
-        this.rr(ctx, x + 0.5, y + 0.5, sw - 1, sw - 1, 6); ctx.stroke();
+        const cd = id ? (p.cooldowns[id] || 0) : 0;
+        const cdFull = def ? (VAMP.Disc.effectiveCooldown(p, def) || 1) : 1;
+        if (VAMP.Theme && VAMP.Theme.drawSlot) {
+          VAMP.Theme.drawSlot(ctx, x, y, sw, {
+            edge: def ? (disc ? disc.color : '#888') : 'rgba(255,255,255,0.1)',
+            active: def && p.toggles[id], toggle: def && p.toggles[id],
+            cooldown: cd, cooldownMax: cdFull,
+          });
+        } else {
+          ctx.fillStyle = 'rgba(8,8,14,0.7)'; this.rr(ctx, x, y, sw, sw, 6); ctx.fill();
+          ctx.strokeStyle = def ? (disc ? disc.color : '#888') : 'rgba(255,255,255,0.1)';
+          ctx.lineWidth = (def && p.toggles[id]) ? 3 : 1.5;
+          this.rr(ctx, x + 0.5, y + 0.5, sw - 1, sw - 1, 6); ctx.stroke();
+        }
         // key number
         ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillText('' + (i + 1), x + 4, y + 11);
         if (def) {
@@ -362,14 +383,7 @@
             // dim the whole slot if unusable
             if (!canAfford || !ready) { ctx.fillStyle = 'rgba(0,0,0,0.28)'; this.rr(ctx, x, y, sw, sw, 6); ctx.fill(); }
           }
-          // cooldown overlay
-          const cd = p.cooldowns[id] || 0;
           if (cd > 0) {
-            const full = VAMP.Disc.effectiveCooldown(p, def) || 1;
-            const frac = U.clamp(cd / full, 0, 1);
-            ctx.fillStyle = 'rgba(0,0,0,0.6)';
-            ctx.beginPath(); ctx.moveTo(x + sw / 2, y + sw / 2);
-            ctx.arc(x + sw / 2, y + sw / 2, sw / 2, -Math.PI / 2, -Math.PI / 2 + frac * U.TAU); ctx.closePath(); ctx.fill();
             ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Verdana'; ctx.textAlign = 'center';
             ctx.fillText(cd.toFixed(1), x + sw / 2, y + sw / 2 + 4); ctx.textAlign = 'left'; ctx.font = 'bold 9px Verdana';
           }
@@ -470,6 +484,19 @@
       ctx.fillStyle = '#fff'; ctx.fill();
       ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.lineWidth = 1.2; ctx.stroke();
       ctx.restore();
+      const dist = game.world.districtAt(px, py);
+      if (dist && VAMP.DistrictArt) {
+        ctx.strokeStyle = VAMP.DistrictArt.kitAccent(dist.id);
+        ctx.globalAlpha = 0.35;
+        ctx.lineWidth = 2;
+        this.rr(ctx, mx + 4, my + 4, size - 8, size - 8, 4); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = 'rgba(4,4,8,0.45)';
+      ctx.fillRect(mx, my, size, 10);
+      ctx.fillRect(mx, my + size - 10, size, 10);
+      ctx.fillRect(mx, my, 10, size);
+      ctx.fillRect(mx + size - 10, my, 10, size);
       ctx.restore();
       // frame border + north tick ('N' at the top edge — the radar is north-up)
       ctx.strokeStyle = 'rgba(210,190,150,0.55)'; ctx.lineWidth = 1.5; this.rr(ctx, mx, my, size, size, 5); ctx.stroke();

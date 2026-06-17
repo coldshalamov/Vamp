@@ -20,7 +20,7 @@
   const GROUND_PATTERN = {
     [T.ROAD]: 'asphalt',
     [T.SIDEWALK]: 'sidewalk',
-    [T.CONCRETE]: 'plaza',
+    [T.CONCRETE]: 'concrete',
     [T.GRASS]: 'grass',
     [T.WATER]: 'water',
     [T.DIRT]: 'dirt',
@@ -144,30 +144,36 @@
     visible.sort((a, b) => (a.y + a.h) - (b.y + b.h));
 
     for (const b of visible) {
-      // #14 — taller extrusion for high-rises (Downtown), gentle for low districts;
-      // the height field already encodes district identity, so amplify it.
-      const ext = Math.min(b.height * 0.45, b.d === 0 ? 40 : 24); // extrusion toward camera (up-left)
-      // ground shadow (softened + stretched toward the sun/noon)
+      const ext = Math.min(b.height * 0.45, b.d === 0 ? 40 : 24);
+      const varShift = ((b.seed % 13) - 6) * 0.028;
+      const hueShift = ((b.seed % 7) - 3) * 0.04;
+      const baseCol = U.shade(b.color, hueShift);
+      const wallBase = U.shade(baseCol, varShift - 0.32);
+      const wallSide = U.shade(baseCol, varShift - 0.48);
+      const wallRight = U.shade(baseCol, varShift - 0.55);
       ctx.fillStyle = 'rgba(0,0,0,0.38)';
       ctx.fillRect(b.x + 5, b.y + 7, b.w, b.h);
 
-      // side walls (parallelogram down-right gives faux height) -> draw base body
-      ctx.fillStyle = U.shade(b.color, -0.35);
+      ctx.fillStyle = wallBase;
       ctx.fillRect(b.x, b.y, b.w, b.h);
 
       // roof, offset up-left to simulate height
       const rx = b.x - ext * 0.25, ry = b.y - ext;
       // walls connecting base to roof
-      ctx.fillStyle = U.shade(b.color, -0.5);
+      ctx.fillStyle = wallSide;
       ctx.beginPath();
       ctx.moveTo(b.x, b.y); ctx.lineTo(rx, ry);
       ctx.lineTo(rx + b.w, ry); ctx.lineTo(b.x + b.w, b.y);
       ctx.closePath(); ctx.fill();
-      ctx.fillStyle = U.shade(b.color, -0.6);
+      ctx.fillStyle = wallRight;
       ctx.beginPath();
       ctx.moveTo(b.x + b.w, b.y); ctx.lineTo(rx + b.w, ry);
       ctx.lineTo(rx + b.w, ry + b.h); ctx.lineTo(b.x + b.w, b.y + b.h);
       ctx.closePath(); ctx.fill();
+      if (detail && VAMP.DistrictArt && b.d != null) {
+        const dist = VAMP.World.DISTRICTS[b.d];
+        if (dist) VAMP.DistrictArt.drawWallStamp(ctx, dist.id, b.x + 2, b.y - ext * 0.3, ext);
+      }
 
       // roof top
       const pat = pats[b.roof];
@@ -186,6 +192,10 @@
         ctx.strokeRect(rx + 1.5, ry + 1.5, b.w - 3, b.h - 3);
         ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(rx, ry + b.h - 3, b.w, 3);
         if (b.w * b.h > 2600) drawRoofDetail(ctx, b, rx, ry);
+        if (VAMP.DistrictArt && b.d != null) {
+          const dist = VAMP.World.DISTRICTS[b.d];
+          if (dist) VAMP.DistrictArt.drawRoofStamp(ctx, dist.id, rx + b.w * 0.1, ry + 4, b.w, b.h);
+        }
       }
 
       // lit windows on the up and left faces (batched)
@@ -198,18 +208,28 @@
       if (b._sign && detail) {
         const e = b._sign;
         const fl = e.broken ? (Math.sin(time * 0.02 + e.flick * 99) > 0.3 ? 1 : 0.18) : (0.6 + 0.4 * Math.sin(time * 0.004 + e.flick * 99));
-        const sw = Math.min(b.w * 0.6, 54);
+        const dist = VAMP.World && VAMP.World.DISTRICTS && VAMP.World.DISTRICTS[b.d];
+        const label = VAMP.PropVariants
+          ? VAMP.PropVariants.buildingSignText(b.seed, dist ? dist.id : 'downtown')
+          : 'OPEN';
+        const sw = Math.min(b.w * 0.55, 48);
+        const sx = rx + (b.w - sw) / 2, sy = ry + b.h - 6;
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.45 + fl * 0.45;
-        if (VAMP.ArtFlags && VAMP.ArtFlags.useBitmapBuildings && VAMP.Assets.has('neon_sign')) {
-          VAMP.Assets.drawKey(ctx, 'neon_sign', rx + b.w / 2, ry + b.h - 6, { w: sw, h: 12, ax: 0.5, ay: 1, tint: e.color, alpha: 0.5 + fl * 0.4 });
-        } else {
-          ctx.fillStyle = e.color;
-          ctx.fillRect(rx + (b.w - sw) / 2, ry + b.h - 4, sw, 3);
-          ctx.globalAlpha = 0.3 + fl * 0.3;
-          ctx.fillRect(rx + (b.w - sw) / 2, ry + 2, 2, b.h - 6);
-        }
+        ctx.globalAlpha = 0.35 + fl * 0.5;
+        ctx.fillStyle = 'rgba(20,18,28,0.75)';
+        ctx.fillRect(sx - 2, sy - 9, sw + 4, 11);
+        ctx.strokeStyle = U.shade(e.color, 0.15);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sx - 1.5, sy - 8.5, sw + 3, 10);
+        ctx.shadowColor = e.color;
+        ctx.shadowBlur = 8 + fl * 6;
+        ctx.fillStyle = e.color;
+        ctx.font = 'bold ' + Math.max(6, Math.min(9, sw / label.length * 1.4)) + 'px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, rx + b.w / 2, sy - 3);
+        ctx.shadowBlur = 0;
         ctx.restore();
       }
       if (detail && VAMP.ArtFlags && VAMP.ArtFlags.useBitmapBuildings && VAMP.Assets.has('windows_sheet') && b.w * b.h > 1200) {
@@ -224,16 +244,22 @@
         ctx.restore();
       }
 
-      // POI marker
+      // POI marker / façade stamp
       if (b.poi) {
-        ctx.fillStyle = b.poi.color;
-        ctx.globalAlpha = 0.9;
         const cxp = rx + b.w / 2, cyp = ry + b.h / 2;
-        ctx.beginPath(); ctx.arc(cxp, cyp, 7, 0, U.TAU); ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(b.poi.glyph, cxp, cyp + 0.5);
+        const poiKey = 'poi_' + b.poi.type;
+        if (detail && VAMP.Assets && VAMP.Assets.has(poiKey)) {
+          const fac = VAMP.Assets.get(poiKey);
+          ctx.drawImage(fac, cxp - 24, cyp - 20, 48, 40);
+        } else {
+          ctx.fillStyle = b.poi.color;
+          ctx.globalAlpha = 0.9;
+          ctx.beginPath(); ctx.arc(cxp, cyp, 7, 0, U.TAU); ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#000';
+          ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(b.poi.glyph, cxp, cyp + 0.5);
+        }
       }
     }
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
@@ -288,7 +314,42 @@
     }
   }
 
-  // Soft edge blends where ground types meet (cheap autotile read)
+  function neighborTile(world, c, r, dc, dr) {
+    const nc = c + dc, nr = r + dr;
+    if (nc < 0 || nr < 0 || nc >= world.cols || nr >= world.rows) return -1;
+    return world.tile[world.idx(nc, nr)];
+  }
+
+  // Bitmask of sides where a *different* ground type touches this tile.
+  function transitionMask(world, c, r, t) {
+    let mask = 0;
+    if (neighborTile(world, c, r, 0, -1) !== t) mask |= 1;
+    if (neighborTile(world, c, r, 0, 1) !== t) mask |= 2;
+    if (neighborTile(world, c, r, -1, 0) !== t) mask |= 4;
+    if (neighborTile(world, c, r, 1, 0) !== t) mask |= 8;
+    return mask;
+  }
+
+  function renderAutotileOverlay(ctx, world, c0, r0, c1, r1, TILE) {
+    const atlas = VAMP.Assets.get('autotile_16');
+    if (!atlas) return;
+    const ts = 32;
+    const blendTypes = [T.ROAD, T.SIDEWALK, T.GRASS, T.WATER, T.CONCRETE, T.DIRT];
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const t = world.tile[world.idx(c, r)];
+        if (blendTypes.indexOf(t) < 0) continue;
+        const mask = transitionMask(world, c, r, t);
+        if (!mask) continue;
+        const mx = (mask % 4) * ts, my = ((mask / 4) | 0) * ts;
+        ctx.globalAlpha = 0.42;
+        ctx.drawImage(atlas, mx, my, ts, ts, c * TILE, r * TILE, TILE, TILE);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Soft edge blends where ground types meet + autotile corner stamps
   function renderGroundEdges(ctx, world, c0, r0, c1, r1, TILE) {
     const edgeW = 5;
     const blends = {
@@ -325,6 +386,7 @@
         }
       }
     }
+    if (VAMP.Assets && VAMP.Assets.has('autotile_16')) renderAutotileOverlay(ctx, world, c0, r0, c1, r1, TILE);
   }
 
   // ---- lighting: a fixed pool filled each frame (no per-frame allocation) ----
@@ -334,7 +396,7 @@
   for (let i = 0; i < 256; i++) _lightPool.push({ x: 0, y: 0, r: 0, color: '#fff', addA: 0 });
   const _transient = [];   // emergency/muzzle, pushed per-frame, drained in gather
   function addTransient(x, y, r, color, addA) { if (_transient.length < 48) _transient.push({ x, y, r, color, addA: addA == null ? 1 : addA }); }
-  function lampHere(c, r) { return (c * 7 + r * 13) % 11 === 0; }   // shared with props.js
+  function lampHere(c, r) { return (c * 7 + r * 13) % 11 === 0; }
 
   function gatherLights(cam, world, time) {
     let n = 0;
@@ -345,7 +407,7 @@
     for (let r = r0; r <= r1 && n < 256; r++) {
       for (let c = c0; c <= c1 && n < 256; c++) {
         if (world.tile[world.idx(c, r)] !== T.SIDEWALK || !lampHere(c, r)) continue;
-        const L = _lightPool[n++]; L.x = (c + 0.5) * TILE; L.y = (r + 0.5) * TILE; L.r = 92; L.color = '#ffd9a0'; L.addA = 0.42;
+        const L = _lightPool[n++]; L.x = (c + 0.5) * TILE; L.y = (r + 0.5) * TILE; L.r = 108; L.color = '#ffd9a0'; L.addA = 0.5;
       }
     }
     // signs / beacons via emitter grid

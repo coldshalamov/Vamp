@@ -27,7 +27,18 @@
 
     number(x, y, text, color, opts) {
       opts = opts || {};
-      push(numbers, { x: x + (Math.random() - 0.5) * 8, y, vy: -38, life: opts.small ? 0.6 : 0.9, max: opts.small ? 0.6 : 0.9, text: '' + text, color: color || '#fff', crit: opts.crit, small: opts.small });
+      const tier = opts.block ? 'block' : opts.heal ? 'heal' : opts.crit ? 'crit' : opts.small ? 'small' : 'normal';
+      if (tier === 'heal') color = color || '#5aff8c';
+      if (tier === 'block') color = color || '#7ad0ff';
+      if (tier === 'crit') color = color || '#ffd24a';
+      push(numbers, {
+        x: x + (Math.random() - 0.5) * 8, y,
+        vy: tier === 'crit' ? -48 : tier === 'block' ? -28 : -38,
+        life: opts.small ? 0.6 : tier === 'crit' ? 1.1 : 0.9,
+        max: opts.small ? 0.6 : tier === 'crit' ? 1.1 : 0.9,
+        text: '' + text, color: color || '#fff',
+        crit: opts.crit, small: opts.small, tier,
+      });
     },
     blood(x, y, count) {
       count = count || 8;
@@ -208,10 +219,18 @@
       ctx.textAlign = 'center';
       for (const n of numbers) {
         ctx.globalAlpha = U.clamp(n.life / n.max, 0, 1);
-        const sz = n.crit ? 18 : n.small ? 10 : 13;
+        const sz = n.tier === 'crit' ? 20 : n.tier === 'block' ? 12 : n.small ? 10 : 13;
         ctx.font = `bold ${sz}px ${'Verdana, sans-serif'}`;
+        if (n.tier === 'crit') {
+          ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 3;
+          ctx.strokeText(n.text, n.x, n.y);
+        }
         ctx.fillStyle = '#000'; ctx.fillText(n.text, n.x + 1, n.y + 1);
         ctx.fillStyle = n.color; ctx.fillText(n.text, n.x, n.y);
+        if (n.tier === 'heal') {
+          ctx.globalAlpha *= 0.35;
+          ctx.fillStyle = '#fff'; ctx.fillText(n.text, n.x - 1, n.y - 1);
+        }
       }
       ctx.globalAlpha = 1; ctx.textAlign = 'left';
     },

@@ -134,18 +134,21 @@
         ctx.globalAlpha = a;
         ctx.translate(t.x, t.y);
         ctx.rotate(ang);
-        VAMP.Assets.drawKey(ctx, 'projectile_blood', 0, 0, { w: pr.r * 5, h: pr.r * 2.2, ax: 0.5, ay: 0.5, tint: pr.color });
+        const pKey = pr.kind === 'shadow' ? 'projectile_blood' : pr.kind === 'bullet' ? 'projectile_blood' : 'projectile_blood';
+        const pTint = pr.kind === 'shadow' ? (pr.color || '#6040a0') : pr.kind === 'bullet' ? (pr.color || '#e8e0c0') : pr.color;
+        VAMP.Assets.drawKey(ctx, pKey, 0, 0, { w: pr.r * 5, h: pr.r * 2.2, ax: 0.5, ay: 0.5, tint: pTint });
         ctx.restore();
       }
       ctx.save();
       ctx.translate(pr.x, pr.y);
       ctx.rotate(ang);
+      const pTint = pr.kind === 'shadow' ? (pr.color || '#6040a0') : pr.kind === 'bullet' ? (pr.color || '#e8e0c0') : pr.color;
       if (pr.glow) {
         ctx.globalAlpha = 0.35;
-        VAMP.Assets.drawKey(ctx, 'projectile_blood', 0, 0, { w: pr.r * 7, h: pr.r * 3.2, ax: 0.5, ay: 0.5, tint: pr.color });
+        VAMP.Assets.drawKey(ctx, 'projectile_blood', 0, 0, { w: pr.r * 7, h: pr.r * 3.2, ax: 0.5, ay: 0.5, tint: pTint });
       }
       ctx.globalAlpha = 1;
-      VAMP.Assets.drawKey(ctx, 'projectile_blood', 0, 0, { w: pr.r * 5.5, h: pr.r * 2.6, ax: 0.5, ay: 0.5, tint: pr.color });
+      VAMP.Assets.drawKey(ctx, 'projectile_blood', 0, 0, { w: pr.r * 5.5, h: pr.r * 2.6, ax: 0.5, ay: 0.5, tint: pTint });
       ctx.restore();
       return;
     }

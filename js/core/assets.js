@@ -41,10 +41,14 @@
     if (built) return patterns;
     const rng = U.makeRNG(1337);
     const ts = 64;
-    const kinds = ['asphalt', 'sidewalk', 'grass', 'water', 'dirt', 'plaza', 'roof1', 'roof2', 'roof3', 'roof4'];
+    const kinds = ['asphalt', 'sidewalk', 'grass', 'water', 'dirt', 'concrete', 'plaza', 'roof1', 'roof2', 'roof3', 'roof4'];
     const defs = {};
     if (processed.asphalt_wet_tile) defs.asphalt = processed.asphalt_wet_tile;
     if (processed.sidewalk_tile) defs.sidewalk = processed.sidewalk_tile;
+    if (processed.ground_grass_tile) defs.grass = processed.ground_grass_tile;
+    if (processed.ground_concrete_tile) defs.concrete = processed.ground_concrete_tile;
+    if (processed.ground_dirt_tile) defs.dirt = processed.ground_dirt_tile;
+    if (processed.ground_plaza_tile) defs.plaza = processed.ground_plaza_tile;
     for (const k of kinds) {
       if (defs[k]) continue;
       if (processed[k + '_tile']) defs[k] = processed[k + '_tile'];
@@ -57,7 +61,7 @@
   }
 
   function patternBase(k) {
-    const m = { asphalt: '#1b1b22', sidewalk: '#34343f', grass: '#16321f', water: '#0c1e33', dirt: '#2a2118', plaza: '#2b2730', roof1: '#23232c', roof2: '#2c2330', roof3: '#1f2a2a', roof4: '#2a2422' };
+    const m = { asphalt: '#1b1b22', sidewalk: '#34343f', grass: '#16321f', water: '#0c1e33', dirt: '#2a2118', concrete: '#2b2730', plaza: '#2b2730', roof1: '#23232c', roof2: '#2c2330', roof3: '#1f2a2a', roof4: '#2a2422' };
     return m[k] || '#222';
   }
 
@@ -118,6 +122,7 @@
     opts = opts || {};
     let canvas = img;
     if (opts.chroma && Bake()) canvas = Bake().removeChromaKey(img, opts.chroma);
+    if (opts.sharpen && Bake() && Bake().sharpen) canvas = Bake().sharpen(canvas, opts.sharpen);
     if (opts.sheet) {
       sliceHorizontalSheet(canvas, opts.sheetCount, opts.sheetKeys || []);
       bitmaps[key] = canvas;
@@ -134,29 +139,51 @@
     return canvas;
   }
 
+  function loadImageWithFallback(stem) {
+    const exts = VAMP.AssetManifest ? VAMP.AssetManifest.tryExtensions(stem) : [stem + '.jpg'];
+    let i = 0;
+    function tryNext() {
+      if (i >= exts.length) return Promise.reject(new Error('Failed: ' + stem));
+      const url = (VAMP.AssetManifest ? VAMP.AssetManifest.BASE : 'assets/images/') + exts[i++];
+      return loadImage(url).catch(tryNext);
+    }
+    return tryNext();
+  }
+
   function loadAll(onProgress) {
-    const paths = VAMP.ArtPaths || {};
+    const paths = (VAMP.AssetManifest && VAMP.AssetManifest.pathsForLoader)
+      ? Object.assign({}, VAMP.ArtPaths || {}, VAMP.AssetManifest.pathsForLoader())
+      : (VAMP.ArtPaths || {});
     const entries = Object.keys(paths);
     loadTotal = entries.length;
     loadProgress = 0;
     const jobs = entries.map((key) => {
-      const opts = { chroma: null, tile: false };
-      if (key === 'asphalt_wet' || key === 'sidewalk') { opts.tile = true; opts.tileSize = 128; }
-      if (key === 'player_vampire' || key === 'prop_lamp' || key === 'prop_tree' || key === 'vehicle_sedan'
-        || key === 'npc_civilian' || key === 'projectile_blood' || key === 'discipline_icons' || key === 'clan_emblems') {
-        opts.chroma = (VAMP.ArtFlags && VAMP.ArtFlags.chromaKey) || '#ff00ff';
+      const opts = (VAMP.AssetManifest && VAMP.AssetManifest.getLoadOpts)
+        ? VAMP.AssetManifest.getLoadOpts(key)
+        : { chroma: null, tile: false };
+      if (!opts.chroma && !opts.tile) {
+        if (key === 'asphalt_wet' || key === 'sidewalk') { opts.tile = true; opts.tileSize = 512; }
+        const chromaKeys = ['player_vampire', 'prop_lamp', 'prop_lamp_alt', 'prop_tree', 'prop_tree_alt1', 'prop_tree_alt2',
+          'vehicle_sedan', 'vehicle_sport', 'vehicle_van', 'vehicle_hearse', 'vehicle_police',
+          'npc_civilian', 'projectile_blood', 'discipline_icons', 'clan_emblems'];
+        if (chromaKeys.indexOf(key) >= 0) opts.chroma = (VAMP.ArtFlags && VAMP.ArtFlags.chromaKey) || '#ff00ff';
+        if (opts.chroma && (key.indexOf('prop_') === 0 || key.indexOf('vehicle_') === 0)) opts.sharpen = 0.28;
+        if (key === 'discipline_icons') {
+          opts.sheet = true;
+          opts.sheetCount = (VAMP.DisciplineIconKeys && VAMP.DisciplineIconKeys.length) || 10;
+          opts.sheetKeys = VAMP.DisciplineIconKeys;
+        }
+        if (key === 'clan_emblems') {
+          opts.sheet = true;
+          opts.sheetCount = (VAMP.ClanEmblemKeys && VAMP.ClanEmblemKeys.length) || 7;
+          opts.sheetKeys = VAMP.ClanEmblemKeys;
+        }
       }
-      if (key === 'discipline_icons') {
-        opts.sheet = true;
-        opts.sheetCount = (VAMP.DisciplineIconKeys && VAMP.DisciplineIconKeys.length) || 10;
-        opts.sheetKeys = VAMP.DisciplineIconKeys;
-      }
-      if (key === 'clan_emblems') {
-        opts.sheet = true;
-        opts.sheetCount = (VAMP.ClanEmblemKeys && VAMP.ClanEmblemKeys.length) || 7;
-        opts.sheetKeys = VAMP.ClanEmblemKeys;
-      }
-      return loadImage(paths[key]).then((img) => {
+      const stem = (VAMP.AssetManifest && VAMP.AssetManifest.getEntry(key))
+        ? VAMP.AssetManifest.getEntry(key).path
+        : null;
+      const loader = stem ? () => loadImageWithFallback(stem) : () => loadImage(paths[key]);
+      return loader().then((img) => {
         processLoaded(key, img, opts);
         loadProgress++;
         if (onProgress) onProgress(loadProgress, loadTotal, key);
@@ -168,6 +195,9 @@
     bakePuddleDecal();
     bakeRune();
     return Promise.all(jobs).then(() => {
+      bakeProceduralSprites();
+      bakeManifestProcedural();
+      if (VAMP.LightWorker && VAMP.LightWorker.init) VAMP.LightWorker.init();
       ready = true;
       const canvas = document.getElementById('game');
       if (canvas) {
@@ -177,9 +207,74 @@
     });
   }
 
-  function has(key) { return !!bitmaps[key] || !!processed[key + '_tile']; }
+  function bakeProceduralSprites() {
+    const Bake = VAMP.ArtBake;
+    if (!Bake) return;
+    const vTypes = ['sedan', 'sport', 'van', 'police', 'hearse'];
+    for (let i = 0; i < vTypes.length; i++) {
+      const t = vTypes[i];
+      const key = 'vehicle_' + t;
+      bitmaps[key + '_topdown'] = Bake.bakeVehicleTopDown(t, (i + 1) * 9973);
+    }
+    bitmaps.prop_lamp_baked0 = Bake.bakePropLamp(11);
+    bitmaps.prop_lamp_baked1 = Bake.bakePropLamp(29);
+    bitmaps.prop_lamp_baked2 = Bake.bakePropLamp(47);
+    bitmaps.prop_tree_baked0 = Bake.bakePropTree(13);
+    bitmaps.prop_tree_baked1 = Bake.bakePropTree(31);
+    bitmaps.prop_tree_baked2 = Bake.bakePropTree(59);
+  }
 
-  function get(key) { return bitmaps[key] || processed[key + '_tile'] || null; }
+  function bakeManifestProcedural() {
+    const Bake = VAMP.ArtBake;
+    const Spr = VAMP.Spriter;
+    if (!Bake) return;
+    const walkKinds = ['player_walk', 'npc_civilian_walk', 'npc_gang', 'npc_cop', 'npc_hunter', 'npc_thrall', 'rat'];
+    for (let i = 0; i < walkKinds.length; i++) {
+      const k = walkKinds[i];
+      const sheet = Bake.bakeWalkSheet(k, (i + 1) * 7919);
+      bitmaps[k] = sheet;
+      if (Spr) {
+        const spec = k === 'player_walk' ? { cols: 4, rows: 8, dirs: 8 }
+          : k === 'rat' ? { cols: 1, rows: 4, dirs: 4 }
+          : { cols: 2, rows: 4, dirs: 4 };
+        Spr.register(k, sheet, spec);
+      }
+    }
+    const auto = Bake.bakeAutotileAtlas();
+    processed.autotile_16_tile = auto;
+    bitmaps.autotile_16 = auto;
+    const grounds = ['grass', 'concrete', 'dirt', 'plaza'];
+    for (const gk of grounds) {
+      const t = Bake.bakeProceduralTile(gk, 64);
+      Bake.enhanceTile(t, null, gk.length * 53);
+      processed['ground_' + gk + '_tile'] = t;
+      bitmaps['ground_' + gk] = t;
+    }
+    if (VAMP.DistrictArt && VAMP.DistrictArt.KITS) {
+      for (const id in VAMP.DistrictArt.KITS) {
+        bitmaps['roof_' + id] = Bake.bakeDistrictModule('roof', id);
+        bitmaps['wall_' + id] = Bake.bakeDistrictModule('wall', id);
+      }
+    }
+    const pois = ['haven', 'bloodbank', 'club', 'board', 'market'];
+    for (const pt of pois) bitmaps['poi_' + pt] = Bake.bakePOIFacade(pt);
+    bitmaps.menu_bg_board = Bake.bakeMenuBackdrop('board');
+    bitmaps.menu_bg_map = Bake.bakeMenuBackdrop('map');
+  }
+
+  function has(key) { return !!bitmaps[key] || !!bitmaps[key + '_topdown'] || !!processed[key + '_tile']; }
+
+  function get(key) {
+    if (bitmaps[key + '_topdown']) return bitmaps[key + '_topdown'];
+    return bitmaps[key] || processed[key + '_tile'] || null;
+  }
+
+  function getBaked(key, variant) {
+    const v = variant == null ? 0 : variant % 3;
+    const bk = key + '_baked' + v;
+    if (bitmaps[bk]) return bitmaps[bk];
+    return get(key);
+  }
 
   function drawKey(ctx, key, x, y, opts) {
     const src = get(key);
@@ -193,8 +288,10 @@
     const ay = opts.ay != null ? opts.ay : 0.5;
     ctx.save();
     if (opts.alpha != null) ctx.globalAlpha = opts.alpha;
-    if (opts.rotate) { ctx.translate(x, y); ctx.rotate(opts.rotate); ctx.drawImage(opts.tint ? tintCanvas(src, opts.tint) : src, -dw * ax, -dh * ay, dw, dh); }
-    else ctx.drawImage(opts.tint ? tintCanvas(src, opts.tint) : src, x - dw * ax, y - dh * ay, dw, dh);
+    ctx.imageSmoothingEnabled = opts.smooth !== false;
+    const img = opts.tint ? tintCanvas(src, opts.tint) : src;
+    if (opts.rotate) { ctx.translate(x, y); ctx.rotate(opts.rotate); ctx.drawImage(img, -dw * ax, -dh * ay, dw, dh); }
+    else ctx.drawImage(img, x - dw * ax, y - dh * ay, dw, dh);
     ctx.restore();
     return true;
   }
@@ -275,15 +372,35 @@
   }
 
   let bloomBuf = null;
+  let bloomTmp = null;
+
+  function separableBlur(g, src, w, h, radius) {
+    radius = Math.max(1, radius | 0);
+    if (!bloomTmp || bloomTmp.width !== w) bloomTmp = makeCanvas(w, h);
+    const tg = bloomTmp.getContext('2d');
+    tg.filter = 'blur(' + radius + 'px)';
+    tg.drawImage(src, 0, 0);
+    g.filter = 'blur(' + radius + 'px)';
+    g.drawImage(bloomTmp, 0, 0);
+    g.filter = 'none';
+  }
+
   function bloom(ctx, canvas, w, h, strength) {
     if (!strength) return;
     const scale = 0.25;
     const bw = Math.max(1, Math.round(w * scale)), bh = Math.max(1, Math.round(h * scale));
-    if (!bloomBuf || bloomBuf.width !== bw || bloomBuf.height !== bh) { bloomBuf = makeCanvas(bw, bh); }
+    if (!bloomBuf || bloomBuf.width !== bw || bloomBuf.height !== bh) bloomBuf = makeCanvas(bw, bh);
     const bg = bloomBuf.getContext('2d');
     bg.globalCompositeOperation = 'source-over';
     bg.clearRect(0, 0, bw, bh);
     bg.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, bw, bh);
+    // highlight extraction: multiply the frame by itself so only the bright lights
+    // (lamps, neon, fire, lit windows) survive while shadows are crushed toward black.
+    // keeps bloom a glow ON the lights rather than a full-frame haze that washes the night.
+    bg.globalCompositeOperation = 'multiply';
+    bg.drawImage(bloomBuf, 0, 0);
+    bg.globalCompositeOperation = 'source-over';
+    separableBlur(bg, bloomBuf, bw, bh, 3);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'lighter';
@@ -303,7 +420,7 @@
   VAMP.Assets = {
     makeCanvas, noiseTile, build, rebuildPatterns, vignette, starfield, patterns,
     bloom, glow, glowTinted, softBlob,
-    loadAll, has, get, drawKey, facingToOctant,
+    loadAll, has, get, getBaked, drawKey, facingToOctant,
     get ready() { return ready; },
     get loadProgress() { return loadProgress; },
     get loadTotal() { return loadTotal; },

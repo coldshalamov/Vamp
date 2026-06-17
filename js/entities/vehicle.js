@@ -20,9 +20,15 @@
   function create(world, type, x, y, opts) {
     const t = TYPES[type] || TYPES.sedan;
     opts = opts || {};
+    const VR = VAMP.VehicleRoad;
+    const axis = VR ? VR.roadAxisAt(world, x, y) : 0;
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    const ang = opts.angle != null ? opts.angle : (VR ? VR.angleForAxis(axis, dir) : 0);
     return {
       id: VID++, type, ...{ ...t },
-      x, y, angle: opts.angle != null ? opts.angle : Math.random() * U.TAU,
+      x, y,
+      angle: ang,
+      roadAxis: axis, roadDir: dir,
       speed: 0, vx: 0, vy: 0,
       r: Math.max(t.w, t.h) * 0.5,
       maxHp: opts.hp || t.hp, hp: opts.hp || t.hp,
@@ -51,10 +57,12 @@
     else if (v.ai && v.driver) driveAI(v, dt, game);
     else { v.speed *= Math.pow(0.2, dt); } // parked friction
 
-    // integrate
-    const moveAng = v.angle;
-    v.x += Math.cos(moveAng) * v.speed * dt;
-    v.y += Math.sin(moveAng) * v.speed * dt;
+    if (v.ai && v.driver && VAMP.VehicleRoad) VAMP.VehicleRoad.integrateAxis(v, dt);
+    else {
+      const moveAng = v.angle;
+      v.x += Math.cos(moveAng) * v.speed * dt;
+      v.y += Math.sin(moveAng) * v.speed * dt;
+    }
 
     // collision with buildings
     const before = { x: v.x, y: v.y };
@@ -118,28 +126,28 @@
   }
 
   function driveAI(v, dt, game) {
-    // drive forward along road; turn at non-road
     const world = game.world;
+    const VR = VAMP.VehicleRoad;
+    if (!VR) return;
     v.aiTurnCD -= dt;
-    const lookX = v.x + Math.cos(v.angle) * (v.r + 26);
-    const lookY = v.y + Math.sin(v.angle) * (v.r + 26);
     const cruise = v.maxSpeed * 0.42;
-    if (!world.isRoad(lookX, lookY) || v.aiTurnCD <= 0) {
-      // try to turn toward a road direction
-      const options = [v.angle + Math.PI / 2, v.angle - Math.PI / 2, v.angle + Math.PI];
-      let best = null;
-      for (const a of options) {
-        const tx = v.x + Math.cos(a) * (v.r + 30), ty = v.y + Math.sin(a) * (v.r + 30);
-        if (world.isRoad(tx, ty)) { best = a; break; }
-      }
-      if (best != null) { v.angle = best; v.aiTurnCD = 1.2 + Math.random(); }
-      else { v.speed *= 0.4; v.angle += dt * 2; }
+    const axis = v.roadAxis != null ? v.roadAxis : VR.axisFromAngle(v.angle);
+    const dir = v.roadDir != null ? v.roadDir : 1;
+    const ahead = VR.probe(world, v.x, v.y, axis, dir, 56);
+    if (!ahead || v.aiTurnCD <= 0) {
+      const pick = VR.pickAxis(v, world);
+      v.roadAxis = pick.axis;
+      v.roadDir = pick.dir;
+      v.angle = VR.angleForAxis(pick.axis, pick.dir);
+      v.aiTurnCD = 1.4 + Math.random() * 1.2;
     }
-    // brake for player/obstacles ahead
     let target = cruise;
     const p = game.player;
     const pv = p.inVehicle || p;
-    if (U.dist(lookX, lookY, pv.x, pv.y) < 40) target = 0;
+    const lookX = v.x + Math.cos(v.angle) * 48;
+    const lookY = v.y + Math.sin(v.angle) * 48;
+    if (U.dist(lookX, lookY, pv.x, pv.y) < 52) target = 0;
+    else if (!VR.probe(world, v.x, v.y, v.roadAxis, v.roadDir, 56)) target = cruise * 0.2;
     v.speed = U.approach(v.speed, target, v.accel * dt);
   }
 
@@ -219,9 +227,10 @@
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.save(); ctx.rotate(v.angle); ctx.fillRect(-v.w / 2 + 3, -v.h / 2 + 4, v.w, v.h); ctx.restore();
     ctx.rotate(v.angle);
-    const useCar = VAMP.ArtFlags && VAMP.ArtFlags.useBitmapVehicles && VAMP.Assets.ready && VAMP.Assets.has('vehicle_sedan') && (v.type === 'sedan' || v.type === 'sport' || v.type === 'hearse');
+    const vKey = VAMP.PropVariants ? VAMP.PropVariants.vehicleKey(v.type) : 'vehicle_sedan';
+    const useCar = VAMP.Assets.ready && VAMP.Assets.get(vKey);
     if (useCar) {
-      VAMP.Assets.drawKey(ctx, 'vehicle_sedan', 0, 0, { w: v.w * 1.15, h: v.h * 1.2, ax: 0.5, ay: 0.5, tint: v.color });
+      VAMP.Assets.drawKey(ctx, vKey, 0, 0, { w: v.w * 1.45, h: v.h * 1.45, ax: 0.5, ay: 0.5, tint: v.color, smooth: true });
     } else {
       const grd = ctx.createLinearGradient(0, -v.h / 2, 0, v.h / 2);
       grd.addColorStop(0, U.shade(v.color, 0.18));
@@ -248,6 +257,13 @@
       const on = Math.sin(v.sirenPhase) > 0;
       ctx.fillStyle = on ? '#ff3a3a' : '#3a6aff';
       ctx.fillRect(-3, -v.h / 2, 6, 4);
+    }
+    // moonlight rim — a cool edge highlight so the car silhouette separates from dark
+    // asphalt (top-down cars were reading as invisible black blobs at night otherwise).
+    if (!v.burning) {
+      ctx.strokeStyle = 'rgba(164,184,224,0.40)';
+      ctx.lineWidth = 1.3;
+      roundRect(ctx, -v.w / 2 + 0.6, -v.h / 2 + 0.6, v.w - 1.2, v.h - 1.2, 5); ctx.stroke();
     }
     ctx.restore();
 

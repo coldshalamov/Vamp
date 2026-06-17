@@ -21,8 +21,19 @@
     useHavenArt: true,
     usePostFX: true,
     useAutotile: true,
+    useSpriter: true,
+    useLightWorker: false,
+    useIndexedDBCache: false,
     vectorFallback: true,
     chromaKey: '#ff00ff',
+  };
+
+  VAMP.AssetDisplay = {
+    player_vampire: { smooth: false, displayScale: 3.6, sharpen: 0.32 },
+    npc_civilian:   { smooth: false, displayScale: 2.4, sharpen: 0.28 },
+    prop_lamp:      { smooth: true, displayScale: 1, sharpen: 0.28 },
+    prop_tree:      { smooth: true, displayScale: 1, sharpen: 0.28 },
+    vehicle_sedan:  { smooth: true, displayScale: 1.45, sharpen: 0.28 },
   };
 
   VAMP.ArtPaths = {
@@ -30,8 +41,15 @@
     sidewalk: BASE + 'sidewalk.jpg',
     player_vampire: BASE + 'player_vampire.jpg',
     prop_lamp: BASE + 'prop_lamp.jpg',
+    prop_lamp_alt: BASE + 'prop_lamp_alt.jpg',
     prop_tree: BASE + 'prop_tree.jpg',
+    prop_tree_alt1: BASE + 'prop_tree_alt1.jpg',
+    prop_tree_alt2: BASE + 'prop_tree_alt2.jpg',
     vehicle_sedan: BASE + 'vehicle_sedan.jpg',
+    vehicle_sport: BASE + 'vehicle_sport.jpg',
+    vehicle_van: BASE + 'vehicle_van.jpg',
+    vehicle_hearse: BASE + 'vehicle_hearse.jpg',
+    vehicle_police: BASE + 'vehicle_police.jpg',
     neon_sign: BASE + 'neon_sign.jpg',
     windows_sheet: BASE + 'windows_sheet.jpg',
     title_bg: BASE + 'title_bg.jpg',

@@ -73,10 +73,21 @@
       else if (In.wasPressed('keym')) this.openScreen('char', { tab: 'map' });
     },
 
+    drawMenuBackdrop(ctx, w, h, key) {
+      if (VAMP.Assets && VAMP.Assets.ready && VAMP.Assets.has(key)) {
+        const bg = VAMP.Assets.get(key);
+        ctx.drawImage(bg, 0, 0, w, h);
+        ctx.fillStyle = 'rgba(4,3,8,0.72)'; ctx.fillRect(0, 0, w, h);
+      } else {
+        ctx.fillStyle = 'rgba(4,3,8,0.82)'; ctx.fillRect(0, 0, w, h);
+      }
+    },
+
     render(ctx, game, w, h) {
       this.game = game; this.hot = []; this.tip = null;
-      // dim backdrop
-      ctx.fillStyle = 'rgba(4,3,8,0.82)'; ctx.fillRect(0, 0, w, h);
+      const bgKey = this.open === 'board' ? 'menu_bg_board' : (this.open === 'char' && this.tab === 'map' ? 'menu_bg_map' : null);
+      if (bgKey) this.drawMenuBackdrop(ctx, w, h, bgKey);
+      else { ctx.fillStyle = 'rgba(4,3,8,0.82)'; ctx.fillRect(0, 0, w, h); }
       ctx.textBaseline = 'alphabetic';
       switch (this.open) {
         case 'char': this.renderChar(ctx, game, w, h); break;

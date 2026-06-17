@@ -49,6 +49,10 @@
           if (splash) {
             const p = splash.querySelector('p');
             if (p) p.textContent = 'summoning the night… ' + n + '/' + tot;
+            const pct = tot > 0 ? Math.round((n / tot) * 100) : 0;
+            splash.style.setProperty('--load-pct', pct + '%');
+            const fill = splash.querySelector('.splash-progress-fill');
+            if (fill) fill.style.width = pct + '%';
           }
         }).then(() => {
           if (this.ctx) VAMP.Assets.rebuildPatterns(this.ctx);
@@ -68,13 +72,27 @@
       VAMP.ArtFlags.useBitmapNPCs = !low;
       VAMP.ArtFlags.useAutotile = !low;
       VAMP.ArtFlags.usePostFX = !low;
+      VAMP.ArtFlags.useSpriter = !low;
+      VAMP.ArtFlags.useLightWorker = false;
       if (low) {
         VAMP.ArtFlags.useBitmapBuildings = false;
         VAMP.ArtFlags.useBitmapFX = false;
+        VAMP.ArtFlags.useBitmapGround = false;
       } else if (med) {
         VAMP.ArtFlags.useBitmapBuildings = true;
         VAMP.ArtFlags.useBitmapFX = true;
+        VAMP.ArtFlags.useBitmapGround = true;
       }
+    },
+    updateCursor() {
+      const el = document.getElementById('game');
+      if (!el || this.mode !== 'play' || !this.player) { if (el) el.className = ''; return; }
+      const p = this.player;
+      let cls = '';
+      if (p.feeding || (p.holdingFeed && p._feedTarget)) cls = 'feed-mode';
+      else if (p.sprinting) cls = 'sprint-mode';
+      else if (p.freeAiming) cls = 'aim-mode';
+      el.className = cls;
     },
     resize() {
       // DPR (#1): the loop owns the backing-store size + ctx scale; here we
@@ -95,7 +113,16 @@
       this.player = VAMP.Player.newPlayer(this.world, spawn);
       this.applyClan(clan);
       this.afterPlayer();
-      VAMP.UI.notify('You awaken in ' + (this.world.districtAt(this.player.x, this.player.y) || { name: 'the city' }).name + '. The Hunger calls...', '#e0a0b8');
+      const startDist = this.world.districtAt(this.player.x, this.player.y);
+      this._lastDistrict = startDist ? startDist.id : null;
+      if (startDist) {
+        this.districtCard = {
+          name: startDist.name, id: startDist.id,
+          accent: VAMP.DistrictArt ? VAMP.DistrictArt.kitAccent(startDist.id) : startDist.accent,
+          t: 3.2, max: 3.2,
+        };
+      }
+      VAMP.UI.notify('You awaken in ' + (startDist || { name: 'the city' }).name + '. The Hunger calls...', '#e0a0b8');
       VAMP.UI.banner('VAMPIRE CITY', 'Feed. Grow. Rule the night.', '#c0303a');
       this.tutorialStage = 'move';
       this.tutorialGoal = 'MOVE: WASD / arrow keys. You face the way you move — SPACE attacks that way. Hold RIGHT-MOUSE to free-aim. Explore — the night is yours.';
@@ -129,6 +156,7 @@
     buildWorld(seed) {
       this.world = VAMP.World.generate(seed);
       this.placePOIs();
+      if (VAMP.Decals && VAMP.Decals.seedWorld) VAMP.Decals.seedWorld(this.world);
       VAMP.UI.buildMinimap(this.world);
       this.cam = VAMP.Camera(this.w, this.h);
       this.cam.bounds = { w: this.world.w, h: this.world.h };
@@ -227,6 +255,7 @@
     update(dt) {
       if (this.mode === 'title') { VAMP.UI.update(dt); return; }
       if (this.mode === 'dead') { this.deathT += dt; VAMP.FX.update(dt); VAMP.UI.update(dt); return; }
+      this.updateCursor();
       VAMP.Menus.handleKeys(this);
       if (VAMP.Input.anyPressed()) { if (this._tipT > 0) this._tipT = 0; if (this._recapT > 0) this._recapT = 0; }  // #15/#25 dismiss
       if (VAMP.Menus.pausesSim()) { VAMP.UI.update(dt); return; }
@@ -247,6 +276,17 @@
       const p = this.player;
       VAMP.Player.update(p, simDt, this);
       if (p.dead) return;
+      const px = p.inVehicle ? p.inVehicle.x : p.x, py = p.inVehicle ? p.inVehicle.y : p.y;
+      const curDist = this.world.districtAt(px, py);
+      if (curDist && curDist.id !== this._lastDistrict) {
+        this._lastDistrict = curDist.id;
+        this.districtCard = {
+          name: curDist.name, id: curDist.id, tag: curDist.accent ? '' : '',
+          accent: VAMP.DistrictArt ? VAMP.DistrictArt.kitAccent(curDist.id) : curDist.accent,
+          t: 2.8, max: 2.8,
+        };
+      }
+      if (this.districtCard) { this.districtCard.t -= dt; if (this.districtCard.t <= 0) this.districtCard = null; }
       this._feedTarget = (!p.inVehicle && !p.feeding) ? VAMP.Player.findFeedTarget(p, this) : null;
       for (const n of this.npcs) VAMP.Npc.update(n, edt, this);
       for (const v of this.vehicles) if (!(p.inVehicle === v)) VAMP.Vehicle.update(v, v.ai ? edt : dt, this);
@@ -372,7 +412,13 @@
         ctx.fillStyle = 'rgba(232,228,210,' + (dk * 0.9) + ')'; ctx.beginPath(); ctx.arc(mx, my, 22, 0, U.TAU); ctx.fill();
         ctx.fillStyle = 'rgba(8,9,16,' + (dk * 0.9) + ')'; ctx.beginPath(); ctx.arc(mx + 8 - (this.day % 5) * 3, my - 2, 20, 0, U.TAU); ctx.fill();   // phase from day
       }
-      if (W.fog > 0.01) { ctx.fillStyle = 'rgba(120,120,150,' + (W.fog * 0.5) + ')'; ctx.fillRect(0, 0, w, h); }
+      if (W.fog > 0.01) {
+        const fg = ctx.createLinearGradient(0, 0, 0, h);
+        fg.addColorStop(0, 'rgba(100,105,130,' + (W.fog * 0.22) + ')');
+        fg.addColorStop(0.55, 'rgba(120,120,150,' + (W.fog * 0.38) + ')');
+        fg.addColorStop(1, 'rgba(80,85,110,' + (W.fog * 0.55) + ')');
+        ctx.fillStyle = fg; ctx.fillRect(0, 0, w, h);
+      }
       // drifting embers / motes (additive, faded by darkness)
       if (W.motes.length && dk > 0.15) {
         ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -380,9 +426,18 @@
         ctx.restore(); ctx.globalAlpha = 1;
       }
       if (W.rain.length) {
-        ctx.save(); ctx.strokeStyle = 'rgba(170,200,230,0.35)'; ctx.lineWidth = 1.2; ctx.lineCap = 'round'; ctx.beginPath();
-        for (const d of W.rain) { ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - d.len * 0.24, d.y + d.len); }
-        ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(120,150,190,0.08)'; ctx.lineWidth = 1.2; ctx.beginPath();
+        for (let i = 0; i < W.rain.length; i += 3) {
+          const d = W.rain[i];
+          ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - d.len * 0.12, d.y + d.len);
+        }
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(180,210,240,0.12)'; ctx.lineWidth = 0.8; ctx.beginPath();
+        for (const d of W.rain) { ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - d.len * 0.1, d.y + d.len * 0.9); }
+        ctx.stroke();
+        ctx.globalAlpha = 0.025; ctx.fillStyle = '#8090b0'; ctx.fillRect(0, 0, w, h);
+        ctx.restore(); ctx.globalAlpha = 1;
       }
     },
     directorTick(dt) {
@@ -406,7 +461,7 @@
       if (this.spawnTimer <= 0 && ambientCount < ambientTarget) { this.spawnAmbient(false); this.spawnTimer = 0.5; }
       this.trafficTimer -= dt;
       const traffic = this.vehicles.filter((v) => !v.dead).length;
-      if (this.trafficTimer <= 0 && traffic < 16) { this.spawnTraffic(false); this.trafficTimer = 1.5; }
+      if (this.trafficTimer <= 0 && traffic < 22) { this.spawnTraffic(false); this.trafficTimer = 1.1; }
       for (const poi of this.world.pois) {
         if (!poi.discovered && U.dist(px, py, poi.x, poi.y) < 150) {
           poi.discovered = true; VAMP.UI.notify('Discovered: ' + poi.label, poi.color); if (VAMP.Audio) VAMP.Audio.play('pickup'); this.onDiscoverPOI(poi);
@@ -460,8 +515,10 @@
         if (this.world.isRoad(x, y)) { pos = { x, y }; break; }
       }
       if (!pos) pos = this.world.randomRoadPos(Math.random);
-      const types = ['sedan', 'sedan', 'sport', 'van', 'hearse'];
-      const v = VAMP.Vehicle.create(this.world, types[(Math.random() * types.length) | 0], pos.x, pos.y, {});
+      const types = ['sedan', 'sedan', 'sedan', 'sport', 'sport', 'van', 'hearse', 'police'];
+      const vtype = types[(Math.random() * types.length) | 0];
+      const v = VAMP.Vehicle.create(this.world, vtype, pos.x, pos.y, {});
+      if (vtype !== 'police') v.color = VAMP.Vehicle.TYPES[vtype].colors[(Math.random() * VAMP.Vehicle.TYPES[vtype].colors.length) | 0];
       if (Math.random() < 0.6) { v.driver = VAMP.Npc.create(this.world, 'ped', pos.x, pos.y, {}); v.ai = true; }
       this.addVehicle(v);
     },
@@ -475,6 +532,7 @@
       if (this.mode === 'title') { this.renderTitle(ctx, w, h); VAMP.Input.endFrame(); ctx.restore(); return; }
       this.cam.apply(ctx);
       VAMP.WorldRender.renderGround(ctx, this.cam, this.world, this.time * 1000);
+      if (VAMP.DistrictArt) VAMP.DistrictArt.renderParallax(ctx, this.cam, this.world, this);
       if (VAMP.Decals) VAMP.Decals.render(ctx, this.cam, this);
       VAMP.FX.renderBloodPools(ctx, this.cam);
       VAMP.FX.renderDecals(ctx, this.cam);
@@ -503,10 +561,18 @@
       this.renderLighting(ctx, w, h);
       if (VAMP.PostFX) {
         VAMP.PostFX.districtGrade(ctx, this, w, h);
+        VAMP.PostFX.districtLUT(ctx, this, w, h);
+        VAMP.PostFX.dawnGrade(ctx, this, w, h);
+        VAMP.PostFX.fogGround(ctx, this, w, h);
+        VAMP.PostFX.rainWetGround(ctx, this, w, h);
+        VAMP.PostFX.frenzyPulse(ctx, this, w, h);
         VAMP.PostFX.feedingFrame(ctx, this, w, h);
+        VAMP.PostFX.feedingLetterbox(ctx, this, w, h);
         VAMP.PostFX.heatPulse(ctx, this, w, h);
+        VAMP.PostFX.deathDesaturate(ctx, this, w, h);
+        VAMP.PostFX.eliteIntro(ctx, this, w, h);
       }
-      ctx.drawImage(VAMP.Assets.vignette(w, h, 0.55), 0, 0);
+      ctx.drawImage(VAMP.Assets.vignette(w, h, 0.42), 0, 0);
       VAMP.FX.renderScreen(ctx, w, h);
       if (this.quality !== 'low') VAMP.Assets.bloom(ctx, this.canvas, w, h, this.quality === 'medium' ? 0.28 : 0.40);  // #5
       this.renderWeather(ctx, w, h);  // #17
@@ -524,7 +590,7 @@
       const glow = VAMP.Assets.glow();
       lc.setTransform(1, 0, 0, 1, 0, 0);
       lc.clearRect(0, 0, w, h);
-      lc.fillStyle = 'rgba(8,10,26,' + (0.82 * dk) + ')';
+      lc.fillStyle = 'rgba(7,9,22,' + (0.76 * dk) + ')';
       lc.fillRect(0, 0, w, h);
       // carve darkness holes with the baked glow sprite (no per-frame gradients)
       lc.globalCompositeOperation = 'destination-out';
@@ -534,9 +600,13 @@
         const L = pool[i]; const s = cam.worldToScreen(L.x, L.y); const r = L.r * cam.zoom;
         lc.globalAlpha = 0.95; lc.drawImage(glow, s.x - r, s.y - r, r * 2, r * 2);
       }
+      // player vision bubble: a big soft falloff + a tighter near-full carve so the
+      // ground you're standing on always reads clearly (chiaroscuro: bright pool, dark beyond).
       const p = this.player; const ps = cam.worldToScreen(p.inVehicle ? p.inVehicle.x : p.x, p.inVehicle ? p.inVehicle.y : p.y);
-      const pr = (p.inVehicle ? 220 : 150) * cam.zoom;
-      lc.globalAlpha = 0.85; lc.drawImage(glow, ps.x - pr, ps.y - pr, pr * 2, pr * 2);
+      const pr = (p.inVehicle ? 260 : 205) * cam.zoom;
+      lc.globalAlpha = 0.9; lc.drawImage(glow, ps.x - pr, ps.y - pr, pr * 2, pr * 2);
+      const pr2 = pr * 0.52;
+      lc.globalAlpha = 0.92; lc.drawImage(glow, ps.x - pr2, ps.y - pr2, pr2 * 2, pr2 * 2);
       for (const proj of this.projectiles) {
         if (!proj.glow) continue;
         const s = cam.worldToScreen(proj.x, proj.y); const r = 60 * cam.zoom;
@@ -551,8 +621,8 @@
         ctx.globalCompositeOperation = 'lighter';
         for (let i = 0; i < count; i++) {
           const L = pool[i]; if (L.addA <= 0.03) continue;
-          const s = cam.worldToScreen(L.x, L.y); const r = L.r * cam.zoom * 1.15;
-          ctx.globalAlpha = Math.min(0.85, L.addA * 0.5) * dk;
+          const s = cam.worldToScreen(L.x, L.y); const r = L.r * cam.zoom * 1.28;
+          ctx.globalAlpha = Math.min(0.92, L.addA * 0.6) * dk;
           ctx.drawImage(VAMP.Assets.glowTinted(L.color), s.x - r, s.y - r, r * 2, r * 2);
         }
         for (const proj of this.projectiles) {
@@ -614,7 +684,13 @@
     spawnProjectile(opts) { this.projectiles.push(VAMP.Projectile.make(opts)); },
     setSlowmo(dur, scale) { this.slowmoT = Math.max(this.slowmoT, dur); this.slowScale = scale != null ? scale : 0.32; },
     hitStop(dur) { if (!this.reducedMotion) this.hitStopT = Math.max(this.hitStopT, dur || 0.06); },  // #7
-    addNPC(n) { this.npcs.push(n); return n; },
+    addNPC(n) {
+      this.npcs.push(n);
+      if (n && (n.boss || n.nemesis || n.elite) && VAMP.PostFX) {
+        this._eliteFlash = { t: 1.2, max: 1.2 };
+      }
+      return n;
+    },
     addVehicle(v) { this.vehicles.push(v); return v; },
     addPickup(o) { o.kind = o.kind || 'item'; this.pickups.push(o); return o; },
     addBlip(b) { this.blips.push(b); },

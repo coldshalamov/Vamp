@@ -23,7 +23,11 @@ html, body {
   width: 100vw; height: 100vh;
   image-rendering: auto;          /* was optimizeSpeed — let it sample cleanly on HiDPI */
   image-rendering: -webkit-optimize-contrast;
+  cursor: crosshair;
 }
+#game.aim-mode { cursor: cell; }
+#game.feed-mode { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ctext y='18' font-size='16'%3E♥%3C/text%3E%3C/svg%3E") 12 12, pointer; }
+#game.sprint-mode { cursor: nwse-resize; }
 
 /* ---- loading splash (#6, #88) ---- */
 #splash {
@@ -35,6 +39,25 @@ html, body {
 @keyframes splash-in { from { opacity: 0; } to { opacity: 1; } }
 
 .splash-inner { text-align: center; }
+.splash-progress {
+  width: 220px; height: 6px;
+  margin: 14px auto 0;
+  background: rgba(40, 8, 18, 0.65);
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: inset 0 0 4px rgba(0,0,0,0.5);
+}
+.splash-progress-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #3a0818, #c0303a 45%, #ff2f6e 70%, #c0303a);
+  border-radius: 3px;
+  transition: width 0.15s ease-out;
+  animation: blood-pulse 1.4s ease-in-out infinite;
+}
+@keyframes blood-pulse {
+  0%, 100% { opacity: 0.55; transform: scaleX(0.92); }
+  50% { opacity: 1; transform: scaleX(1); }
+}
 .splash-inner h1 {
   /* thematic serif display (mirrors VAMP.Theme.FONT.display) */
   font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Constantia, Georgia, serif;

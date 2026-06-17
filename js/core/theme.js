@@ -149,5 +149,72 @@
     ctx.restore();
   }
 
-  VAMP.Theme = { COLORS, FONT, css, rr, panel, bar };
+  const U = VAMP.Util;
+
+  function drawDistrictCard(ctx, w, h, card) {
+    if (!card || card.t <= 0) return;
+    const a = U.clamp(Math.min(card.t, card.max - card.t) * 2.5, 0, 1);
+    const accent = card.accent || COLORS.blood;
+    const bw = 320, bh = 72;
+    const bx = w / 2 - bw / 2, by = h * 0.14;
+    ctx.save();
+    ctx.globalAlpha = a;
+    panel(ctx, bx, by, bw, bh, { edge: accent, bg: 'rgba(8,6,12,0.88)' });
+    ctx.textAlign = 'center';
+    ctx.fillStyle = accent;
+    ctx.font = css(FONT.size.xs);
+    ctx.fillText('DISTRICT', w / 2, by + 22);
+    ctx.font = css(FONT.size.xxl, FONT.display);
+    ctx.fillText(card.name, w / 2, by + 48);
+    ctx.font = css(FONT.size.sm);
+    ctx.fillStyle = COLORS.inkDim;
+    ctx.fillText(card.tag || '', w / 2, by + 64);
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function drawBanner(ctx, w, h, title, sub, color) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, h * 0.28, w, 70);
+    ctx.fillStyle = color || COLORS.blood;
+    ctx.fillRect(0, h * 0.28, w, 3);
+    ctx.fillRect(0, h * 0.28 + 67, w, 3);
+    ctx.font = css(FONT.size.huge, FONT.display);
+    ctx.fillText(title, w / 2, h * 0.28 + 36);
+    ctx.font = css(FONT.size.md);
+    ctx.fillStyle = COLORS.ink;
+    ctx.fillText(sub || '', w / 2, h * 0.28 + 58);
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function drawPanel(ctx, x, y, w, h, opts) { panel(ctx, x, y, w, h, opts); }
+
+  function drawSlot(ctx, x, y, size, opts) {
+    opts = opts || {};
+    const edge = opts.edge || opts.color || COLORS.panelEdge;
+    ctx.save();
+    ctx.fillStyle = opts.bg || 'rgba(8,6,14,0.75)';
+    rr(ctx, x, y, size, size, opts.r != null ? opts.r : 6); ctx.fill();
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = opts.active ? 2.5 : 1.5;
+    rr(ctx, x + 0.5, y + 0.5, size - 1, size - 1, opts.r != null ? opts.r : 6); ctx.stroke();
+    if (opts.cooldown != null && opts.cooldown > 0 && opts.cooldownMax > 0) {
+      const frac = U.clamp(opts.cooldown / opts.cooldownMax, 0, 1);
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.moveTo(x + size / 2, y + size / 2);
+      ctx.arc(x + size / 2, y + size / 2, size / 2, -Math.PI / 2, -Math.PI / 2 + frac * U.TAU);
+      ctx.closePath(); ctx.fill();
+    }
+    if (opts.toggle) {
+      ctx.fillStyle = edge;
+      ctx.fillRect(x + 4, y + size - 6, size - 8, 3);
+    }
+    ctx.restore();
+  }
+
+  VAMP.Theme = { COLORS, FONT, css, rr, panel, drawPanel, bar, drawSlot, drawDistrictCard, drawBanner };
 })();

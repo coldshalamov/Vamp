@@ -93,6 +93,7 @@
           const pos = this.spot(game, 380, 640); if (!pos) continue;
           const n = VAMP.Npc.create(game.world, 'hunter', pos.x, pos.y, { hp: VAMP.Npc.PRESETS.hunter.hp * (1 + game.player.level * 0.05) });
           n.aggro = true; n.state = 'chase'; n.hostileToPlayer = true;
+          if (Math.random() < 0.3) n.sniper = true;
           game.addNPC(n);
         }
         if (VAMP.UI) VAMP.UI.notify('The Second Inquisition has found you!', '#ff5a5a');

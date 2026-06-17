@@ -117,6 +117,7 @@
         const hp = Math.round(base.hp * (1 + lvl * 0.05));
         const n = VAMP.Npc.create(game.world, type, pos.x, pos.y, { hp });
         n.responder = true; n.aggro = true; n.state = 'chase'; n.hostileToPlayer = true;
+        if ((type === 'hunter' || type === 'swat') && Math.random() < 0.3) n.sniper = true;   // a long-range marksman among them
         game.addNPC(n);
         // sometimes arrive by car
         if (Math.random() < 0.4 && (type === 'cop' || type === 'swat')) {

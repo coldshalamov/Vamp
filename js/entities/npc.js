@@ -83,6 +83,7 @@
     if (opts.speed) n.speed = opts.speed;
     if (n.boss) n.wardedMind = true;   // elders/barons resist mind-affecting will
     if (opts.resist) n.resist = opts.resist;
+    if (pre.faction === 'civ') { n._jogger = (n.id % 7 === 0); n._loiter = (n.id % 4 === 0); n.idleT = 0; }   // ambient-life variety
     n.onDamaged = function (dmg, o, game) {
       n.aggro = true;
       n.hitFlashT = 0.12;   // #10 — brief white flash so hits read clearly
@@ -104,10 +105,20 @@
     return pool[(Math.random() * pool.length) | 0];
   }
 
-  function reportPanic(n, game) {
+  // playerCaused (default true) controls whether the panic raises the PLAYER's Heat. Civilians who
+  // bolt from an AMBIENT fight (a gang war that has nothing to do with you) still scatter and spread
+  // fear, but must NOT pin Heat on an idle bystander — that was making the world hunt you for nothing.
+  function reportPanic(n, game, playerCaused) {
     if (n.panicReported) return;
     n.panicReported = true;
-    if (game && game.masquerade) game.masquerade.witnessedAct(n.x, n.y, 'panic', 1.2);
+    if (playerCaused !== false && game && game.masquerade) game.masquerade.witnessedAct(n.x, n.y, 'panic', 1.2);
+    // PANIC CONTAGION: fear ripples through the crowd — nearby mortals catch it and scatter too.
+    // Bounded (max 4) and marks them reported so it can't cascade into an infinite chain or heat spam.
+    let spread = 0;
+    for (const m of game.npcs) {
+      if (m === n || m.dead || m.downed || m.faction !== 'civ' || m.state === 'flee') continue;
+      if (U.dist(m.x, m.y, n.x, n.y) < 130) { m.state = 'flee'; m.fleeT = 3.2; m.panicReported = true; if (++spread >= 4) break; }
+    }
   }
 
   // ---- movement with collision ----
@@ -251,6 +262,18 @@
     // berserk / retaliation forces combat
     if ((n.berserkT > 0 || n.retaliateAgainst) && n.state !== 'attack' && n.state !== 'chase') n.state = 'chase';
 
+    // GIVE UP THE HUNT: a provoked foe that loses sight of a now-calm player for a while breaks off
+    // and returns to its routine — so you can actually shake pursuers (stealth/escape payoff).
+    // Committed hunters (responders / Inquisition / a nemesis) and any active Heat keep them coming.
+    if (n.hostileToPlayer && !n.responder && !n.nemesis && n.faction !== 'inquis' && (n.berserkT || 0) <= 0 && !n.retaliateAgainst) {
+      if (n.seePlayerT === undefined) n.seePlayerT = game.time;   // start the clock once
+      if (canSee(n, p, game)) n.seePlayerT = game.time;           // refresh while you're in view
+      else if (game.masquerade.stars === 0 && (game.time - n.seePlayerT) > 7 && (game.time - (p.lastAttackT || -99)) > 5 &&
+               (n.state === 'chase' || n.state === 'attack' || n.state === 'investigate')) {
+        n.hostileToPlayer = false; n.aggro = false; n.state = 'wander'; n.path = null; n.windupT = 0; n._telegraph = null;
+      }
+    }
+
     switch (n.state) {
       case 'wander': wander(n, dt, game); break;
       case 'flee': flee(n, dt, game); break;
@@ -282,16 +305,26 @@
       if (n.faction === 'gang' && !(gangFriendly && !n.aggro) && (n.aggro || (game.masquerade.stars >= 4 && U.dist(n.x, n.y, p.x, p.y) < 200))) { n.state = 'chase'; n.hostileToPlayer = true; return; }
       if ((n.faction === 'civ' || n.faction === 'animal') && (p.bloodState.frenzied && U.dist(n.x, n.y, p.x, p.y) < 140)) { n.state = 'flee'; n.fleeT = 5; reportPanic(n, game); return; }
     }
-    // amble
+    // idle pause — loiterers linger on the corner; gives the street a varied, unhurried pulse
+    if (n.idleT > 0) { n.idleT -= dt; n.gait = 0; return; }
     n.pathT -= dt;
     if (!n.path || n.pathT <= 0) {
+      // civilians glance for danger as they set off — a fight in view sends them running (and panics
+      // the crowd). Throttled to the ~2Hz repath tick so it stays cheap.
+      if (n.faction === 'civ' && !n.panicReported) {
+        for (const m of game.npcs) {
+          if (m === n || m.dead || m.faction === 'civ' || m.faction === 'animal') continue;
+          if (m.aggro && (m.state === 'chase' || m.state === 'attack') && U.dist(m.x, m.y, n.x, n.y) < 155) { n.state = 'flee'; n.fleeT = 4; reportPanic(n, game, m.hostileToPlayer === true); return; }
+        }
+      }
+      // civilians COMMUTE toward distant goals (a living street of people going places); others mill
+      const reach = (n.faction === 'civ') ? U.range(220, 720) : U.range(60, 200);
       const ang = Math.random() * U.TAU;
-      const tx = n.x + Math.cos(ang) * U.range(60, 200);
-      const ty = n.y + Math.sin(ang) * U.range(60, 200);
-      if (world.isWalkable(tx, ty)) repath(n, world, tx, ty);
+      const tx = n.x + Math.cos(ang) * reach, ty = n.y + Math.sin(ang) * reach;
+      if (world.isWalkable(tx, ty)) { repath(n, world, tx, ty); if (n._loiter && Math.random() < 0.4) n.idleT = U.range(0.8, 2.6); }
       else n.pathT = 0.5;
     }
-    if (n.path) followPath(n, dt, world, 0.5);
+    if (n.path) followPath(n, dt, world, n._jogger ? 0.9 : 0.5);
   }
 
   function flee(n, dt, game) {
@@ -313,15 +346,29 @@
     const world = game.world, p = game.player;
     const tgt = getCombatTarget(n, game);
     if (!tgt) { n.state = n.ally ? 'follow' : 'wander'; return; }
+    // MORALE: a lone, badly-wounded ganger loses its nerve and bolts (cops/Inquisition/elites hold).
+    if (!n.ally && !n.boss && !n.elite && !n.nemesis && n.faction === 'gang' && n.hp < n.maxHp * 0.25) {
+      let allies = 0;
+      for (const m of game.npcs) { if (m !== n && !m.dead && m.faction === 'gang' && m.aggro && U.dist(m.x, m.y, n.x, n.y) < 170) { if (++allies >= 2) break; } }
+      if (allies < 2) { n.state = 'flee'; n.fleeT = 5; n.hostileToPlayer = false; n.aggro = false; return; }
+    }
     const d = U.dist(n.x, n.y, tgt.x, tgt.y);
-    const atkRange = n.weapon === 'pistol' ? 230 : n.weapon === 'rifle' ? 320 : 26;
+    const atkRange = n.sniper ? 470 : n.weapon === 'pistol' ? 230 : n.weapon === 'rifle' ? 320 : 26;
     if (d < atkRange) { n.state = 'attack'; return; }
     if (tgt.isPlayer && !n.ally && n.berserkT <= 0 && !n.retaliateAgainst && !canSee(n, p, game) && d > 360) {
       n.investigateX = tgt.x; n.investigateY = tgt.y; n.investigateT = 4; n.state = 'investigate'; return;
     }
+    // FLANK: melee attackers fan out around the target and converge from different angles instead of
+    // conga-lining into one spot — groups feel coordinated.
+    let aimX = tgt.x, aimY = tgt.y;
+    if (tgt.isPlayer && !n.weapon && d > 55 && d < 240) {
+      const side = ((n.id % 2) ? 1 : -1) * (0.55 + (n.id % 3) * 0.22);
+      const ang = U.angleTo(tgt.x, tgt.y, n.x, n.y) + side;
+      aimX = tgt.x + Math.cos(ang) * 44; aimY = tgt.y + Math.sin(ang) * 44;
+    }
     n.pathT -= dt;
-    if (!n.path || n.pathT <= 0) repath(n, world, tgt.x, tgt.y);
-    if (!n.path) moveTo(n, tgt.x, tgt.y, dt, world, 1);
+    if (!n.path || n.pathT <= 0) repath(n, world, aimX, aimY);
+    if (!n.path) moveTo(n, aimX, aimY, dt, world, 1);
     else followPath(n, dt, world, 1, 14);
   }
 
@@ -330,8 +377,10 @@
     if (!tgt) { n.state = n.ally ? 'follow' : 'wander'; n.windupT = 0; n._telegraph = null; return; }
     const d = U.dist(n.x, n.y, tgt.x, tgt.y);
     n.angle = U.angleLerp(n.angle, U.angleTo(n.x, n.y, tgt.x, tgt.y), U.clamp(dt * 12, 0, 1));
-    const atkRange = n.weapon === 'pistol' ? 250 : n.weapon === 'rifle' ? 340 : 30;
+    const atkRange = n.sniper ? 490 : n.weapon === 'pistol' ? 250 : n.weapon === 'rifle' ? 340 : 30;
     if (d > atkRange * 1.1) { n.state = 'chase'; n.windupT = 0; n._telegraph = null; return; }
+    // a MARKSMAN holds the line at long range — backs away if you close the gap
+    if (n.sniper && d < 300) { const a = U.angleTo(tgt.x, tgt.y, n.x, n.y); moveTo(n, n.x + Math.cos(a) * 50, n.y + Math.sin(a) * 50, dt, game.world, 1.05); }
     // resolve an in-progress wind-up (telegraph) -> fire at the TELEGRAPHED spot so it's dodgeable
     if (n.windupT > 0) {
       n.windupT -= dt;
@@ -350,7 +399,7 @@
         return;
       }
       if (rangedAtPlayer) game._shootersThisTick = (game._shootersThisTick || 0) + 1;
-      n.windupT = (n.weapon === 'rifle' ? 0.35 : n.weapon === 'pistol' ? 0.28 : 0.4) * (n.elite ? 1.25 : 1);
+      n.windupT = (n.sniper ? 0.7 : n.weapon === 'rifle' ? 0.35 : n.weapon === 'pistol' ? 0.28 : 0.4) * (n.elite ? 1.25 : 1);
       n._telegraph = { x: tgt.x, y: tgt.y, melee: !n.weapon };
     }
   }

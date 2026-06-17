@@ -42,10 +42,16 @@
       bf: (p) => powerCount(p) >= 1, tab: 'skills' },
     { key: 'attributes', prereq: 'feed',
       trigger: (g) => g.player.attrPoints > 0, bf: (p) => p.attrPoints > 0 || p.level >= 2 },
-    { key: 'pounce', prereq: 'feed', trigger: (g) => g.player.level >= 2, bf: (p) => p.level >= 2,
-      reveal: (g) => { g.player.pounceUnlocked = true; if (VAMP.UI) VAMP.UI.notify('SHADOW-POUNCE — tap SPACE to leap onto distant prey (costs vitae, like sprint).', '#b07bff'); } },
-    { key: 'finisher', prereq: 'feed', trigger: (g) => g.player.level >= 3, bf: (p) => p.level >= 3,
-      reveal: (g) => { g.player.finisherUnlocked = true; if (VAMP.UI) VAMP.UI.notify('EXECUTE — press F on a helpless or near-dead foe for a brutal killing blow.', '#ff5a5a'); } },
+    // NOTE: pounce/finisher deliberately have NO bf() — backfill must not pre-claim them, or it
+    // would silently mark them revealed before check()'s trigger can fire reveal() (the apply+banner).
+    // On load, save.js restores progress.revealed (already set) and re-derives the *Unlocked flags
+    // from level, so neither the ability nor a spurious banner is lost. apply() sets the load-bearing flag.
+    { key: 'pounce', prereq: 'feed', trigger: (g) => g.player.level >= 2,
+      apply: (p) => { p.pounceUnlocked = true; },
+      reveal: (g) => { if (VAMP.UI) VAMP.UI.notify('SHADOW-POUNCE — tap SPACE to leap onto distant prey (costs vitae, like sprint).', '#b07bff'); } },
+    { key: 'finisher', prereq: 'feed', trigger: (g) => g.player.level >= 3,
+      apply: (p) => { p.finisherUnlocked = true; },
+      reveal: (g) => { if (VAMP.UI) VAMP.UI.notify('EXECUTE — press F on a helpless or near-dead foe for a brutal killing blow.', '#ff5a5a'); } },
     { key: 'missions', prereq: 'feed',
       trigger: (g) => (g.player.bloodState.fedCount >= 2) || g.player.level >= 2,
       bf: (p) => (p.bloodState && p.bloodState.fedCount >= 2) || p.level >= 2,
@@ -116,7 +122,10 @@
       if (p.progress.revealed[u.key]) continue;
       let ok = false;
       try { ok = u.bf ? u.bf(p) : false; } catch (e) {}
-      if (ok) p.progress.revealed[u.key] = 1;   // silent — no reveal() side effects on load
+      if (ok) {
+        p.progress.revealed[u.key] = 1;   // silent — no banner; but DO apply load-bearing flag effects
+        if (u.apply) { try { u.apply(p); } catch (e) {} }
+      }
     }
   }
 
@@ -130,6 +139,7 @@
     if (p.progress.revealed[key]) return false;   // idempotent
     p.progress.revealed[key] = 1;
     const u = BY_KEY[key];
+    if (u && u.apply) { try { u.apply(p); } catch (e) {} }   // load-bearing flags (e.g. pounce/finisher)
     if (u && u.reveal && !u.silent) { try { u.reveal(game); } catch (e) {} }
     return true;
   }

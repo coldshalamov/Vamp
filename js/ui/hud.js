@@ -564,7 +564,8 @@
       ctx.font = 'bold 12px Verdana'; ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(0,0,0,0.6)'; this.rr(ctx, bx - 2, by - 2, bw + 4, 26, 5); ctx.fill();
       // name
-      ctx.fillStyle = '#ffd24a'; ctx.fillText((boss.name || (boss.baronOf ? 'Baron of ' + (game.world.districts[boss.baronOf] ? game.world.districts[boss.baronOf].name : 'the District') : 'ELDER')) , w / 2, by + 12);
+      const _bd = boss.baronOf ? (game.world.districts.find ? game.world.districts.find((d) => d.id === boss.baronOf) : null) : null;
+      ctx.fillStyle = '#ffd24a'; ctx.fillText((boss.name || (boss.baronOf ? 'Baron of ' + (_bd ? _bd.name : 'the District') : 'ELDER')) , w / 2, by + 12);
       ctx.textAlign = 'left';
       // bar
       VAMP.Theme.bar(ctx, bx, by + 14, bw, 8, boss.hp / boss.maxHp, '#ff3030', {});

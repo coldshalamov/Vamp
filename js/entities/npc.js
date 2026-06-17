@@ -228,6 +228,7 @@
     if (n.alertT > 0) n.alertT -= dt;
     if (n.berserkT > 0) n.berserkT -= dt;
     if (n.retaliateT > 0) { n.retaliateT -= dt; if (n.retaliateT <= 0) n.retaliateAgainst = null; }
+    if (n.retaliateAgainst && n.retaliateAgainst.dead) { n.retaliateAgainst = null; n.retaliateT = 0; }   // target died → stop, don't freeze chasing a corpse
     C().updateStatuses(n, dt, game, false);
 
     // integrate knockback impulse

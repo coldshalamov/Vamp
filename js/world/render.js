@@ -121,19 +121,23 @@
     }
   }
 
+  // reused scratch + per-building generation stamp — avoids a fresh array + Set every frame
+  // (same allocation-free dedupe pattern as world.buildingsNear).
+  const _visBuf = [];
+  let _visStamp = 0;
   function renderBuildings(ctx, cam, world, time) {
     const vr = cam.viewRect(96);
     const near = world.buildings;
-    // gather visible buildings via hash for speed
-    const visible = [];
+    // gather visible buildings via hash for speed (dedupe by generation stamp, not a Set)
+    const visible = _visBuf; visible.length = 0;
+    const stamp = ++_visStamp;
     const c0 = Math.floor(vr.x / world.HASH), c1 = Math.floor((vr.x + vr.w) / world.HASH);
     const r0 = Math.floor(vr.y / world.HASH), r1 = Math.floor((vr.y + vr.h) / world.HASH);
-    const seen = new Set();
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
       if (c < 0 || r < 0 || c >= world.hashW || r >= world.hashH) continue;
       for (const bi of world.hash[r * world.hashW + c]) {
-        if (seen.has(bi)) continue; seen.add(bi);
         const b = near[bi];
+        if (b._visGen === stamp) continue; b._visGen = stamp;
         if (b.x + b.w > vr.x && b.x < vr.x + vr.w && b.y + b.h > vr.y && b.y < vr.y + vr.h) visible.push(b);
       }
     }

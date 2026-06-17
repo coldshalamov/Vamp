@@ -70,7 +70,7 @@
     if (s >= 2) {
       ctx.save();
       ctx.globalAlpha = 0.06 + s * 0.02;
-      ctx.strokeStyle = 'rgba(180,20,40,0.35)';
+      ctx.fillStyle = 'rgba(180,20,40,0.35)';   // was strokeStyle — fillRect below ignored it and reused the radial grad
       for (let y = 0; y < h; y += 4) {
         if ((y + ((game.time * 80) | 0)) % 8 < 2) ctx.fillRect(0, y, w, 1);
       }

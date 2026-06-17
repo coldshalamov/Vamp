@@ -138,13 +138,16 @@
     p.bloodState.hunger = Math.max(0, p.bloodState.hunger - dt * speed * 0.5);
     if (p.bloodState.frenzied) { p.bloodState.frenzy = Math.min(1, p.bloodState.frenzy + dt * 0.3); }
 
-    // victim drained dry?
-    if (npc.bloodLeft <= 0 || f.drained >= f.vt.yield * 1.55) {
+    // Killing is a CHOICE: only a HELD feed (or a lethal execution) drains to death.
+    // A released/normal feed always leaves the victim alive — even on a re-feed where their
+    // persistent bloodLeft is already low (previously that silently killed a spared victim,
+    // costing Humanity and spawning a corpse the player never meant to make).
+    const tapped = npc.bloodLeft <= 0;
+    if (p.holdingFeed && (f.drained >= f.vt.yield * 1.55 || tapped)) {
       finishFeeding(p, game, true);
       return 'done';
     }
-    // a normal feed completes (victim survives) after enough
-    if (f.drained >= f.vt.yield && !p.holdingFeed) {
+    if (!p.holdingFeed && (f.drained >= f.vt.yield || tapped)) {
       finishFeeding(p, game, false);
       return 'done';
     }

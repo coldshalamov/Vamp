@@ -797,12 +797,17 @@
       if (npc.bounty) { this.addMoney(npc.bounty, npc.x, npc.y); VAMP.UI.notify('Bounty claimed: ' + cash(npc.bounty), '#ffd24a'); }
       if (npc.baronOf && VAMP.Domains) VAMP.Domains.onBaronDead(this, npc);
       if (!npc.ally) {
-        if (VAMP.Mastery) VAMP.Mastery.gain(this.player, (this.player.cloaked || cause === 'feed') ? 'nightstalker' : 'brawn', 3 + (npc.threat || 0));
-        if (VAMP.Codex) VAMP.Codex.mark(this.player, 'killedKinds', npc.faction);
-        if (VAMP.Reputation) VAMP.Reputation.onKill(this.player, npc, cause);
-        if (VAMP.Legend && (npc.boss || npc.elite || npc.faction === 'inquis')) VAMP.Legend.add(this, npc.boss ? 8 : 3);
-        if (VAMP.Nemesis && npc.nemesis) VAMP.Nemesis.onNemesisDead(this.player, npc);
-        if (VAMP.Trophies) VAMP.Trophies.award(this, npc);
+        // ambient crossfire (one NPC killing another) is NOT the player's kill — it must not credit
+        // Mastery/Codex/Reputation/Legend/Trophies, mirroring the XP guard above. Otherwise a passive
+        // player near an auto-spawned gang war silently bleeds faction standing & farms progression.
+        if (cause !== 'crossfire') {
+          if (VAMP.Mastery) VAMP.Mastery.gain(this.player, (this.player.cloaked || cause === 'feed') ? 'nightstalker' : 'brawn', 3 + (npc.threat || 0));
+          if (VAMP.Codex) VAMP.Codex.mark(this.player, 'killedKinds', npc.faction);
+          if (VAMP.Reputation) VAMP.Reputation.onKill(this.player, npc, cause);
+          if (VAMP.Legend && (npc.boss || npc.elite || npc.faction === 'inquis')) VAMP.Legend.add(this, npc.boss ? 8 : 3);
+          if (VAMP.Trophies) VAMP.Trophies.award(this, npc);
+        }
+        if (VAMP.Nemesis && npc.nemesis) VAMP.Nemesis.onNemesisDead(this.player, npc);   // state cleanup regardless of cause
       }
       this.dropLoot(npc, cause);
       VAMP.Missions.onEvent(this, 'kill', { npc, cause });

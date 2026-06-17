@@ -73,6 +73,14 @@
 
   function clear() { try { localStorage.removeItem(KEY); } catch (e) {} }
 
+  function safeLoadedPosition(p, sp) {
+    const x = +sp.x, y = +sp.y;
+    const world = VAMP.Game && VAMP.Game.world;
+    if (isFinite(x) && isFinite(y) && (!world || !world.isWalkable || world.isWalkable(x, y))) return { x, y };
+    if (world && world.randomWalkPos) return world.randomWalkPos();
+    return { x: isFinite(p.x) ? p.x : 0, y: isFinite(p.y) ? p.y : 0 };
+  }
+
   // apply a loaded data blob onto a freshly-created player
   function applyToPlayer(p, sp) {
     p.level = sp.level || 1; p.xp = sp.xp || 0; p.xpTotal = sp.xpTotal || 0;
@@ -86,7 +94,8 @@
     p.bloodState = Object.assign(VAMP.Blood.newBloodState(), sp.bloodState || {});
     p.stats = sp.stats || p.stats;
     p.toggles = {}; p.cloaked = false; p.buffs = [];
-    p.x = sp.x; p.y = sp.y; p.clan = sp.clan || 'brujah';
+    const pos = safeLoadedPosition(p, sp);
+    p.x = pos.x; p.y = pos.y; p.clan = sp.clan || 'brujah';
     // continuing-value persistent blocks (all default-safe for old saves)
     p.haven = sp.haven || null; p.mastery = sp.mastery || null; p.codex = sp.codex || null;
     p.reputation = sp.reputation || null; p.coterie = sp.coterie || []; p.legend = sp.legend || 0;

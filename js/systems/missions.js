@@ -140,6 +140,15 @@
     return game.world.randomWalkPos(Math.random);
   }
 
+  function spotNear(game, center, spread, fallbackMin, fallbackMax) {
+    for (let i = 0; i < 40; i++) {
+      const x = center.x + (Math.random() - 0.5) * spread;
+      const y = center.y + (Math.random() - 0.5) * spread;
+      if (game.world.isWalkable(x, y)) return { x, y };
+    }
+    return spot(game, fallbackMin || 240, fallbackMax || 900);
+  }
+
   function setup(game, m) {
     const lvl = m.level;
     switch (m.type) {
@@ -154,7 +163,7 @@
         if (m.bossMission) { tgt.maxHp = tgt.hp = Math.round((120 + lvl * 8) * 3.4); tgt.boss = true; tgt.wardedMind = true; tgt.r = Math.round(tgt.r * 1.4); tgt.dmgMul = 1.7; tgt.armor = 0.28; tgt.weapon = 'rifle'; }
         game.addNPC(tgt); m.spawned.push(tgt); m.data.target = tgt;
         // guards
-        for (let i = 0; i < 2 + (lvl / 10 | 0); i++) { const gp = { x: pos.x + (Math.random() - 0.5) * 80, y: pos.y + (Math.random() - 0.5) * 80 }; const g = VAMP.Npc.create(game.world, 'gunner', gp.x, gp.y, { hp: 60 + lvl * 4 }); g.faction = 'gang'; g.mission = m.id; game.addNPC(g); m.spawned.push(g); }
+        for (let i = 0; i < 2 + (lvl / 10 | 0); i++) { const gp = spotNear(game, pos, 80, 320, 760); const g = VAMP.Npc.create(game.world, 'gunner', gp.x, gp.y, { hp: 60 + lvl * 4 }); g.faction = 'gang'; g.mission = m.id; game.addNPC(g); m.spawned.push(g); }
         m.markers.push({ ref: tgt, color: m.color, label: 'TARGET' });
         break;
       }
@@ -182,7 +191,7 @@
       case 'cleanse': {
         const center = spot(game, 360, 800);
         for (let i = 0; i < m.need; i++) {
-          const gp = { x: center.x + (Math.random() - 0.5) * 160, y: center.y + (Math.random() - 0.5) * 160 };
+          const gp = spotNear(game, center, 160, 360, 800);
           const type = (lvl > 15 && Math.random() < 0.4) ? 'hunter' : (Math.random() < 0.5 ? 'gunner' : 'thug');
           const e = VAMP.Npc.create(game.world, type, gp.x, gp.y, { hp: VAMP.Npc.PRESETS[type].hp * (1 + lvl * 0.05) });
           e.mission = m.id; e.aggro = false; game.addNPC(e); m.spawned.push(e);

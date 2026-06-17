@@ -127,5 +127,15 @@
     return { cash, vitae };
   }
 
-  VAMP.Coterie = { JOBS, ensure, cap, attach, memberById, onAllyKill, summon, assign, collectJobs, aliveMembers, canEmbrace, embrace };
+  // nightly wages: bound thralls and childer need vitae to sustain their bond
+  function wagesUpkeep(game) {
+    const p = game.player; let vitae = 0;
+    if (!p.coterie) return { vitae: 0, cash: 0 };
+    for (const m of p.coterie) {
+      vitae += m.isChilde ? 14 : 6;   // childer cost more — they are true vampires
+    }
+    return { vitae, cash: 0 };
+  }
+
+  VAMP.Coterie = { JOBS, ensure, cap, attach, memberById, onAllyKill, summon, assign, collectJobs, wagesUpkeep, aliveMembers, canEmbrace, embrace };
 })();

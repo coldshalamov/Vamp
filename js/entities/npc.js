@@ -311,6 +311,15 @@
       // idle bystander (the intermittent unprovoked-attack bug). Only a 4+ star alert recruits loiterers.
       if (n.faction === 'gang' && !(gangFriendly && !n.hostileToPlayer) && (n.hostileToPlayer || (game.masquerade.stars >= 4 && U.dist(n.x, n.y, p.x, p.y) < 200))) { n.state = 'chase'; n.hostileToPlayer = true; return; }
       if ((n.faction === 'civ' || n.faction === 'animal') && (p.bloodState.frenzied && U.dist(n.x, n.y, p.x, p.y) < 140)) { n.state = 'flee'; n.fleeT = 5; reportPanic(n, game); return; }
+      // Humanity gates: low-soul vampires bleed wrongness. The street feels the Beast before it sees the fangs.
+      const hum = p.bloodState && p.bloodState.humanity;
+      if (hum != null && (n.faction === 'civ' || n.faction === 'animal')) {
+        const d = U.dist(n.x, n.y, p.x, p.y);
+        if (hum <= 2 && d < 120) { n.state = 'flee'; n.fleeT = 5; reportPanic(n, game); return; }                              // near-Lost: panic on sight
+        if (hum <= 4 && d < 75 && Math.random() < dt * 0.45) { n.state = 'flee'; n.fleeT = 3; reportPanic(n, game); return; } // slipping: occasional unease close up
+      }
+      // H≤2: police treat you as an active threat regardless of current Heat stars
+      if (hum != null && hum <= 2 && n.faction === 'police') { n.state = 'chase'; n.aggro = true; n.hostileToPlayer = true; return; }
     }
     // idle pause — loiterers linger on the corner; gives the street a varied, unhurried pulse
     if (n.idleT > 0) { n.idleT -= dt; n.gait = 0; return; }

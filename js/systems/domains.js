@@ -96,6 +96,19 @@
     return { cash, vitae };
   }
 
+  // nightly upkeep: holding a domain requires bribes, guards, and tribute to the local barons
+  function domainUpkeep(game) {
+    ensure(game);
+    let cash = 0;
+    for (const d of game.world.districts) {
+      if (game.domains[d.id].owner === 'player') {
+        const mult = 1 + d.danger;
+        cash += Math.round(18 * mult);  // ~40% of base tithe — net always positive but meaningful
+      }
+    }
+    return { cash, vitae: 0 };
+  }
+
   function heatMult(game, x, y) {
     ensure(game);
     const d = game.world.districtAt(x, y);
@@ -109,5 +122,5 @@
   }
   function stateAt(game, x, y) { ensure(game); const d = game.world.districtAt(x, y); return d ? game.districtState[d.id] : null; }
 
-  VAMP.Domains = { ensure, contest, onBaronDead, collectTithe, heatMult, ownedCount, isOwned, raiseTerror, stateAt, distName };
+  VAMP.Domains = { ensure, contest, onBaronDead, collectTithe, domainUpkeep, heatMult, ownedCount, isOwned, raiseTerror, stateAt, distName };
 })();

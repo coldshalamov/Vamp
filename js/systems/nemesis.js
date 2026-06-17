@@ -16,7 +16,8 @@
   function tryFlee(game, npc) {
     if (npc.faction !== 'inquis' || npc._fledOnce || npc.nemesis) return false;
     if (npc.dead) return false;
-    if (Math.random() > 0.4) return false;
+    // _guaranteedNemesis: the herald always flees — this is the player's first named foe
+    if (!npc._guaranteedNemesis && Math.random() > 0.4) return false;
     npc._fledOnce = true; npc.hp = npc.maxHp * 0.3;
     npc.state = 'flee'; npc.fleeT = 10; npc.aggro = false; npc._fledAway = true;
     ensure(game.player);

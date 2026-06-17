@@ -878,6 +878,18 @@
       if (VAMP.Audio) VAMP.Audio.play('levelup');
       if (this.cam) { this.cam.shake(3, 0.3); this.cam.punch(0.06); }   // #19
       VAMP.FX.ring(this.player.x, this.player.y, 70, '#b07bff');
+      // Guarantee: by level 8 the player has a named nemesis — if none yet, spawn a herald hunter who will definitely flee
+      if (u.level === 8 && VAMP.Nemesis && (!this.player.nemeses || !this.player.nemeses.length)) {
+        const p = this.player, ox = p.x, oy = p.y;
+        let pos = null;
+        for (let i = 0; i < 40; i++) { const a = Math.random() * 6.283, d = 420 + Math.random() * 260; const x = ox + Math.cos(a) * d, y = oy + Math.sin(a) * d; if (this.world.isWalkable(x, y)) { pos = { x, y }; break; } }
+        if (pos) {
+          const h = VAMP.Npc.create(this.world, 'hunter', pos.x, pos.y, { hp: 160 + p.level * 6 });
+          h.aggro = true; h.state = 'chase'; h.hostileToPlayer = true; h._guaranteedNemesis = true;
+          this.addNPC(h); this.addBlip({ ref: h, color: '#ff5a5a', kind: 'event' });
+          setTimeout(() => { if (VAMP.UI) VAMP.UI.banner('A HUNTER WATCHES YOU', 'Someone has been tracking you. End this before it becomes personal.', '#ff5a5a'); }, 2400);
+        }
+      }
     },
     onHijack(v) { VAMP.UI.notify('Hijacked a ' + v.type + '!', '#9bf'); if (v.driver && v.driver.dead === false) { v.driver.dead = true; } if (VAMP.Mastery) VAMP.Mastery.gain(this.player, 'driving', 4); },
     onDawn() {
@@ -893,6 +905,25 @@
         if (VAMP.Coterie && VAMP.Coterie.collectJobs) { const r = VAMP.Coterie.collectJobs(this); cashN += r.cash; vitae += r.vitae; }
         if (cashN) this.addMoney(cashN, px, py);
         if (vitae && VAMP.Haven) VAMP.Haven.depositVitae(p, vitae);
+        // upkeep: domains cost bribes; thralls cost vitae — the empire has a price
+        let upkeepCash = 0, upkeepVitae = 0;
+        if (VAMP.Domains && VAMP.Domains.domainUpkeep) { const r = VAMP.Domains.domainUpkeep(this); upkeepCash += r.cash; }
+        if (VAMP.Coterie && VAMP.Coterie.wagesUpkeep) { const r = VAMP.Coterie.wagesUpkeep(this); upkeepVitae += r.vitae; }
+        if (upkeepCash > 0) {
+          p.money = Math.max(0, p.money - upkeepCash);
+          if (VAMP.FX && upkeepCash > 20) VAMP.FX.number(px, py - 30, '-$' + upkeepCash + ' upkeep', '#a88', { small: true });
+        }
+        if (upkeepVitae > 0 && VAMP.Haven) {
+          const cellar = (p.haven && p.haven.cellarVitae) || 0;
+          const paidFromCellar = Math.min(cellar, upkeepVitae);
+          VAMP.Haven.depositVitae(p, -paidFromCellar);
+          const deficit = upkeepVitae - paidFromCellar;
+          if (deficit > 0) {
+            // can't pay — loyalty bleeds for all members
+            if (p.coterie) for (const m of p.coterie) { m.loyalty = Math.max(0, m.loyalty - 8); }
+            if (VAMP.UI) VAMP.UI.notify('Not enough vitae — coterie loyalty suffers (−8)', '#a66');
+          }
+        }
         const sb = Math.min(0.3, bs.dawnStreak * 0.03);
         p.buffs = p.buffs.filter((b) => b.id !== 'dawn_streak');
         p.addBuff({ id: 'dawn_streak', name: 'Survived the Dawn', dur: 9999, color: '#ffd24a', mods: { pct: { xpMult: sb, feedYield: sb } } });
@@ -901,7 +932,7 @@
           lines: [
             'Dawn streak: ' + bs.dawnStreak,
             'Kills: ' + (this.night && this.night.kills || 0) + '   Feeds: ' + (this.night && this.night.feeds || 0),
-            'Earned: ' + cash(cashN + (this.night && this.night.money || 0)) + (vitae ? '   +' + Math.round(vitae) + ' vitae' : ''),
+            'Earned: ' + cash(cashN + (this.night && this.night.money || 0)) + (vitae ? '   +' + Math.round(vitae) + ' vitae' : '') + (upkeepCash ? '   Upkeep: -$' + upkeepCash : '') + (upkeepVitae ? '   Wages: -' + upkeepVitae + ' vitae' : ''),
             'Level ' + p.level + '   ' + (VAMP.Domains ? VAMP.Domains.ownedCount(this) : 0) + ' domains held',
           ],
           color: '#ffd24a',

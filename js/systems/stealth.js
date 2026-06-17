@@ -48,6 +48,10 @@
     if (p.bloodState && p.bloodState.frenzied) e += 0.20;
     if (p.toggles && Object.values(p.toggles).some(Boolean)) e += 0.10;
     if (p.clan === 'nosferatu') e -= 0.15;   // clan boon: the Hidden are born to the shadows
+    // Humanity tier: low soul radiates wrongness — animals and sensitives feel it
+    const hum = p.bloodState && p.bloodState.humanity;
+    if (hum != null && hum <= 2) e += 0.25;
+    else if (hum != null && hum <= 4) e += 0.12;
     return U.clamp(e, 0.05, 1.1);
   }
 

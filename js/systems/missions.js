@@ -149,6 +149,22 @@
     return spot(game, fallbackMin || 240, fallbackMax || 900);
   }
 
+  function objectiveSpot(game, x, y) {
+    if (game.world.isWalkable(x, y)) return { x, y };
+    if (game.walkableNear) {
+      const p = game.walkableNear(x, y);
+      if (p && game.world.isWalkable(p.x, p.y)) return p;
+    }
+    for (let r = 48; r <= 256; r += 32) {
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * U.TAU;
+        const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+        if (game.world.isWalkable(px, py)) return { x: px, y: py };
+      }
+    }
+    return null;
+  }
+
   function setup(game, m) {
     const lvl = m.level;
     switch (m.type) {
@@ -202,7 +218,7 @@
       }
       case 'heist': {
         const bank = game.findPOI ? game.findPOI('bloodbank') : null;
-        const pos = bank ? { x: bank.x, y: bank.y } : spot(game, 400, 900);
+        const pos = bank ? (objectiveSpot(game, bank.x, bank.y) || spot(game, 400, 900)) : spot(game, 400, 900);
         m.data.crackPos = pos; m.data.cracked = false; m.data.crackT = 0;
         m.markers.push({ x: pos.x, y: pos.y, color: '#30c060', label: 'BLOOD BANK' });
         break;

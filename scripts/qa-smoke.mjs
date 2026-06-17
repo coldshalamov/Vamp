@@ -4,11 +4,18 @@
  */
 import { chromium } from 'playwright';
 
-const BASE = process.env.VAMP_URL || 'http://localhost:5599';
+const BASE = (process.env.VAMP_URL || 'http://localhost:5599').replace(/\/+$/, '');
 const errors = [];
 const warnings = [];
 
 async function main() {
+  const staticGuardReport = [];
+  const blockedPaths = ['/.git/config', '/.serena/project.yml', '/server.js', '/scripts/qa-smoke.mjs', '/Play.bat', '/js/../server.js', '/assets/../.git/config'];
+  for (const path of blockedPaths) {
+    const res = await fetch(new URL(path, BASE));
+    staticGuardReport.push({ path, status: res.status });
+  }
+
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   page.on('console', (msg) => {
@@ -30,7 +37,7 @@ async function main() {
   await page.goto(BASE + '/', { waitUntil: 'networkidle', timeout: 60000 });
 
   // Wait for splash / load
-  await page.waitForFunction(() => window.VAMP && VAMP.Assets && VAMP.Assets.ready, { timeout: 45000 });
+  await page.waitForFunction(() => window.VAMP && VAMP.Assets && VAMP.Assets.ready, undefined, { timeout: 45000 });
 
   const loadReport = await page.evaluate(() => {
     const A = VAMP.Assets;
@@ -139,12 +146,14 @@ async function main() {
 
   await browser.close();
 
-  const report = { loadReport, gameReport, menuStates, failedAssets, errors, warnings };
+  const report = { loadReport, gameReport, menuStates, staticGuardReport, failedAssets, errors, warnings };
   console.log(JSON.stringify(report, null, 2));
 
   let fail = false;
   if (errors.length) { console.error('CONSOLE ERRORS:', errors); fail = true; }
   if (failedAssets.length) { console.error('FAILED ASSETS:', failedAssets); fail = true; }
+  const exposedInternal = staticGuardReport.filter((entry) => entry.status < 400);
+  if (exposedInternal.length) { console.error('EXPOSED INTERNAL PATHS:', exposedInternal); fail = true; }
   if (loadReport.missingFx && loadReport.missingFx.length) { console.error('MISSING FX:', loadReport.missingFx); fail = true; }
   if (gameReport.error) { console.error('GAME ERROR:', gameReport.error); fail = true; }
   if (loadReport.powervfxHooks !== 35) { console.error('Expected 35 powervfx hooks, got', loadReport.powervfxHooks); fail = true; }

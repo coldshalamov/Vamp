@@ -114,6 +114,166 @@
     };
   }
 
+  function finiteNum(v, fallback, lo, hi) {
+    v = +v;
+    if (!isFinite(v)) v = fallback;
+    if (lo != null && v < lo) v = lo;
+    if (hi != null && v > hi) v = hi;
+    return v;
+  }
+
+  function cleanPoint(src) {
+    if (!src) return null;
+    const x = finiteNum(src.x, NaN), y = finiteNum(src.y, NaN);
+    return isFinite(x) && isFinite(y) ? { x, y } : null;
+  }
+
+  function cleanReward(src) {
+    src = src || {};
+    return {
+      xp: Math.round(finiteNum(src.xp, 0, 0, 1000000000)),
+      money: Math.round(finiteNum(src.money, 0, 0, 1000000000)),
+      itemChance: finiteNum(src.itemChance, 0, 0, 1),
+    };
+  }
+
+  function cleanModifier(src) {
+    if (!src || typeof src.id !== 'string') return { id: 'none', bonus: 0 };
+    const out = {
+      id: src.id.slice(0, 40),
+      bonus: finiteNum(src.bonus, 0, 0, 10),
+    };
+    for (const k of ['name', 'tag', 'desc', 'color']) if (typeof src[k] === 'string') out[k] = src[k].slice(0, 160);
+    if (src.harder) out.harder = true;
+    if (src.hot) out.hot = true;
+    return out;
+  }
+
+  function cleanMissionData(type, src) {
+    const out = {};
+    src = src || {};
+    if (type === 'heist') {
+      const crackPos = cleanPoint(src.crackPos);
+      const dest = cleanPoint(src.dest);
+      if (crackPos) out.crackPos = crackPos;
+      if (dest) out.dest = dest;
+      out.cracked = src.cracked === true;
+      out.crackT = finiteNum(src.crackT, 0, 0, 30);
+    } else if (type === 'courier' || type === 'escort') {
+      const dest = cleanPoint(src.dest);
+      if (dest) out.dest = dest;
+    } else if (type === 'survive') {
+      out.wave = Math.floor(finiteNum(src.wave, 0, 0, 1000));
+      out.waveT = finiteNum(src.waveT, 1.5, 0, 60);
+    } else if (type === 'cleanse') {
+      const center = cleanPoint(src.center);
+      if (center) out.center = center;
+    }
+    return out;
+  }
+
+  function serializeMission(m) {
+    if (!m || m.state !== 'active') return null;
+    return {
+      id: Math.floor(finiteNum(m.id, 0, 0, 1000000000)),
+      type: m.type,
+      name: m.name,
+      icon: m.icon,
+      color: m.color,
+      desc: m.desc,
+      level: Math.floor(finiteNum(m.level, 1, 1, 1000)),
+      need: Math.floor(finiteNum(m.need, 1, 1, 1000)),
+      progress: Math.floor(finiteNum(m.progress, 0, 0, 1000)),
+      state: 'active',
+      reward: cleanReward(m.reward),
+      targetName: m.targetName,
+      modifier: cleanModifier(m.modifier),
+      timeLimit: finiteNum(m.timeLimit, 0, 0, 1000000),
+      timer: finiteNum(m.timer, 0, 0, 1000000),
+      phase: Math.floor(finiteNum(m.phase, 0, 0, 1000)),
+      data: cleanMissionData(m.type, m.data),
+      chain: m.chain,
+      chainStep: m.chainStep,
+      isStory: m.isStory === true,
+      climax: m.climax === true,
+      bossMission: m.bossMission === true,
+      violated: m._violated === true,
+      snapInnocent: Math.floor(finiteNum(m._snapInnocent, 0, 0, 1000000000)),
+    };
+  }
+
+  function serialize(gameOrMission) {
+    const m = gameOrMission && gameOrMission.activeMission ? gameOrMission.activeMission : gameOrMission;
+    return serializeMission(m);
+  }
+
+  function restoreMarkers(m) {
+    if (m.type === 'heist') {
+      m.markers = [];
+      if (m.data.cracked) {
+        if (m.data.dest) m.markers.push({ x: m.data.dest.x, y: m.data.dest.y, color: '#5a9cff', label: 'ESCAPE' });
+      } else if (m.data.crackPos) {
+        m.markers.push({ x: m.data.crackPos.x, y: m.data.crackPos.y, color: '#30c060', label: 'BLOOD BANK' });
+      }
+    } else if (m.type === 'courier') {
+      m.markers = [];
+      if (m.data.dest) m.markers.push({ x: m.data.dest.x, y: m.data.dest.y, color: m.color, label: 'DELIVER' });
+    } else if (m.type === 'escort') {
+      const courier = m.data.courier;
+      m.markers = [];
+      if (courier) m.markers.push({ ref: courier, color: '#5aff8c', label: 'COURIER' });
+      if (m.data.dest) m.markers.push({ x: m.data.dest.x, y: m.data.dest.y, color: '#5a9cff', label: 'HAVEN' });
+    } else if (m.type === 'cleanse' && m.data.center) {
+      m.markers = [{ x: m.data.center.x, y: m.data.center.y, color: m.color, label: 'NEST' }];
+    }
+  }
+
+  function restore(game, raw) {
+    if (!raw || raw.state !== 'active' || typeof raw.type !== 'string') return false;
+    const valid = VAMP.Data && VAMP.Data.MISSION_TYPES && VAMP.Data.MISSION_TYPES.some((t) => t.type === raw.type);
+    if (!valid) return false;
+    const savedData = cleanMissionData(raw.type, raw.data);
+    const m = {
+      id: Math.floor(finiteNum(raw.id, MID, 1, 1000000000)),
+      type: raw.type,
+      name: typeof raw.name === 'string' && raw.name ? raw.name.slice(0, 120) : raw.type,
+      icon: typeof raw.icon === 'string' ? raw.icon.slice(0, 8) : '?',
+      color: typeof raw.color === 'string' ? raw.color : '#c79bff',
+      desc: typeof raw.desc === 'string' ? raw.desc.slice(0, 300) : '',
+      level: Math.floor(finiteNum(raw.level, game.player ? game.player.level : 1, 1, 1000)),
+      need: Math.floor(finiteNum(raw.need, 1, 1, 1000)),
+      progress: Math.floor(finiteNum(raw.progress, 0, 0, Math.max(0, (raw.need || 1) - 1))),
+      state: 'active',
+      reward: cleanReward(raw.reward),
+      targetName: typeof raw.targetName === 'string' && raw.targetName ? raw.targetName.slice(0, 120) : 'Target',
+      modifier: cleanModifier(raw.modifier),
+      markers: [],
+      spawned: [],
+      timeLimit: finiteNum(raw.timeLimit, 0, 0, 1000000),
+      timer: finiteNum(raw.timer, 0, 0, 1000000),
+      phase: Math.floor(finiteNum(raw.phase, 0, 0, 1000)),
+      data: {},
+      chain: typeof raw.chain === 'string' && CHAINS[raw.chain] ? raw.chain : null,
+      chainStep: Math.floor(finiteNum(raw.chainStep, 0, 0, 1000)),
+      isStory: raw.isStory === true,
+      climax: raw.climax === true,
+      bossMission: raw.bossMission === true,
+      _violated: raw.violated === true,
+      _snapInnocent: Math.floor(finiteNum(raw.snapInnocent, game.player && game.player.bloodState ? game.player.bloodState.innocentKills : 0, 0, 1000000000)),
+    };
+    if (m.id >= MID) MID = m.id + 1;
+    game.activeMission = m;
+    setup(game, m);
+    Object.assign(m.data, savedData);
+    if (raw.type === 'survive') {
+      m.data.wave = savedData.wave || 0;
+      m.data.waveT = savedData.waveT == null ? m.data.waveT : savedData.waveT;
+    }
+    restoreMarkers(m);
+    if (VAMP.Progress) VAMP.Progress.markSeen(game.player, 'missions');
+    return true;
+  }
+
   function accept(game, m) {
     if (game.activeMission) { if (VAMP.UI) VAMP.UI.notify('Finish your current contract first', '#a66'); return false; }
     m.state = 'active';
@@ -184,7 +344,8 @@
         break;
       }
       case 'collect': {
-        for (let i = 0; i < m.need; i++) {
+        const remaining = Math.max(0, m.need - (m.progress || 0));
+        for (let i = 0; i < remaining; i++) {
           const pos = spot(game, 200, 900);
           const pk = game.addPickup({ x: pos.x, y: pos.y, kind: 'relic', color: '#c0a030', glyph: '◆', mission: m.id });
           m.markers.push({ ref: pk, color: '#c0a030', label: 'RELIC' });
@@ -445,5 +606,5 @@
     game.pickups = game.pickups.filter((pk) => pk.mission !== m.id);
   }
 
-  VAMP.Missions = { offers, accept, abandon, update, onEvent, CHAINS };
+  VAMP.Missions = { offers, accept, abandon, update, onEvent, serialize, restore, CHAINS };
 })();

@@ -59,9 +59,11 @@
     // frenzy risk when hunger maxed
     if (b.frenzyCooldown > 0) b.frenzyCooldown -= dt;
     if (!b.frenzied && b.hunger >= 5 && b.frenzyCooldown <= 0) {
-      // chance to lose control scales with how long starving
-      const resist = p.derived.frenzyResist;
-      if (Math.random() < (1 - resist) * dt * 0.15) startFrenzy(p);
+      // pot_key (Blood Rage): master of the Beast — involuntary frenzy suppressed
+      if (!(p.treeNodes && p.treeNodes['pot_key'])) {
+        const resist = p.derived.frenzyResist;
+        if (Math.random() < (1 - resist) * dt * 0.15) startFrenzy(p);
+      }
     }
     if (b.frenzied) {
       b.frenzy -= dt * 0.06; // frenzy burns out over ~16s unless fed
@@ -228,6 +230,12 @@
       else npc.mesmerizedT = Math.max(npc.mesmerizedT || 0, 2.5);
       if (game && !(f && f.stealth)) game.masquerade.witnessedAct(npc.x, npc.y, 'feed', 1);
       adjustHumanity(p, 0.03, ''); // mercy preserves your Humanity (silent positive)
+      // cel_key (Perfect Predator): sparing resets ALL power cooldowns
+      if (p.treeNodes && p.treeNodes['cel_key']) {
+        p.cooldowns = {};
+        if (VAMP.FX) VAMP.FX.number(p.x, p.y - 50, 'PERFECT PREDATOR', '#ffd24a', { crit: true });
+        if (VAMP.FX) VAMP.FX.ring(p.x, p.y, 60, '#ffd24a');
+      }
     }
 
     // payoff juice — a distinct climax for a lethal drain vs a clean release

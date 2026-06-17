@@ -151,6 +151,8 @@
     } else if (wantSprint && p.blood <= 1) {
       if (p.sprintCueT === undefined || game.time - p.sprintCueT > 3) { p.sprintCueT = game.time; if (VAMP.UI) VAMP.UI.notify('Too little Vitae to sprint — feed!', '#a88'); }
     }
+    // pro_key Wild Hunt: stacks from prior frames boost speed live (no recompute needed)
+    if (p.huntStacks) speed *= 1 + p.huntStacks * 0.06;
 
     if (moving) {
       const l = Math.hypot(mx, my) || 1;
@@ -177,6 +179,17 @@
       p.stats.distance += U.dist(prev.x, prev.y, p.x, p.y);
       p.walkPhase = (p.walkPhase || 0) + speed * dt * 0.05;   // drives the walk cycle
     }
+    // pro_key (The Wild Hunt): continuous movement builds stacks, stopping or being hit resets
+    if (p.treeNodes && p.treeNodes['pro_key']) {
+      if (!p.huntStacks) p.huntStacks = 0;
+      if (!p._huntT) p._huntT = 0;
+      if (moving && !p.feeding) {
+        p._huntT += dt;
+        if (p._huntT >= 0.8) { p._huntT = 0; p.huntStacks = Math.min(5, (p.huntStacks || 0) + 1); if (p.huntStacks === 5 && VAMP.FX) VAMP.FX.number(p.x, p.y - 36, 'HUNT×5', '#c1722a', { crit: true }); }
+      } else if (!moving) {
+        if (p.huntStacks > 0) p.huntStacks = 0, p._huntT = 0;
+      }
+    } else { p.huntStacks = 0; }
     p.moving = moving;
     // how visible am I (light/shadow/sneak/sprint/frenzy) — drives every NPC's perception range
     p.exposure = VAMP.Stealth ? VAMP.Stealth.exposure(p, game) : 0.85;
@@ -189,6 +202,11 @@
     for (let i = 0; i < slotKeys.length; i++) if (input.wasPressed(slotKeys[i])) VAMP.Disc.castSlot(p, game, i);
     if (input.wasPressed('keyq')) VAMP.Disc.castSlot(p, game, 0);  // Q = slot 1 alt-bind
     if (input.wasPressed('keyr')) VAMP.Disc.castSlot(p, game, 2);  // R = slot 3 alt-bind
+    // pot_key (Blood Rage): B enters/exits deliberate frenzy — the player commands the Beast
+    if (p.treeNodes && p.treeNodes['pot_key'] && input.wasPressed('keyb')) {
+      if (p.bloodState.frenzied) { VAMP.Blood.endFrenzy(p); if (VAMP.UI) VAMP.UI.notify('Blood Rage fades', '#c79bff'); }
+      else { VAMP.Blood.startFrenzy(p); if (VAMP.UI) VAMP.UI.notify('BLOOD RAGE — [B] to end', '#c01028'); }
+    }
 
     // ---- shadow-pounce (Ctrl): leap onto distant prey (Space is now the attack button) ----
     if (!carrying && (input.wasPressed('controlleft') || input.wasPressed('controlright')) && p.pounceUnlocked) tryPounce(p, game);
@@ -241,7 +259,8 @@
     p.lastAttackT = now;
     const reach = 40 + (w.rangeBonus || 0);
     const arc = finisherSwing ? 1.3 : 1.1;
-    const dmg = p.derived.meleeDmg * (w.dmgMult || 1) * (finisherSwing ? 1.6 : 1);
+    const huntMult = (p.treeNodes && p.treeNodes['pro_key'] && p.huntStacks) ? 1 + p.huntStacks * 0.08 : 1;
+    const dmg = p.derived.meleeDmg * (w.dmgMult || 1) * (finisherSwing ? 1.6 : 1) * huntMult;
     const kb = finisherSwing ? 170 : 90;
     // soft-aim: nudge facing toward the best in-arc target so swings land at 16px (assist, not auto-aim)
     let bestN = null, bestScore = Infinity;

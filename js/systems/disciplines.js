@@ -16,6 +16,9 @@
   function effectiveCost(p, def) {
     let c = def.cost || 0;
     const eff = (p.derived && p.derived.bloodEff) || 0;
+    // bs_key (Vitae Alchemy): blood cost halved (HP pays the rest — see cast())
+    const alch = p.treeNodes && p.treeNodes['bs_key'];
+    if (alch) c = c * 0.5;
     return Math.max(0, c * (1 - eff));
   }
   function effectiveCooldown(p, def) {
@@ -26,6 +29,8 @@
     const def = powerDef(id);
     if (!def) return { ok: false, why: 'unknown' };
     if (!known(p, id)) return { ok: false, why: 'not learned' };
+    // pot_key Blood Rage: pure animal fury — no mental focus for Disciplines
+    if (p.bloodState && p.bloodState.frenzied && p.treeNodes && p.treeNodes['pot_key']) return { ok: false, why: 'in Blood Rage' };
     if (def.type === 'toggle' && p.toggles[id]) return { ok: true, toggleOff: true };   // turning a toggle OFF is never blocked by its own activation cooldown
     if ((p.cooldowns[id] || 0) > 0) return { ok: false, why: 'cooling down' };
     if (p.blood < effectiveCost(p, def)) return { ok: false, why: 'not enough vitae' };
@@ -55,13 +60,36 @@
     const ok = fn(p, game, def);
     if (ok === false) return false; // effect aborted, no cost
     // pay cost
-    p.blood = Math.max(0, p.blood - effectiveCost(p, def));
+    const bloodCost = effectiveCost(p, def);
+    p.blood = Math.max(0, p.blood - bloodCost);
+    // bs_key (Vitae Alchemy): other half of original cost drains from HP
+    if (p.treeNodes && p.treeNodes['bs_key'] && bloodCost > 0) {
+      const hpDrain = bloodCost; // equal to the blood we saved (was halved)
+      p.hp = Math.max(1, p.hp - hpDrain);
+      if (VAMP.FX) VAMP.FX.blood(p.x, p.y, 2);
+    }
     if (def.type === 'toggle') { p.toggles[id] = true; VAMP.bus && VAMP.bus.emit('toggle', id, true); }
     p.cooldowns[id] = effectiveCooldown(p, def);
     if (def.sound && VAMP.Audio) VAMP.Audio.play(def.sound);
     else if (VAMP.Audio) VAMP.Audio.play(def.type === 'active' ? 'spell' : 'skill');
     p.stats && (p.stats.castsTotal = (p.stats.castsTotal || 0) + 1);
     if (VAMP.Mastery && def.type === 'active') VAMP.Mastery.gain(p, (def.disc === 'sorcery' || def.disc === 'dark') ? 'sorcery' : 'nightstalker', 2);
+    // aus_key (The Voices Know): 20% chance to proc a random known active power for free
+    if (p.treeNodes && p.treeNodes['aus_key'] && def.type === 'active' && Math.random() < 0.2) {
+      const known = Object.keys(p.powers || {}).filter((pid) => {
+        const d = powerDef(pid);
+        return d && d.type === 'active' && pid !== id && !(p.cooldowns[pid] > 0);
+      });
+      if (known.length) {
+        const procId = known[(Math.random() * known.length) | 0];
+        const procFn = VAMP.PowerFX && VAMP.PowerFX[powerDef(procId).fx];
+        if (procFn) {
+          procFn(p, game, powerDef(procId));
+          if (VAMP.FX) VAMP.FX.number(p.x, p.y - 44, 'THE VOICES!', '#c79bff', { crit: true });
+          if (VAMP.Audio) VAMP.Audio.play('spell');
+        }
+      }
+    }
     return true;
   }
 

@@ -61,9 +61,11 @@
     if (hasStatus(e, 'shock')) f *= 0.8;
     return f;
   }
-  function isDisabled(e) { return hasStatus(e, 'stun'); }
-  function isRooted(e) { return hasStatus(e, 'root') || hasStatus(e, 'stun'); }
-  function isFeared(e) { return hasStatus(e, 'fear'); }
+  // pot_key Blood Rage: frenzied Potence clan is CC-immune
+  function bloodRageFrenzied(e) { return e.treeNodes && e.treeNodes['pot_key'] && e.bloodState && e.bloodState.frenzied; }
+  function isDisabled(e) { return !bloodRageFrenzied(e) && hasStatus(e, 'stun'); }
+  function isRooted(e) { return !bloodRageFrenzied(e) && (hasStatus(e, 'root') || hasStatus(e, 'stun')); }
+  function isFeared(e) { return !bloodRageFrenzied(e) && hasStatus(e, 'fear'); }
 
   // ---- damage an NPC ----
   function damageNPC(game, npc, amount, opts) {
@@ -80,6 +82,8 @@
         crit = true; dmg *= p.derived.critMult;
       }
     }
+    // pot_key Blood Rage: +40% dmg while deliberately frenzied
+    if (p && p.treeNodes && p.treeNodes['pot_key'] && p.bloodState && p.bloodState.frenzied && !opts.dot) dmg *= 1.4;
     // mark amplifies
     if (hasStatus(npc, 'mark')) dmg *= (1 + (npc.status.mark.amount || 0.25));
     // shock amplifies
@@ -155,6 +159,11 @@
         VAMP.Blood.adjustHumanity(p, -0.25, 'killed an innocent');
       }
     }
+    // obf_key One With Shadow: kill from cloak refreshes the 2s grace window so cloak holds
+    if (p && p.treeNodes && p.treeNodes['obf_key'] && p.cloaked) {
+      p._stealthKillT = game.time;
+      if (VAMP.FX) VAMP.FX.number(npc.x, npc.y - 28, 'ONE WITH SHADOW', '#88a', { crit: true });
+    }
     if (VAMP.FX) VAMP.FX.blood(npc.x, npc.y, 16);
     if (VAMP.Audio) VAMP.Audio.play('death');
     game.onKill(npc, (opts && opts.cause) || 'combat');
@@ -207,6 +216,8 @@
     dmg = Math.max(0, dmg);
     p.hp -= dmg;
     p.lastHurtT = game.time;
+    // pro_key Wild Hunt: taking damage breaks momentum stacks
+    if (dmg > 0 && p.huntStacks) p.huntStacks = 0;
     if (dmg > 0 && VAMP.FX) {
       VAMP.FX.number(p.x, p.y - 22, Math.round(dmg), '#ff5a5a');
       VAMP.FX.flash('rgba(150,0,0,0.28)', 0.18);

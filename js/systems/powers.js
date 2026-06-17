@@ -141,7 +141,11 @@
     obfCloak(p, game, def) { p.cloaked = true; if (VAMP.FX) VAMP.FX.cloak(p.x, p.y); return true; },
     obfCloakOff(p) { p.cloaked = false; },
     obfCloakTick(p, game, def, dt) { /* break cloak if attacking handled by lastAttackT */
-      if (game.time - (p.lastAttackT || -99) < 0.2) { p.toggles['obf_cloak'] = false; p.cloaked = false; }
+      if (game.time - (p.lastAttackT || -99) < 0.2) {
+        // obf_key One With Shadow: kills from cloak open a 2s window where cloak doesn't break
+        if (p.treeNodes && p.treeNodes['obf_key'] && (game.time - (p._stealthKillT || -99)) < 2) return;
+        p.toggles['obf_cloak'] = false; p.cloaked = false;
+      }
     },
     obfVanish(p, game, def) {
       p.cloaked = true;

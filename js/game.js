@@ -799,16 +799,22 @@
       VAMP.UI.notify('Travelled to ' + poi.label, '#9bf');
     },
     convertThrall(npc) {
+      const p = this.player;
       const thralls = this.npcs.filter((n) => n.ally && !n.dead);
-      const cap = VAMP.Haven ? VAMP.Haven.thrallCap(this.player) : (3 + (this.player.attributes.presence > 6 ? 1 : 0));
+      // dom_key Iron Will: thralls are permanent — they cannot be displaced; cap = max(2, floor(Influence))
+      const ironWill = p.treeNodes && p.treeNodes['dom_key'];
+      const cap = ironWill
+        ? Math.max(2, Math.floor((p.derived && p.derived.influence != null) ? p.derived.influence : 0))
+        : (VAMP.Haven ? VAMP.Haven.thrallCap(p) : (3 + (p.attributes.presence > 6 ? 1 : 0)));
       if (thralls.length >= cap) {
+        if (ironWill) { if (VAMP.UI) VAMP.UI.notify('Iron Will: cap reached — invest in Presence', '#a88'); return; }
         const oldest = thralls.slice().sort((a, b) => (a.thrallBornT || 0) - (b.thrallBornT || 0))[0];
         if (oldest) { oldest.dead = true; if (VAMP.FX) VAMP.FX.spark(oldest.x, oldest.y, '#5aff8c', 6); }
       }
       npc.ally = true; npc.faction = 'player'; npc.state = 'follow'; npc.aggro = false;
       npc.hp = npc.maxHp; npc.mesmerizedT = 0; npc.innocent = false; npc.thrallBornT = this.time;
       if (!npc.weapon) npc.weapon = 'pistol';
-      this.player.stats.thralls = (this.player.stats.thralls || 0) + 1;
+      p.stats.thralls = (p.stats.thralls || 0) + 1;
       if (VAMP.Coterie) VAMP.Coterie.attach(this, npc);
       if (VAMP.Progress) VAMP.Progress.reveal(this, 'thralls');
     },

@@ -111,10 +111,13 @@
   // tabs always reachable from minute one (the core); everything else is gated
   const TAB_GATE = { holdings: 'legend', coterie: 'thralls', mastery: 'mastery', codex: 'codex', elder: 'elder' };
 
+  function obj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
+
   function ensure(p) {
-    if (!p.progress) p.progress = { revealed: {}, seen: {}, objIdx: 0 };
-    if (!p.progress.revealed) p.progress.revealed = {};
-    if (!p.progress.seen) p.progress.seen = {};
+    if (!obj(p.progress)) p.progress = { revealed: {}, seen: {}, objIdx: 0 };
+    if (!obj(p.progress.revealed)) p.progress.revealed = {};
+    if (!obj(p.progress.seen)) p.progress.seen = {};
+    p.progress.objIdx = Math.max(0, Math.floor(+p.progress.objIdx || 0));
     backfill(p);
     return p.progress;
   }
@@ -180,7 +183,7 @@
   function hudFeature(game, key) { return isRevealed(game.player, key); }
 
   function serialize(p) { ensure(p); return { revealed: p.progress.revealed, seen: p.progress.seen, objIdx: p.progress.objIdx || 0 }; }
-  function restore(p, data) { p.progress = data || { revealed: {}, seen: {}, objIdx: 0 }; ensure(p); }
+  function restore(p, data) { p.progress = obj(data) ? data : { revealed: {}, seen: {}, objIdx: 0 }; ensure(p); }
 
   VAMP.Progress = { ensure, isRevealed, reveal, check, nextObjective, tabVisible, hudFeature, markSeen, serialize, restore, UNLOCKS };
 })();

@@ -292,6 +292,19 @@
     });
   }
 
+  function cleanNemeses(src) {
+    if (!Array.isArray(src)) return [];
+    return src.slice(0, 12).filter(obj).map((r) => {
+      const out = {
+        name: typeof r.name === 'string' && r.name ? r.name.slice(0, 80) : 'Unknown Hunter',
+        rank: Math.floor(num(r.rank, 1, 1, 1000)),
+      };
+      if (typeof r.scar === 'string' && r.scar) out.scar = r.scar.slice(0, 80);
+      if (typeof r.resistType === 'string' && r.resistType) out.resistType = r.resistType.slice(0, 40);
+      return out;
+    });
+  }
+
   function cleanTrophies(src) {
     if (!Array.isArray(src)) return [];
     const defs = VAMP.Trophies && VAMP.Trophies.DEFS || {};
@@ -417,11 +430,11 @@
     p.stats = cleanStats(sp.stats, p.stats);
     p.toggles = {}; p.cloaked = false; p.buffs = [];
     const pos = safeLoadedPosition(p, sp);
-    p.x = pos.x; p.y = pos.y; p.clan = sp.clan || 'brujah';
+    p.x = pos.x; p.y = pos.y; p.clan = cleanClan(sp.clan);
     // continuing-value persistent blocks (all default-safe for old saves)
     p.haven = cleanHaven(sp.haven); p.mastery = cleanMastery(sp.mastery); p.codex = sp.codex || null;
     p.reputation = cleanReputation(sp.reputation); p.coterie = cleanCoterie(sp.coterie); p.legend = num(sp.legend, 0, 0, 1000000000);
-    p.factionRank = sp.factionRank || null; p.relations = sp.relations || null; p.nemeses = sp.nemeses || [];
+    p.factionRank = sp.factionRank || null; p.relations = sp.relations || null; p.nemeses = cleanNemeses(sp.nemeses);
     p.trophies = cleanTrophies(sp.trophies); p.blessings = boolMap(sp.blessings); p.businesses = cleanBusinesses(sp.businesses);
     p.reagents = sp.reagents || null; p.blessingMods = cleanModBag(sp.blessingMods); p.childeCount = Math.floor(num(sp.childeCount, 0, 0));
     p.chainProgress = cleanChainProgress(sp.chainProgress); p.chainTitles = cleanChainTitles(sp.chainTitles);   // contract-chain storyline progress

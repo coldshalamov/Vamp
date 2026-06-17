@@ -10,7 +10,22 @@
 
   const NAMES = ['Sir Crawford', 'Agent Vane', 'Father Holloway', 'Inquisitor Pike', 'Huntress Cole', 'Brother Ash', 'Marshal Quinn'];
 
-  function ensure(p) { if (!p.nemeses) p.nemeses = []; return p.nemeses; }
+  function cleanRecord(r) {
+    if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+    const out = {
+      name: typeof r.name === 'string' && r.name ? r.name.slice(0, 80) : 'Unknown Hunter',
+      rank: Math.max(1, Math.floor(+r.rank || 1)),
+    };
+    if (typeof r.scar === 'string' && r.scar) out.scar = r.scar.slice(0, 80);
+    if (typeof r.resistType === 'string' && r.resistType) out.resistType = r.resistType.slice(0, 40);
+    return out;
+  }
+
+  function ensure(p) {
+    if (!Array.isArray(p.nemeses)) p.nemeses = [];
+    else p.nemeses = p.nemeses.map(cleanRecord).filter(Boolean).slice(0, 12);
+    return p.nemeses;
+  }
 
   // hunter at 0 hp -> chance to flee and become a remembered nemesis
   function tryFlee(game, npc) {
@@ -31,8 +46,8 @@
 
   // re-inject a saved nemesis as a buffed ambush
   function maybeInject(game) {
-    const p = game.player; if (!p.nemeses || !p.nemeses.length) return false;
-    const rec = p.nemeses[(Math.random() * p.nemeses.length) | 0];
+    const p = game.player; const nemeses = ensure(p); if (!nemeses.length) return false;
+    const rec = nemeses[(Math.random() * nemeses.length) | 0];
     let pos = null;
     const ox = p.inVehicle ? p.inVehicle.x : p.x, oy = p.inVehicle ? p.inVehicle.y : p.y;
     for (let i = 0; i < 30; i++) { const a = Math.random() * VAMP.Util.TAU, d = 380 + Math.random() * 300; const x = ox + Math.cos(a) * d, y = oy + Math.sin(a) * d; if (game.world.isWalkable(x, y)) { pos = { x, y }; break; } }
@@ -50,9 +65,9 @@
   }
 
   function onNemesisDead(p, npc) {
-    if (!p.nemeses) return;
-    const i = p.nemeses.findIndex((r) => r.name === npc.nemesisName);
-    if (i >= 0) { p.nemeses.splice(i, 1); if (VAMP.UI) VAMP.UI.notify('You have ended ' + npc.nemesisName + '. Vengeance is yours.', '#ffd24a'); }
+    const nemeses = ensure(p);
+    const i = nemeses.findIndex((r) => r.name === npc.nemesisName);
+    if (i >= 0) { nemeses.splice(i, 1); if (VAMP.UI) VAMP.UI.notify('You have ended ' + npc.nemesisName + '. Vengeance is yours.', '#ffd24a'); }
   }
 
   VAMP.Nemesis = { ensure, tryFlee, maybeInject, onNemesisDead };

@@ -112,6 +112,25 @@ async function main() {
     } catch (e) {
       report.malformedRenderError = e.message;
     }
+    report.malformedLoad = null;
+    try {
+      const loaded = VAMP.Save.loadSlot(0);
+      VAMP.Game.loadGame(loaded, 0);
+      report.malformedLoad = {
+        mode: VAMP.Game.mode,
+        clan: VAMP.Game.player && VAMP.Game.player.clan,
+        clanType: typeof (VAMP.Game.player && VAMP.Game.player.clan),
+        clanBaneName: VAMP.Game.player && VAMP.Game.player.clanBaneName,
+        renderError: null,
+      };
+      try {
+        VAMP.Game.render(1);
+      } catch (e) {
+        report.malformedLoad.renderError = e.message;
+      }
+    } catch (e) {
+      report.malformedLoad = { error: e.message };
+    }
     if (previousMode) VAMP.Game.mode = previousMode;
     if (previous == null) localStorage.removeItem(key);
     else localStorage.setItem(key, previous);
@@ -222,6 +241,10 @@ async function main() {
   if (corruptSaveReport.malformedRenderError) { console.error('MALFORMED SAVE BROKE TITLE RENDER:', corruptSaveReport); fail = true; }
   if (!corruptSaveReport.malformedSummary || corruptSaveReport.malformedSummary.clan !== 'brujah' || corruptSaveReport.malformedSummary.level !== 1 || corruptSaveReport.malformedSummary.day !== 1 || corruptSaveReport.malformedSummary.humanity !== 5) {
     console.error('MALFORMED SAVE SUMMARY NOT SANITIZED:', corruptSaveReport);
+    fail = true;
+  }
+  if (!corruptSaveReport.malformedLoad || corruptSaveReport.malformedLoad.error || corruptSaveReport.malformedLoad.renderError || corruptSaveReport.malformedLoad.mode !== 'play' || corruptSaveReport.malformedLoad.clan !== 'brujah' || corruptSaveReport.malformedLoad.clanType !== 'string') {
+    console.error('MALFORMED SAVE LOAD NOT SANITIZED:', corruptSaveReport);
     fail = true;
   }
   if (gameReport.error) { console.error('GAME ERROR:', gameReport.error); fail = true; }

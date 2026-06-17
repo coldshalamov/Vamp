@@ -28,7 +28,7 @@
         level: p.level, xp: p.xp, xpTotal: p.xpTotal,
         attributes: p.attributes, attrPoints: p.attrPoints, skillPoints: p.skillPoints,
         treeNodes: p.treeNodes, powers: p.powers, slots: p.slots,
-        money: p.money,
+        money: p.money, respecs: p.respecs || 0, aimMode: p.aimMode || 'move',
         inventory: p.inventory,
         equip: {
           attire: p.equipment.attire || null,
@@ -80,7 +80,7 @@
     for (const k in p.attributes) { const v = +p.attributes[k]; p.attributes[k] = isFinite(v) && v >= 1 ? v : 1; }
     p.attrPoints = sp.attrPoints || 0; p.skillPoints = sp.skillPoints || 0;
     p.treeNodes = sp.treeNodes || {}; p.powers = sp.powers || {}; p.slots = sp.slots || [null, null, null, null, null, null, null, null];
-    p.money = sp.money || 0;
+    p.money = sp.money || 0; p.respecs = sp.respecs || 0; p.aimMode = sp.aimMode || 'move';
     p.inventory = sp.inventory || [];
     p.bloodState = Object.assign(VAMP.Blood.newBloodState(), sp.bloodState || {});
     p.stats = sp.stats || p.stats;

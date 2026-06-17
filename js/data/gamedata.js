@@ -67,6 +67,19 @@
     malkavian: { pct: { maxBlood: -0.08 } },
   };
 
+  // clan BOONS — a signature strength that gives each clan a distinct identity from minute one,
+  // and leans your build toward an approach. Mirrors CLAN_BANES; folded via Stats.persistentMods.
+  // (Nosferatu also get a stealth boon applied in code — Stealth.exposure reads p.clan.)
+  const CLAN_BOONS = {
+    brujah:   { pct: { meleeDmg: 0.15 } },                    // the warrior — open violence
+    gangrel:  { pct: { moveSpeed: 0.10, hpRegen: 0.25 } },    // the beast — mobility & recovery
+    tremere:  { pct: { spellPower: 0.18 } },                  // the sorcerer — Blood magic
+    ventrue:  { add: { influence: 2 }, pct: { discount: 0.10 } }, // the lord — social/economic
+    toreador: { pct: { feedYield: 0.15, critChance: 0.04 } }, // the artist — predation & finesse
+    nosferatu:{ pct: { maxHP: 0.10 } },                       // the hidden — stealth (see Stealth.exposure)
+    malkavian:{ pct: { cdr: 0.10 } },                         // the seer — faster disciplines
+  };
+
   const DISCIPLINES = {
     celerity:  { name: 'Celerity', color: '#7ad0ff' },
     potence:   { name: 'Potence', color: '#e0b050' },
@@ -302,6 +315,18 @@
     { type: 'courier', name: 'Night Errand', icon: '➤', color: '#9a6cff', desc: 'Deliver the sealed message across the city against the clock.', baseReward: { xp: 180, money: 160 } },
   ];
 
+  // Per-contract APPROACH MODIFIERS — the lever that makes *how* you play a contract matter.
+  // Rolled in missions.js; an optional constraint for a fatter purse, so a stealth build and a
+  // gunline build optimise the same board differently. Violating the constraint just forfeits the bonus.
+  const MISSION_MODIFIERS = [
+    { id: 'none', name: '', tag: '', color: '#cdd', bonus: 0 },
+    { id: 'none', name: '', tag: '', color: '#cdd', bonus: 0 },
+    { id: 'nokill', name: 'Leave No Trace', tag: 'NO-KILL', color: '#7cc', desc: 'Bonus reward if no innocent dies.', bonus: 0.4 },
+    { id: 'silent', name: 'Lights Out', tag: 'STEALTH', color: '#9bd', desc: 'Bonus reward if Heat never rises.', bonus: 0.45 },
+    { id: 'fortified', name: 'Fortified', tag: 'HEAVY', color: '#e08', desc: 'Extra guards — but a bigger purse.', bonus: 0.35, harder: true },
+    { id: 'bounty', name: 'High Profile', tag: 'BOUNTY', color: '#ffd24a', desc: 'Richer pay, but the city watches closer.', bonus: 0.5, hot: true },
+  ];
+
   // ---------------------------------------------------------------- ACHIEVEMENTS
   const ACHIEVEMENTS = [
     { id: 'first_blood', name: 'First Blood', desc: 'Feed for the first time.', check: (g) => g.player.bloodState.fedCount >= 1 },
@@ -326,7 +351,7 @@
   const STREETS = ['Hollow St', 'Mourn Ave', 'Crimson Row', 'Vein Blvd', 'Gloom Lane', 'Pallor Way', 'Sable Dr', 'Wraith Ct', 'Dusk Mile', 'Ravensgate', 'Coffin Walk', 'Ash Quay'];
 
   VAMP.Data = {
-    POWERS, DISCIPLINES, CLAN_BANES, TREE, TREE_INDEX, RARITY, RARITY_ORDER, WEAPONS, AFFIXES, ATTIRE, CHARMS, RELICS,
-    HAVEN_ROOMS, BUSINESSES, MISSION_TYPES, ACHIEVEMENTS, FIRST, LAST, STREETS,
+    POWERS, DISCIPLINES, CLAN_BANES, CLAN_BOONS, TREE, TREE_INDEX, RARITY, RARITY_ORDER, WEAPONS, AFFIXES, ATTIRE, CHARMS, RELICS,
+    HAVEN_ROOMS, BUSINESSES, MISSION_TYPES, MISSION_MODIFIERS, ACHIEVEMENTS, FIRST, LAST, STREETS,
   };
 })();

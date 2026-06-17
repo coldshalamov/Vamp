@@ -17,6 +17,9 @@
 
   function applyStatus(e, kind, opts) {
     if (e.dead) return;
+    // WARDED MIND: bosses & 'warded' elites shrug off mind-affecting will (fear). A pure crowd-control
+    // build must improvise against them — being well-rounded pays off.
+    if (e.wardedMind && kind === 'fear') { if (VAMP.FX) VAMP.FX.number(e.x, e.y - 14, 'WARDED', '#9aa0ff', { small: true }); return; }
     const s = ensureStatus(e);
     opts = opts || {};
     const cur = s[kind];
@@ -81,8 +84,14 @@
     if (hasStatus(npc, 'mark')) dmg *= (1 + (npc.status.mark.amount || 0.25));
     // shock amplifies
     if (hasStatus(npc, 'shock')) dmg *= 1.15;
-    // armor of npc
-    dmg *= (1 - (npc.armor || 0));
+    // armor — shredded by 'weaken' (the deliberate answer to Warded / Juggernaut elites)
+    let armor = npc.armor || 0;
+    if (hasStatus(npc, 'weaken')) armor = Math.max(0, armor - (npc.status.weaken.amount || 0.2));
+    dmg *= (1 - armor);
+    // damage-TYPE resistance (phys / blood / shadow): a nemesis adapts to the method you lean on,
+    // so a one-note build gets countered while a varied one keeps landing.
+    if (npc.resist && opts.dmgType && npc.resist[opts.dmgType]) dmg *= (1 - npc.resist[opts.dmgType]);
+    if (opts.dmgType && p) p._lastDmgType = opts.dmgType;
     dmg = opts.dot ? Math.max(0, dmg) : Math.max(1, dmg); // don't floor DoT residue to 1/frame
 
     npc.hp -= dmg;
@@ -130,6 +139,7 @@
     if (npc.dead) return;
     npc.dead = true;
     npc.deathT = game.time;
+    npc.playerBody = true;   // killNPC is the player-offense kill path — this corpse is your evidence
     const p = game.player;
     if (p && p.bloodState) {
       p.bloodState.kills++;

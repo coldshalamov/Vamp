@@ -76,6 +76,9 @@
           let decay = 0;
           if (sinceCrime > 6) decay = 0.06;
           if (game.player.cloaked) decay += 0.10;
+          // Sated Calm: a well-fed vampire is composed and sheds suspicion faster; a starving one
+          // (handled via frenzy risk in blood.js) is twitchy. Makes the blood economy a strategic lever.
+          if (game.player.blood > game.player.derived.maxBlood * 0.8) decay += 0.04;
           if (game.inHaven) decay += 0.6 + (VAMP.Haven ? VAMP.Haven.level(game.player, 'sanctum') * 0.2 : 0);
           // no police alive & not seen accelerates
           if (sinceCrime > 12) decay += 0.05;

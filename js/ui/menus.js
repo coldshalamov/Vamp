@@ -631,7 +631,7 @@
       const svc = VAMP.Economy.SERVICES;
       for (const key of ['heal', 'refillBlood', 'clearHeat', 'bribe', 'respecTree']) {
         const s = svc[key];
-        const cost = Math.round(s.cost * (key === 'respecTree' ? 1 : p.derived.priceMult));
+        const cost = VAMP.Economy.serviceCost ? VAMP.Economy.serviceCost(game, key) : Math.round(s.cost * (key === 'respecTree' ? 1 : p.derived.priceMult));
         if (this.btn(ctx, lx, by, colW, 30, s.name.split('(')[0] + ' ($' + cost + ')', { align: 'left', disabled: p.money < cost, font: 'bold 11px' })) VAMP.Economy.useService(game, key);
         by += 34;
       }

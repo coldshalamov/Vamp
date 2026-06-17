@@ -49,6 +49,7 @@
     if (a.r) n.r = Math.round(n.r * a.r);
     if (a.venom) n.eliteVenom = true;
     if (a.vampiric) n.eliteVampiric = true;
+    if (key === 'warded' || key === 'juggernaut') n.wardedMind = true;   // can't be feared/cowed — shred armor instead
     n.threat = (n.threat || 1) + 1.5;
     return n;
   }
@@ -80,6 +81,8 @@
     };
     if (opts.hp) { n.maxHp = opts.hp; n.hp = opts.hp; }
     if (opts.speed) n.speed = opts.speed;
+    if (n.boss) n.wardedMind = true;   // elders/barons resist mind-affecting will
+    if (opts.resist) n.resist = opts.resist;
     n.onDamaged = function (dmg, o, game) {
       n.aggro = true;
       n.hitFlashT = 0.12;   // #10 — brief white flash so hits read clearly
@@ -386,7 +389,7 @@
       if (U.dist(n.x, n.y, tx, ty) < 34 && !p.inVehicle) {
         C().damagePlayer(game, (n.weapon === 'bat' ? 12 : 8) * dmgMul, {});
         if (n.eliteVenom) C().applyStatus(p, 'poison', { dur: 4, dps: 4 });
-        if (n.eliteVampiric) n.hp = Math.min(n.maxHp, n.hp + 6);
+        if (n.eliteVampiric && !C().hasStatus(n, 'burn')) n.hp = Math.min(n.maxHp, n.hp + 6);   // burn cauterizes the lifesteal
         if (VAMP.FX) VAMP.FX.hit(p.x, p.y, '#d33');
       } else if (p.inVehicle && U.dist(n.x, n.y, tx, ty) < 36) {
         p.inVehicle.hp -= 6 * dmgMul;

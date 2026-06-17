@@ -140,6 +140,8 @@
     const out = blankMods();
     const bane = VAMP.Data && VAMP.Data.CLAN_BANES && VAMP.Data.CLAN_BANES[p.clan];
     if (bane) addMods(out, bane);
+    const boon = VAMP.Data && VAMP.Data.CLAN_BOONS && VAMP.Data.CLAN_BOONS[p.clan];
+    if (boon) addMods(out, boon);
     if (VAMP.Haven && VAMP.Haven.mods) addMods(out, VAMP.Haven.mods(p));
     if (VAMP.Mastery && VAMP.Mastery.mods) addMods(out, VAMP.Mastery.mods(p));
     if (VAMP.Codex && VAMP.Codex.mods) addMods(out, VAMP.Codex.mods(p));

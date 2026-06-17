@@ -38,10 +38,13 @@
       money: Math.round(t.baseReward.money * (1 + lvl * 0.15)),
       itemChance: 0.6,
     };
+    // roll an optional APPROACH MODIFIER — a strategic constraint for a fatter purse
+    const MM = VAMP.Data.MISSION_MODIFIERS || [{ id: 'none', bonus: 0 }];
+    const modifier = MM[(Math.random() * MM.length) | 0];
     return {
       id: MID++, type: t.type, name: t.name, icon: t.icon, color: t.color, desc,
       level: lvl, need: n, progress: 0, state: 'available', reward, targetName: name,
-      markers: [], spawned: [], timeLimit: 0, timer: 0, phase: 0, data: {},
+      modifier, markers: [], spawned: [], timeLimit: 0, timer: 0, phase: 0, data: {},
     };
   }
 
@@ -49,9 +52,12 @@
     if (game.activeMission) { if (VAMP.UI) VAMP.UI.notify('Finish your current contract first', '#a66'); return false; }
     m.state = 'active';
     game.activeMission = m;
+    m._snapInnocent = game.player.bloodState.innocentKills;   // baselines for approach-modifier tracking
+    m._violated = false;
     setup(game, m);
     if (VAMP.Progress) VAMP.Progress.markSeen(game.player, 'missions');
-    if (VAMP.UI) VAMP.UI.notify('Contract accepted: ' + m.name, m.color);
+    if (VAMP.UI) VAMP.UI.notify('Contract accepted: ' + m.name + (m.modifier && m.modifier.tag ? '  [' + m.modifier.tag + ']' : ''), m.color);
+    if (m.modifier && m.modifier.desc && VAMP.UI) VAMP.UI.notify(m.modifier.name + ': ' + m.modifier.desc, m.modifier.color);
     if (VAMP.Audio) VAMP.Audio.play('uiBig');
     VAMP.bus && VAMP.bus.emit('mission', m);
     return true;
@@ -137,6 +143,20 @@
         break;
       }
     }
+    // FORTIFIED / HIGH-PROFILE: reinforce the objective with extra guards. They start NEUTRAL, so a
+    // stealth player can still slip past or pick them off quietly — only a loud approach must fight them.
+    if (m.modifier && (m.modifier.harder || m.modifier.hot)) {
+      const anchor = m.data.center || m.data.target || (m.markers[0] && m.markers[0].x != null ? m.markers[0] : null) || spot(game, 320, 720);
+      const extra = 2 + (lvl / 12 | 0);
+      for (let i = 0; i < extra; i++) {
+        const gp = { x: anchor.x + (Math.random() - 0.5) * 170, y: anchor.y + (Math.random() - 0.5) * 170 };
+        if (!game.world.isWalkable(gp.x, gp.y)) continue;
+        const type = Math.random() < 0.5 ? 'gunner' : 'swat';
+        const e = VAMP.Npc.create(game.world, type, gp.x, gp.y, { hp: VAMP.Npc.PRESETS[type].hp * (1 + lvl * 0.05) });
+        e.mission = m.id; e.faction = type === 'swat' ? 'police' : 'gang';
+        game.addNPC(e); m.spawned.push(e);
+      }
+    }
   }
 
   function onEvent(game, evt, data) {
@@ -166,6 +186,12 @@
   function update(game, dt) {
     const m = game.activeMission;
     if (!m || m.state !== 'active') return;
+
+    // approach-modifier bookkeeping: forfeit the bonus the moment its constraint is broken
+    if (m.modifier && !m._violated) {
+      if (m.modifier.id === 'nokill' && game.player.bloodState.innocentKills > (m._snapInnocent || 0)) { m._violated = true; if (VAMP.UI) VAMP.UI.notify('No-Trace bonus lost — an innocent died', '#a66'); }
+      else if (m.modifier.id === 'silent' && game.masquerade.stars > 0) { m._violated = true; if (VAMP.UI) VAMP.UI.notify('Lights-Out bonus lost — you were noticed', '#a66'); }
+    }
 
     if (m.type === 'escort') {
       const c = m.data.courier;
@@ -256,15 +282,19 @@
     cleanup(game, m, false);
     if (game.player) VAMP.Blood.adjustHumanity(game.player, 0.15, ''); // honoring a pact steadies the soul
     const r = m.reward;
-    VAMP.Stats.gainXP(game.player, r.xp);
-    game.addMoney(r.money, game.player.x, game.player.y);
+    // approach-modifier bonus: honored constraint => fatter purse
+    const bonusMult = (m.modifier && m.modifier.bonus && !m._violated) ? (1 + m.modifier.bonus) : 1;
+    const xpR = Math.round(r.xp * bonusMult), moneyR = Math.round(r.money * bonusMult);
+    VAMP.Stats.gainXP(game.player, xpR);
+    game.addMoney(moneyR, game.player.x, game.player.y);
     let itemMsg = '';
     if (Math.random() < r.itemChance) {
       const it = VAMP.Inventory.generate(m.level + 2, VAMP.Inventory.rollRarity(m.level, 0.3));
       VAMP.Inventory.addItem(game.player, it);
       itemMsg = ' + ' + it.name;
     }
-    if (VAMP.UI) { VAMP.UI.banner('CONTRACT COMPLETE', m.name + '  —  +' + r.xp + ' XP, +$' + r.money + itemMsg, m.color); }
+    const bonusMsg = (bonusMult > 1) ? ('  [' + m.modifier.tag + ' +' + Math.round(m.modifier.bonus * 100) + '%]') : '';
+    if (VAMP.UI) { VAMP.UI.banner('CONTRACT COMPLETE', m.name + '  —  +' + xpR + ' XP, +$' + moneyR + itemMsg + bonusMsg, m.color); }
     if (VAMP.Audio) VAMP.Audio.play('win');
     VAMP.bus && VAMP.bus.emit('missionDone', m);
   }

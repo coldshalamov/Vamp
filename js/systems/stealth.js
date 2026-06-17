@@ -47,6 +47,7 @@
     if (isLit(game, p.x, p.y)) e += 0.25; else e -= 0.20;
     if (p.bloodState && p.bloodState.frenzied) e += 0.20;
     if (p.toggles && Object.values(p.toggles).some(Boolean)) e += 0.10;
+    if (p.clan === 'nosferatu') e -= 0.15;   // clan boon: the Hidden are born to the shadows
     return U.clamp(e, 0.05, 1.1);
   }
 
@@ -104,6 +105,7 @@
   function knockOut(npc, game) {
     if (!npc || npc.dead) return;
     npc.downed = true; npc.downT = game.time; npc.wakeDur = 34 + Math.random() * 16;
+    npc.playerBody = true;   // YOUR victim — this body is evidence if a mortal finds it
     npc.state = 'downed'; npc.path = null; npc.aggro = false; npc.hostileToPlayer = false;
     npc.vx = npc.vy = 0; npc.mesmerizedT = 0; npc.discovered = false;
   }
@@ -177,9 +179,11 @@
     const adt = acc; acc = 0;
     const px = p.x, py = p.y;
 
-    // body discovery
+    // body discovery — ONLY for bodies the PLAYER made. A pedestrian the city's own traffic ran
+    // over is the city's problem, not evidence against you; flagging those was making an idle
+    // player get hunted for crimes they didn't commit (the exact calm-world failure to avoid).
     for (const b of game.npcs) {
-      if (!isBody(b) || b.carried || b.discovered) continue;
+      if (!isBody(b) || b.carried || b.discovered || !b.playerBody) continue;
       if (U.dist(px, py, b.x, b.y) > 760) continue;     // only matters near the player
       const findRange = b.hidden ? 46 : 132;
       let finder = null;

@@ -259,6 +259,11 @@
       if (Math.abs(this.displayMoney - p.money) > 0.5) this.tweens.to(this, 'displayMoney', p.money, 0.4, U.ease.outCubic);
       ctx.font = 'bold 14px Verdana'; ctx.fillStyle = '#ffd24a';
       ctx.fillText('$ ' + U.fmt(Math.round(this.displayMoney)), x + 6, hy + 30);
+      // Influence — the social-verb resource (only shown once you have any capacity)
+      if (p.influence != null && VAMP.Reputation && VAMP.Reputation.influenceMax(p) > 0) {
+        ctx.font = 'bold 11px Verdana'; ctx.fillStyle = '#ff9ecf';
+        ctx.fillText('✦ ' + Math.floor(p.influence) + '/' + VAMP.Reputation.influenceMax(p), x + 6, hy + 44);
+      }
       // points to spend
       if ((p.attrPoints || 0) > 0 || (p.skillPoints || 0) > 0) {
         ctx.font = 'bold 11px Verdana'; ctx.fillStyle = '#9affd0';
@@ -329,7 +334,7 @@
       }
       // controls hint
       ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '10px Verdana'; ctx.textAlign = 'center';
-      ctx.fillText('SPACE attack · RMB free-aim · F feed/takedown · E interact/carry · Shift sprint · X sneak · Ctrl pounce · 1-8 powers · C character · M map', w / 2, h - 4);
+      ctx.fillText('SPACE attack · RMB free-aim · F feed/takedown · E interact/carry · T intimidate · Shift sprint · X sneak · Ctrl pounce · 1-8 powers · C character · M map', w / 2, h - 4);
       ctx.textAlign = 'left';
     },
 
@@ -497,8 +502,14 @@
         ctx.fillStyle = 'rgba(0,0,0,0.5)'; this.rr(ctx, 12, y0, 250, 56, 5); ctx.fill();
         ctx.fillStyle = m.color; ctx.font = 'bold 12px Verdana';
         ctx.fillText(m.icon + ' ' + m.name, 20, y0 + 18);
+        // approach-modifier tag (e.g. NO-KILL / STEALTH / HEAVY) — struck through once forfeited
+        if (m.modifier && m.modifier.tag) {
+          ctx.font = 'bold 9px Verdana'; ctx.textAlign = 'right';
+          ctx.fillStyle = m._violated ? '#777' : m.modifier.color;
+          ctx.fillText((m._violated ? '✗ ' : '★ ') + m.modifier.tag, 256, y0 + 33); ctx.textAlign = 'left';
+        }
         ctx.fillStyle = '#cdd'; ctx.font = '10px Verdana';
-        wrapText(ctx, m.desc, 20, y0 + 33, 234, 12);
+        wrapText(ctx, m.desc, 20, y0 + 33, 200, 12);
         // progress
         let prog = '';
         if (m.type === 'feed' || m.type === 'collect') prog = m.progress + '/' + m.need;

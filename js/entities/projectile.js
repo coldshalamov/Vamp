@@ -30,6 +30,7 @@
       status: opts.status || null,    // {kind,dur,dps,...}
       knockback: opts.knockback || 0,
       crit: opts.crit,
+      dmgType: opts.dmgType || null,
       gravity: opts.gravity || 0,
       trail: [],
       kind: opts.kind || 'bolt',
@@ -96,7 +97,7 @@
   function hitNPC(pr, n, game) {
     pr.hitSet.add(n);
     pr.hits++;
-    C().damageNPC(game, n, pr.dmg, { knockback: pr.knockback, angle: Math.atan2(pr.vy, pr.vx), color: pr.color, crit: pr.crit, type: pr.kind });
+    C().damageNPC(game, n, pr.dmg, { knockback: pr.knockback, angle: Math.atan2(pr.vy, pr.vx), color: pr.color, crit: pr.crit, type: pr.kind, dmgType: pr.dmgType });
     if (pr.status) C().applyStatus(n, pr.status.kind, pr.status);
     if (pr.onImpact) pr.onImpact(pr, n, game);
     if (pr.hits > pr.pierce) { explode(pr, game); pr.dead = true; }

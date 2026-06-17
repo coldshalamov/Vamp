@@ -254,6 +254,7 @@
       this.updatePickups(dt);
       this.masquerade.update(dt, this);
       if (VAMP.Stealth) VAMP.Stealth.update(dt, this);
+      if (VAMP.Reputation && VAMP.Reputation.regenInfluence) VAMP.Reputation.regenInfluence(p, dt);
       this.quests.update(dt);
       if (this.events) this.events.update(dt, this);   // #23
       if (this.achievements) this.achievements.update(dt);

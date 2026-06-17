@@ -183,7 +183,7 @@
     if (vt.rich && game) { const cash = 40 + Math.floor(Math.random() * 80); game.addMoney(cash, npc.x, npc.y); }
 
     if (lethal) {
-      npc.dead = true; npc.diedFeeding = true;
+      npc.dead = true; npc.diedFeeding = true; npc.playerBody = true;   // a drained corpse is your evidence
       b.kills++;
       if (!vt.heat && !vt.animal) { b.innocentKills++; adjustHumanity(p, f.execution ? -0.5 : -0.4, 'killed an innocent'); }   // a brutal execution costs a little more
       if (game) game.onKill(npc, 'feed');

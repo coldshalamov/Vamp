@@ -47,14 +47,21 @@
   const SERVICES = {
     refillBlood: { name: 'Vitae Pack (refill blood)', cost: 80, run: (g) => { g.player.blood = g.player.derived.maxBlood; g.player.bloodState.hunger = 0; } },
     heal: { name: 'Mend Wounds (full heal)', cost: 60, run: (g) => { g.player.hp = g.player.derived.maxHP; } },
-    respecTree: { name: 'Reflect on the Path (respec skill tree)', cost: 250, run: (g) => { const n = VAMP.SkillTree.respec(g.player); let refunded = n; if (g.player.clan && g.applyClan) { g.applyClan(g.player.clan, false); g.player.skillPoints = Math.max(0, (g.player.skillPoints || 0) - 1); refunded = Math.max(0, n - 1); } if (VAMP.UI) VAMP.UI.notify('Refunded ' + refunded + ' skill points — re-bind powers in [C]', '#9bf'); } },
+    respecTree: { name: 'Reflect on the Path (respec skill tree)', cost: 250, run: (g) => { const n = VAMP.SkillTree.respec(g.player); let refunded = n; if (g.player.clan && g.applyClan) { g.applyClan(g.player.clan, false); g.player.skillPoints = Math.max(0, (g.player.skillPoints || 0) - 1); refunded = Math.max(0, n - 1); } g.player.respecs = (g.player.respecs || 0) + 1; if (VAMP.UI) VAMP.UI.notify('Refunded ' + refunded + ' skill points — re-bind powers in [C]', '#9bf'); } },
     clearHeat: { name: 'Lay Low (clear all Heat)', cost: 200, run: (g) => { g.masquerade.clearAll(); } },
     bribe: { name: 'Bribe Officials (-2 Heat)', cost: 120, run: (g) => { g.masquerade.clearStars(2); } },
   };
+  function serviceCost(game, key) {
+    const s = SERVICES[key]; if (!s) return 0;
+    // respec cost ESCALATES each time, so changing your whole build is a real commitment — not a
+    // free rent. Other services scale with your price multiplier (Presence/standing discounts).
+    if (key === 'respecTree') return 200 + (game.player.respecs || 0) * 175;
+    return Math.round(s.cost * game.player.derived.priceMult);
+  }
   function useService(game, key) {
     const s = SERVICES[key];
     if (!s) return false;
-    const cost = Math.round(s.cost * (key.startsWith('respec') ? 1 : game.player.derived.priceMult));
+    const cost = serviceCost(game, key);
     if (game.player.money < cost) { if (VAMP.UI) VAMP.UI.notify('Not enough money', '#a66'); return false; }
     game.player.money -= cost;
     s.run(game);
@@ -63,5 +70,5 @@
     return true;
   }
 
-  VAMP.Economy = { price, buy, sell, generateStock, SERVICES, useService };
+  VAMP.Economy = { price, buy, sell, generateStock, SERVICES, useService, serviceCost };
 })();

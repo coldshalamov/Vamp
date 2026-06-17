@@ -177,6 +177,9 @@
     // ---- feeding start (F) ----
     if (input.wasPressed('keyf')) tryFeed(p, game);
 
+    // ---- intimidate (T): a social verb — cow a lone mortal without a fight, spends Influence ----
+    if (input.wasPressed('keyt')) tryIntimidate(p, game);
+
     // ---- interact (E): vehicles & POIs ----
     if (input.wasPressed('keye')) interact(p, game);
   }
@@ -240,7 +243,7 @@
       if (d > reach + n.r) continue;
       const a = U.angleTo(p.x, p.y, n.x, n.y);
       if (Math.abs(U.wrapAngle(a - p.facing)) < arc) {
-        C().damageNPC(game, n, dmg, { knockback: kb, heavy: finisherSwing, angle: p.facing, color: '#d33' });
+        C().damageNPC(game, n, dmg, { knockback: kb, heavy: finisherSwing, angle: p.facing, color: '#d33', dmgType: 'phys' });
         hit = true;
       }
     }
@@ -284,7 +287,7 @@
         x: p.x + Math.cos(a) * (p.r + 8), y: p.y + Math.sin(a) * (p.r + 8),
         vx: Math.cos(a) * (w.speed || 620), vy: Math.sin(a) * (w.speed || 620),
         owner: 'player', dmg: (w.dmg || 14) * (1 + p.derived.bloodPotency * 0.05), r: 3.5,
-        color: '#ffe9a8', life: 1.0, kind: 'bullet', knockback: 40, pierce: w.pierce || 0,
+        color: '#ffe9a8', life: 1.0, kind: 'bullet', knockback: 40, pierce: w.pierce || 0, dmgType: 'phys',
       });
     }
     if (VAMP.Audio) VAMP.Audio.play('gun');
@@ -432,7 +435,31 @@
     const prey = findFeedTarget(p, game);
     if (prey) { prey.mesmerizedT = Math.max(prey.mesmerizedT || 0, 1.2); VAMP.Blood.startFeeding(p, prey); prey.state = 'fed'; prey.path = null; return; }
     const enemy = game.nearestNPC ? game.nearestNPC(p.x, p.y, (m) => !m.dead && !m.ally, 44) : null;
-    if (enemy) C().damageNPC(game, enemy, p.derived.meleeDmg * 1.2, { knockback: 200, heavy: true, angle: p.pounce.ang, color: '#d33' });
+    if (enemy) C().damageNPC(game, enemy, p.derived.meleeDmg * 1.2, { knockback: 200, heavy: true, angle: p.pounce.ang, color: '#d33', dmgType: 'phys' });
+  }
+
+  // SOCIAL VERB — intimidate a lone, unalarmed mortal: they break and flee (no combat, calm
+  // preserved), a gangster coughs up protection money. Costs Influence, so it's paced.
+  function tryIntimidate(p, game) {
+    let best = null, bd = 84;
+    for (const n of game.npcs) {
+      if (n.dead || n.ally || n.downed || n.aggro) continue;
+      if (n.faction !== 'civ' && n.faction !== 'gang') continue;
+      const d = U.dist(p.x, p.y, n.x, n.y);
+      if (d < bd) { bd = d; best = n; }
+    }
+    if (!best) { if (VAMP.UI) VAMP.UI.notify('No one to intimidate nearby', '#a88'); return; }
+    if (!(VAMP.Reputation && VAMP.Reputation.spendInfluence(p, 1))) { if (VAMP.UI) VAMP.UI.notify('Not enough Influence — it refills over time (raise Presence for more)', '#a88'); return; }
+    C().applyStatus(best, 'fear', { dur: 4 });
+    best.state = 'flee'; best.fleeT = 4; best.panicReported = true;   // panicReported => this flight draws no Heat
+    p.facing = U.angleTo(p.x, p.y, best.x, best.y);
+    const drop = best.faction === 'gang' ? (30 + (Math.random() * 40 | 0)) : (8 + (Math.random() * 16 | 0));
+    if (game.addMoney) game.addMoney(drop, best.x, best.y);
+    if (best.faction === 'gang' && VAMP.Reputation) VAMP.Reputation.change(p, 'gang', -0.5);
+    if (VAMP.Mastery) VAMP.Mastery.gain(p, 'predation', 4);
+    if (VAMP.FX) { VAMP.FX.number(best.x, best.y - 18, 'COWED', '#ff9ecf', { small: true }); VAMP.FX.ring(best.x, best.y, 24, '#ff9ecf'); }
+    if (VAMP.Audio) VAMP.Audio.play('ui');
+    if (VAMP.UI) VAMP.UI.notify('Intimidated — they flee and drop $' + drop, '#ff9ecf');
   }
 
   function interact(p, game) {

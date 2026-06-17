@@ -132,15 +132,26 @@
       const tabs = VAMP.Progress ? ALL.filter(([id]) => VAMP.Progress.tabVisible(game, id)) : ALL;
       this._visibleTabs = tabs.map((t) => t[0]);
       if (!this._visibleTabs.indexOf || this._visibleTabs.indexOf(this.tab) < 0) this.tab = 'skills';   // never render a hidden tab
-      let tx = x + 16;
-      ctx.font = 'bold 13px Verdana';
-      for (const [id, label] of tabs) {
-        const tw = ctx.measureText(label).width + 26;
-        if (this.btn(ctx, tx, y + 12, tw, 28, label, { color: this.tab === id ? 'rgba(150,40,70,0.9)' : 'rgba(40,24,36,0.8)' })) { this.tab = id; this.scroll = 0; this.scrollX = 0; }
-        tx += tw + 8;
+      // tabs — adaptively sized so the whole row always fits (no collision with the close ✕),
+      // however many tabs are unlocked or however narrow the window is.
+      const tabsX0 = x + 16, tabsRight = x + pw - 42;   // the ✕ lives to the right of this
+      const avail = tabsRight - tabsX0;
+      let fontPx = 13, pad = 24, gap = 8;
+      const measureRow = (fp) => { ctx.font = 'bold ' + fp + 'px Verdana'; let tot = 0; for (const t of tabs) tot += ctx.measureText(t[1]).width; return tot; };
+      for (let guard = 0; guard < 10; guard++) {
+        const total = measureRow(fontPx) + tabs.length * pad + (tabs.length - 1) * gap;
+        if (total <= avail) break;
+        if (pad > 12) pad -= 4; else if (gap > 4) gap -= 2; else if (fontPx > 9) fontPx -= 1; else break;
       }
-      // close
-      if (this.btn(ctx, x + pw - 92, y + 12, 78, 28, 'CLOSE [C]')) this.close();
+      let tx = tabsX0;
+      ctx.font = 'bold ' + fontPx + 'px Verdana';
+      for (const [id, label] of tabs) {
+        const tw = ctx.measureText(label).width + pad;
+        if (this.btn(ctx, tx, y + 12, tw, 28, label, { font: 'bold ' + fontPx + 'px', color: this.tab === id ? 'rgba(150,40,70,0.9)' : 'rgba(40,24,36,0.8)' })) { this.tab = id; this.scroll = 0; this.scrollX = 0; }
+        tx += tw + gap;
+      }
+      // close — compact corner ✕, out of the tab flow so the row never collides with it
+      if (this.btn(ctx, x + pw - 36, y + 12, 26, 28, '✕', { font: 'bold 15px' })) this.close();
       const cx = x + 16, cy = y + 54, cw = pw - 32, ch = ph - 70;
       if (this.tab === 'skills') this.renderSkills(ctx, game, cx, cy, cw, ch);
       else if (this.tab === 'inventory') this.renderInventory(ctx, game, cx, cy, cw, ch);

@@ -159,20 +159,62 @@
       ctx.restore();
     },
 
+    // Hover tooltip card. Producers (drawHotbar/drawBuffs) stash a single tip on
+    // game._hudTip during their pass; we render it LAST so it's always on top.
+    // Tip shape: { title, color, sub, lines:[…], desc }  (all but title optional)
     drawHudTip(ctx, game, w, h) {
       if (!game._hudTip || !game._hudTip.length) return;
       const t = game._hudTip[0];
       game._hudTip = null;
       const m = VAMP.Input.mouse;
-      ctx.font = '11px Verdana';
-      const tw = ctx.measureText(t.name).width;
-      const bw = tw + 16, bh = 22;
-      let bx = m.x + 14, by = m.y + 14;
-      if (bx + bw > w) bx = w - bw - 6; if (by + bh > h) by = h - bh - 6;
-      ctx.fillStyle = 'rgba(8,6,12,0.95)'; this.rr(ctx, bx, by, bw, bh, 4); ctx.fill();
-      ctx.strokeStyle = t.color || '#aaa'; ctx.lineWidth = 1; this.rr(ctx, bx + 0.5, by + 0.5, bw - 1, bh - 1, 4); ctx.stroke();
-      ctx.fillStyle = t.color || '#ddd'; ctx.font = 'bold 11px Verdana';
-      ctx.fillText(t.name, bx + 8, by + 15);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+
+      const padX = 10, padTop = 8, padBot = 9;
+      const titleFont = 'bold 12px Verdana';
+      const subFont = '10px Verdana';
+      const lineFont = '10px Verdana';
+      const descFont = 'italic 10px Verdana';
+      const maxTextW = 230;
+      const lines = t.lines || [];
+
+      // measure → card size
+      ctx.font = titleFont; let cw = ctx.measureText(t.title).width;
+      if (t.sub) { ctx.font = subFont; cw = Math.max(cw, ctx.measureText(t.sub).width); }
+      ctx.font = lineFont; for (const l of lines) cw = Math.max(cw, ctx.measureText(l).width);
+      // wrap the description to the card width
+      let descLines = [];
+      if (t.desc) { ctx.font = descFont; descLines = wrapLines(ctx, t.desc, Math.min(maxTextW, Math.max(cw, 150))); for (const l of descLines) cw = Math.max(cw, ctx.measureText(l).width); }
+      cw = Math.min(cw, maxTextW);
+
+      let ch = padTop + 13;                       // title row
+      if (t.sub) ch += 13;
+      ch += lines.length * 14;
+      if (descLines.length) ch += 4 + descLines.length * 13;
+      ch += padBot;
+      const bw = cw + padX * 2, bh = ch;
+
+      // position near cursor, then clamp to all four edges (flip above if no room below)
+      let bx = m.x + 16, by = m.y + 16;
+      if (bx + bw > w - 4) bx = m.x - bw - 12;
+      if (bx < 4) bx = 4;
+      if (bx + bw > w - 4) bx = w - bw - 4;
+      if (by + bh > h - 4) by = m.y - bh - 12;
+      if (by < 4) by = 4;
+      if (by + bh > h - 4) by = h - bh - 4;
+
+      const col = t.color || '#ddd';
+      ctx.fillStyle = 'rgba(8,6,12,0.96)'; this.rr(ctx, bx, by, bw, bh, 5); ctx.fill();
+      ctx.strokeStyle = col; ctx.lineWidth = 1.2; this.rr(ctx, bx + 0.6, by + 0.6, bw - 1.2, bh - 1.2, 5); ctx.stroke();
+
+      let ty = by + padTop + 11;
+      ctx.fillStyle = col; ctx.font = titleFont; ctx.fillText(t.title, bx + padX, ty); ty += 13;
+      if (t.sub) { ctx.fillStyle = 'rgba(220,220,228,0.7)'; ctx.font = subFont; ctx.fillText(t.sub, bx + padX, ty); ty += 13; }
+      ctx.font = lineFont;
+      for (const l of lines) { ctx.fillStyle = '#dfe2e8'; ctx.fillText(l, bx + padX, ty); ty += 14; }
+      if (descLines.length) {
+        ty += 4; ctx.font = descFont; ctx.fillStyle = 'rgba(200,200,210,0.62)';
+        for (const l of descLines) { ctx.fillText(l, bx + padX, ty); ty += 13; }
+      }
     },
 
     drawBar(ctx, x, y, w, h, frac, color, bg, label, value) {
@@ -220,7 +262,11 @@
         // hover tip
         const m = VAMP.Input.mouse;
         if (m.x >= x && m.x <= x + sz && m.y >= y && m.y <= y + sz) {
-          game._hudTip = game._hudTip || []; game._hudTip.push({ name: it.name + (infinite ? '' : ' (' + Math.ceil(it.dur) + 's)'), color: it.color });
+          const lines = [];
+          lines.push(it.good ? 'Buff' + (infinite ? '' : ' · ' + Math.ceil(it.dur) + 's left') : 'Status' + (infinite ? '' : ' · ' + Math.ceil(it.dur) + 's left'));
+          for (const ph of modPhrases(it.mod)) lines.push(ph);
+          game._hudTip = game._hudTip || [];
+          game._hudTip.push({ title: it.name, color: it.color, lines });
         }
       }
     },
@@ -329,6 +375,24 @@
           }
           // toggle on indicator
           if (p.toggles[id]) { ctx.fillStyle = disc ? disc.color : '#fff'; ctx.fillRect(x + 4, y + sw - 7, sw - 8, 3); }
+          // hover tip card (hover-only; never consumes the click)
+          const m = VAMP.Input.mouse;
+          if (m.x >= x && m.x <= x + sw && m.y >= y && m.y <= y + sw) {
+            const lines = [];
+            const cost = Math.round(VAMP.Disc.effectiveCost(p, def));
+            const cdFull = Math.round(VAMP.Disc.effectiveCooldown(p, def) * 10) / 10;
+            const cdLeft = p.cooldowns[id] || 0;
+            const bits = [];
+            if (def.type === 'toggle') bits.push(def.upkeep ? cost + ' vitae +' + def.upkeep + '/s' : 'Toggle');
+            else bits.push(cost > 0 ? cost + ' vitae' : 'Free');
+            if (cdFull > 0) bits.push(cdFull + 's cd');
+            lines.push(bits.join(' · '));
+            if (cdLeft > 0.05) lines.push('On cooldown: ' + cdLeft.toFixed(1) + 's');
+            else if (p.blood < cost) lines.push('Not enough vitae');
+            if (def.type === 'toggle' && p.toggles[id]) lines.push('● Active');
+            game._hudTip = game._hudTip || [];
+            game._hudTip.push({ title: def.name, color: disc ? disc.color : '#ccc', sub: disc ? disc.name : '', lines, desc: def.desc });
+          }
         }
         x += sw + gap;
       }
@@ -339,11 +403,17 @@
     },
 
     drawMinimap(ctx, game, p, w) {
+      // lazy-build if the base canvas isn't ready yet (keeps it cached after)
+      if (!this.minimap && game.world) this.buildMinimap(game.world);
       if (!this.minimap) return;
       const size = 168, pad = 14;
-      const mx = w - size - pad, my = pad + 36;
+      // sit below the top-right HUD block (stars/WANTED/clock/district/legend) so they never overlap
+      const mx = w - size - pad, my = pad + 96;
+      // header label above the radar
+      ctx.font = 'bold 9px Verdana'; ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(210,200,170,0.7)';
+      ctx.fillText('RADAR', mx + size, my - 4); ctx.textAlign = 'left';
       // frame
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'; this.rr(ctx, mx - 2, my - 2, size + 4, size + 4, 6); ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.62)'; this.rr(ctx, mx - 2, my - 2, size + 4, size + 4, 6); ctx.fill();
       ctx.save();
       this.rr(ctx, mx, my, size, size, 5); ctx.clip();
       ctx.fillStyle = '#06060a'; ctx.fillRect(mx, my, size, size);
@@ -393,14 +463,19 @@
         ctx.fillStyle = mk.color; ctx.beginPath(); ctx.arc(cr.x, cr.y, 4, 0, U.TAU); ctx.fill();
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
       }
-      // player arrow
+      // player heading arrow — bigger, dark-outlined so it reads on any tile
       const pc = { x: mx + size / 2, y: my + size / 2 };
       ctx.save(); ctx.translate(pc.x, pc.y); ctx.rotate(p.inVehicle ? p.inVehicle.angle : p.facing);
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, -4); ctx.lineTo(-4, 4); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-6, -6); ctx.lineTo(-3, 0); ctx.lineTo(-6, 6); ctx.closePath();
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.lineWidth = 1.2; ctx.stroke();
       ctx.restore();
       ctx.restore();
-      // frame border
-      ctx.strokeStyle = 'rgba(200,180,140,0.4)'; ctx.lineWidth = 1.5; this.rr(ctx, mx, my, size, size, 5); ctx.stroke();
+      // frame border + north tick ('N' at the top edge — the radar is north-up)
+      ctx.strokeStyle = 'rgba(210,190,150,0.55)'; ctx.lineWidth = 1.5; this.rr(ctx, mx, my, size, size, 5); ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(mx + size / 2 - 7, my + 1, 14, 12);
+      ctx.fillStyle = 'rgba(235,235,240,0.85)'; ctx.font = 'bold 9px Verdana'; ctx.textAlign = 'center';
+      ctx.fillText('N', mx + size / 2, my + 10); ctx.textAlign = 'left';
       // #8 — compact legend under the radar
       const lgY = my + size + 4;
       ctx.font = '9px Verdana'; ctx.textAlign = 'left';
@@ -626,6 +701,40 @@
       else line = test;
     }
     ctx.fillText(line, x, yy);
+  }
+
+  // measure-only word wrap → array of lines (caller sets the font first)
+  function wrapLines(ctx, text, maxW) {
+    const words = ('' + text).split(' '); const out = []; let line = '';
+    for (const wd of words) {
+      const test = line ? line + ' ' + wd : wd;
+      if (ctx.measureText(test).width > maxW && line) { out.push(line); line = wd; }
+      else line = test;
+    }
+    if (line) out.push(line);
+    return out;
+  }
+
+  // turn a mods object ({pct:{moveSpeed:-0.12}, add:{influence:2}}) into short phrases
+  const MOD_NAMES = {
+    moveSpeed: 'move', attackSpeed: 'atk speed', meleeDmg: 'melee', spellPower: 'spell power',
+    maxHP: 'max HP', maxBlood: 'max vitae', armor: 'armor', dodge: 'dodge', critChance: 'crit',
+    critMult: 'crit dmg', lifesteal: 'lifesteal', feedYield: 'feed yield', feedSpeed: 'feed speed',
+    cdr: 'cooldown', cooldownMult: 'cooldown', xpMult: 'XP', sunResist: 'sun resist',
+    frenzyResist: 'frenzy resist', hpRegen: 'HP regen', discount: 'vitae cost',
+  };
+  function modPhrases(mods) {
+    if (!mods) return [];
+    const out = [];
+    if (mods.pct) for (const k in mods.pct) {
+      const v = mods.pct[k]; if (!v) continue;
+      out.push((v > 0 ? '+' : '') + Math.round(v * 100) + '% ' + (MOD_NAMES[k] || k));
+    }
+    if (mods.add) for (const k in mods.add) {
+      const v = mods.add[k]; if (!v) continue;
+      out.push((v > 0 ? '+' : '') + v + ' ' + (MOD_NAMES[k] || k));
+    }
+    return out;
   }
 
   VAMP.UI = UI;

@@ -13,6 +13,7 @@
     open: null,           // null | 'char' | 'pause' | 'shop' | 'board' | 'haven'
     tab: 'skills',        // within char: skills | inventory | map | stats
     scroll: 0,
+    scrollX: 0,           // horizontal pan (skill tree only — see drawTree)
     poi: null, shopStock: [], offers: [], shopMode: 'buy',
     selectedPower: null,
     hot: [],              // hit rects for this frame
@@ -23,7 +24,7 @@
     pausesSim() { return !!this.open; },
 
     openScreen(name, ctx) {
-      this.open = name; this.scroll = 0; this.maxScroll = 0; this.tip = null; this.selectedPower = null;
+      this.open = name; this.scroll = 0; this.scrollX = 0; this.maxScroll = 0; this.maxScrollX = 0; this.tip = null; this.selectedPower = null;
       if (name === 'char') this.tab = ctx && ctx.tab ? ctx.tab : 'skills';
       if (VAMP.Audio) { VAMP.Audio.resume(); VAMP.Audio.play('uiBig'); }
     },
@@ -35,7 +36,7 @@
       const tabs = (this._visibleTabs && this._visibleTabs.length) ? this._visibleTabs : ['skills', 'inventory', 'map', 'stats'];
       const i = Math.max(0, tabs.indexOf(this.tab || 'skills'));
       const next = tabs[(i + dir + tabs.length) % tabs.length];
-      this.tab = next; this.scroll = 0; if (VAMP.Audio) VAMP.Audio.play('ui');
+      this.tab = next; this.scroll = 0; this.scrollX = 0; if (VAMP.Audio) VAMP.Audio.play('ui');
     },
 
     handleKeys(game) {
@@ -52,7 +53,19 @@
         } else {
           if (In.wasPressed('tab') || In.wasPressed('keye')) this.close();
         }
-        if (In.mouse.wheel) this.scroll = U.clamp(this.scroll + In.mouse.wheel * 40, 0, this.maxScroll != null ? this.maxScroll : 2000);
+        // P6c — skill tree is wider than its viewport: pan horizontally.
+        // Shift+wheel pans the tree sideways; arrow keys pan it continuously.
+        const onTree = this.open === 'char' && this.tab === 'skills';
+        const shift = In.isDown('shiftleft') || In.isDown('shiftright');
+        if (onTree && (shift && In.mouse.wheel)) {
+          this.scrollX = U.clamp(this.scrollX + In.mouse.wheel * 60, 0, this.maxScrollX || 0);
+        } else if (In.mouse.wheel) {
+          this.scroll = U.clamp(this.scroll + In.mouse.wheel * 40, 0, this.maxScroll != null ? this.maxScroll : 2000);
+        }
+        if (onTree) {
+          const pan = (In.isDown('arrowleft') ? -1 : 0) + (In.isDown('arrowright') ? 1 : 0);
+          if (pan) this.scrollX = U.clamp(this.scrollX + pan * 14, 0, this.maxScrollX || 0);
+        }
         return;
       }
       if (In.wasPressed('keyc')) this.openScreen('char', { tab: 'skills' });
@@ -112,7 +125,7 @@
       ctx.font = 'bold 13px Verdana';
       for (const [id, label] of tabs) {
         const tw = ctx.measureText(label).width + 26;
-        if (this.btn(ctx, tx, y + 12, tw, 28, label, { color: this.tab === id ? 'rgba(150,40,70,0.9)' : 'rgba(40,24,36,0.8)' })) { this.tab = id; this.scroll = 0; }
+        if (this.btn(ctx, tx, y + 12, tw, 28, label, { color: this.tab === id ? 'rgba(150,40,70,0.9)' : 'rgba(40,24,36,0.8)' })) { this.tab = id; this.scroll = 0; this.scrollX = 0; }
         tx += tw + 8;
       }
       // close
@@ -297,29 +310,44 @@
       // scroll bound: tallest branch column
       let maxNodes = 0; for (const br of VAMP.Data.TREE) maxNodes = Math.max(maxNodes, br.nodes.length);
       this.maxScroll = Math.max(0, 50 + maxNodes * 46 + 30 - (treeH - 12));
+      // P6c — enforce a minimum readable column width; the resulting content is wider than
+      // the viewport, so clamp scrollX here (draw-time, ordering-independent — same as maxScroll).
+      const branchCount = VAMP.Data.TREE.length;
+      const treeColW = Math.max(82, treeW / branchCount);
+      const contentW = treeColW * branchCount;
+      this.maxScrollX = Math.max(0, contentW - treeW);
+      this.scrollX = U.clamp(this.scrollX || 0, 0, this.maxScrollX);
       ctx.fillStyle = '#cdb'; ctx.font = 'bold 13px Verdana';
       ctx.fillText('THE PATH   (◆ ' + (p.skillPoints || 0) + ' skill pts)   — click node to learn; click a power then a hotbar slot to bind', treeX, treeY + 4);
       ctx.save();
       rr(ctx, treeX, treeY + 12, treeW, treeH - 12, 6); ctx.clip();
       ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(treeX, treeY + 12, treeW, treeH - 12);
-      this.drawTree(ctx, game, treeX, treeY + 12 - this.scroll, treeW, treeH);
+      // fold BOTH scroll axes into the origin so drawing AND hit-testing shift identically.
+      // clip() hides off-viewport drawing but NOT the dist() hit-test, so gate clicks on the
+      // mouse being inside the tree viewport — otherwise panned-out nodes (slid behind the
+      // attributes column) would still be clickable and steal clicks from the "+" buttons.
+      const m = VAMP.Input.mouse;
+      const mIn = m.x >= treeX && m.x <= treeX + treeW && m.y >= treeY + 12 && m.y <= treeY + treeH;
+      this.drawTree(ctx, game, treeX - this.scrollX, treeY + 12 - this.scroll, treeW, treeH, treeColW, mIn);
       ctx.restore();
       // scroll hint
       ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '10px Verdana'; ctx.textAlign = 'right';
-      ctx.fillText('scroll to pan ▼', treeX + treeW - 8, treeY + treeH - 4); ctx.textAlign = 'left';
+      const panHint = this.maxScrollX > 0 ? '◄ ► pan (Shift+wheel / arrows)   ·   ' : '';
+      ctx.fillText(panHint + 'scroll to pan ▼', treeX + treeW - 8, treeY + treeH - 4); ctx.textAlign = 'left';
     },
 
-    drawTree(ctx, game, ox, oy, w, h) {
+    drawTree(ctx, game, ox, oy, w, h, colW, mIn) {
       const p = game.player;
       const branches = VAMP.Data.TREE;
-      const colW = w / branches.length;
+      if (colW == null) colW = w / branches.length;
+      if (mIn == null) mIn = true;
       const m = VAMP.Input.mouse;
       for (let bi = 0; bi < branches.length; bi++) {
         const br = branches[bi];
         const bx = ox + bi * colW + colW / 2;
-        // header
+        // header — ellipsize names too wide for the column (e.g. "Blood Sorcery")
         ctx.fillStyle = br.color; ctx.font = 'bold 11px Verdana'; ctx.textAlign = 'center';
-        ctx.fillText(br.name, bx, oy + 16);
+        ctx.fillText(ellip(ctx, br.name, colW - 6), bx, oy + 16);
         const pts = VAMP.SkillTree.branchPoints(p, br.id);
         ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '9px Verdana'; ctx.fillText(pts + ' pts', bx, oy + 28);
         // nodes by order
@@ -346,8 +374,9 @@
           else if (node.type === 'keystone') { ctx.font = 'bold 13px Verdana'; ctx.textAlign = 'center'; ctx.fillText('◆', bx, ny + 5); }
           else { ctx.font = 'bold 11px Verdana'; ctx.textAlign = 'center'; ctx.fillText(node.maxRank > 1 ? (rank + '/' + node.maxRank) : '+', bx, ny + 4); }
           ctx.textAlign = 'left';
-          // hover/click
-          const over = U.dist(m.x, m.y, bx, ny) < r + 2;
+          // hover/click — only when the cursor is inside the (clipped) tree viewport,
+          // so panned/scrolled-out nodes can't be clicked through other UI
+          const over = mIn && U.dist(m.x, m.y, bx, ny) < r + 2;
           if (over) {
             const reqInfo = VAMP.SkillTree.canAllocate(p, node.id);
             this.tip = { title: node.name + (node.maxRank > 1 ? ('  (' + rank + '/' + node.maxRank + ')') : ''), lines: [node.desc, node.type === 'power' ? 'Unlocks a power' : '', reqInfo.ok ? 'Click to learn (1 pt)' : (reqInfo.why || '')], color: br.color };
@@ -680,6 +709,14 @@
     ctx.beginPath(); ctx.moveTo(x + r, y);
     ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  // truncate a string with an ellipsis so it fits within maxW at the current ctx.font
+  function ellip(ctx, text, maxW) {
+    text = '' + text;
+    if (ctx.measureText(text).width <= maxW) return text;
+    let s = text;
+    while (s.length > 1 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1);
+    return s + '…';
   }
   function wrap(ctx, text, x, y, maxW, lh) {
     const words = ('' + text).split(' '); let line = '', yy = y;

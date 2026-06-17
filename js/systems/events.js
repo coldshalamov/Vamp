@@ -95,15 +95,14 @@
     const owned = game.world.districts.filter((d) => VAMP.Domains.isOwned(game, d.id));
     if (!owned.length) return false;
     const target = owned[(Math.random() * owned.length) | 0];
-    // district objects don't carry pixel coords — spawn near player
-    const pos = pickPosNear(game, 400, 800);
+    const pos = raidPosForDistrict(game, target.id) || pickPosNear(game, 400, 800);
     if (!pos) return false;
     // unique id per raid so multiple simultaneous raids track separately
     const raidId = target.id + '_' + ((game.time * 1000) | 0);
     const count = 4 + Math.floor(Math.random() * 3);
     for (let i = 0; i < count; i++) {
       const r = VAMP.Npc.create(game.world, Math.random() < 0.5 ? 'gunner' : 'thug', pos.x + (Math.random() - 0.5) * 100, pos.y + (Math.random() - 0.5) * 100, {});
-      r.faction = 'gang'; r.hostileToPlayer = false; r.aggro = false; r.domainRaider = raidId;
+      r.faction = 'gang'; r.hostileToPlayer = false; r.aggro = false; r.domainRaider = raidId; r.raidDistrict = target.id;
       game.addNPC(r);
     }
     game.addBlip({ pos, color: '#ff9030', kind: 'event', ttl: game.time + 120 });
@@ -124,9 +123,11 @@
           for (const raid of g._pendingRaids) {
             if (!raid.fired && g.time >= raid.deadline) {
               raid.fired = true;
-              const stillAlive = g.npcs.filter((n) => n.domainRaider === raid.raidId && !n.dead).length;
+              const stillAlive = g.npcs.filter((n) => n.domainRaider === raid.raidId && n.raidDistrict === raid.districtId && !n.dead).length;
               if (stillAlive > 0) {
-                VAMP.Domains.raiseTerror(g, raid.pos.x, raid.pos.y, 0.25);
+                VAMP.Domains.ensure(g);
+                const ds = g.districtState && g.districtState[raid.districtId];
+                if (ds) ds.terror = U.clamp((ds.terror || 0) + 0.25, 0, 1);
                 if (VAMP.UI) VAMP.UI.notify('Rival gang seized ground in ' + (VAMP.Domains.distName ? VAMP.Domains.distName(g, raid.districtId) : 'your domain') + ' — tithe cut!', '#ff7030');
               }
             }
@@ -146,6 +147,18 @@
         try { def.run(g); } catch (e) { /* never let an event break the loop */ }
       },
     };
+  }
+
+  function raidPosForDistrict(game, districtId) {
+    const idx = game.world.districts.findIndex((d) => d.id === districtId);
+    if (idx < 0) return null;
+    const buildings = (game.world.buildings || []).filter((b) => b.d === idx && b.w >= 40 && b.h >= 40);
+    for (let i = 0; i < 40 && buildings.length; i++) {
+      const b = buildings[(Math.random() * buildings.length) | 0];
+      const pos = game.walkableNear ? game.walkableNear(b.x + b.w / 2, b.y + b.h + 20) : null;
+      if (pos && game.world.isWalkable(pos.x, pos.y)) return pos;
+    }
+    return null;
   }
 
   VAMP.Events = { create, DEFS };

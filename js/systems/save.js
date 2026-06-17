@@ -81,15 +81,28 @@
     return { x: isFinite(p.x) ? p.x : 0, y: isFinite(p.y) ? p.y : 0 };
   }
 
+  function num(v, fallback, min, max) {
+    let n = +v;
+    if (!isFinite(n)) n = fallback;
+    if (min != null && n < min) n = min;
+    if (max != null && n > max) n = max;
+    return n;
+  }
+
   // apply a loaded data blob onto a freshly-created player
   function applyToPlayer(p, sp) {
-    p.level = sp.level || 1; p.xp = sp.xp || 0; p.xpTotal = sp.xpTotal || 0;
+    p.level = Math.floor(num(sp.level, 1, 1, VAMP.Stats.MAX_LEVEL || 60));
+    p.xp = Math.floor(num(sp.xp, 0, 0));
+    p.xpTotal = Math.floor(num(sp.xpTotal, p.xp, 0));
     // sanitize attributes: missing/garbage field must not NaN-brick the run
     p.attributes = Object.assign(VAMP.Stats.newAttributes(), sp.attributes || {});
     for (const k in p.attributes) { const v = +p.attributes[k]; p.attributes[k] = isFinite(v) && v >= 1 ? v : 1; }
-    p.attrPoints = sp.attrPoints || 0; p.skillPoints = sp.skillPoints || 0;
+    p.attrPoints = Math.floor(num(sp.attrPoints, 0, 0));
+    p.skillPoints = Math.floor(num(sp.skillPoints, 0, 0));
     p.treeNodes = sp.treeNodes || {}; p.powers = sp.powers || {}; p.slots = sp.slots || [null, null, null, null, null, null, null, null];
-    p.money = sp.money || 0; p.respecs = sp.respecs || 0; p.aimMode = sp.aimMode || 'move';
+    p.money = Math.floor(num(sp.money, 0, 0));
+    p.respecs = Math.floor(num(sp.respecs, 0, 0));
+    p.aimMode = sp.aimMode || 'move';
     p.inventory = sp.inventory || [];
     p.bloodState = Object.assign(VAMP.Blood.newBloodState(), sp.bloodState || {});
     p.stats = sp.stats || p.stats;
@@ -101,11 +114,11 @@
     p.reputation = sp.reputation || null; p.coterie = sp.coterie || []; p.legend = sp.legend || 0;
     p.factionRank = sp.factionRank || null; p.relations = sp.relations || null; p.nemeses = sp.nemeses || [];
     p.trophies = sp.trophies || []; p.blessings = sp.blessings || {}; p.businesses = sp.businesses || null;
-    p.reagents = sp.reagents || null; p.blessingMods = sp.blessingMods || null; p.childeCount = sp.childeCount || 0;
+    p.reagents = sp.reagents || null; p.blessingMods = sp.blessingMods || null; p.childeCount = Math.floor(num(sp.childeCount, 0, 0));
     p.chainProgress = sp.chainProgress || {}; p.chainTitles = sp.chainTitles || {};   // contract-chain storyline progress
     // signature-verb unlocks (grandfather older saves that already passed the level gate)
-    p.finisherUnlocked = sp.finisherUnlocked || (sp.level >= 3) || false;
-    p.pounceUnlocked = sp.pounceUnlocked || (sp.level >= 2) || false;
+    p.finisherUnlocked = sp.finisherUnlocked || (p.level >= 3) || false;
+    p.pounceUnlocked = sp.pounceUnlocked || (p.level >= 2) || false;
     if (VAMP.Progress) VAMP.Progress.restore(p, sp.progress);   // ensure + backfill (default-safe when undefined)
     if (VAMP.Haven) VAMP.Haven.ensure(p);
     if (VAMP.Mastery) VAMP.Mastery.ensure(p);
@@ -121,8 +134,8 @@
       VAMP.Inventory.equip(p, sp.equip.weaponItem);
     }
     VAMP.Stats.recompute(p);
-    p.hp = isFinite(sp.hp) ? Math.min(p.derived.maxHP, sp.hp) : p.derived.maxHP;          // NaN/garbage → full, never brick survival
-    p.blood = isFinite(sp.blood) ? Math.min(p.derived.maxBlood, sp.blood) : p.derived.maxBlood;
+    p.hp = num(sp.hp, p.derived.maxHP, 0, p.derived.maxHP);          // NaN/garbage → full, never brick survival
+    p.blood = num(sp.blood, p.derived.maxBlood, 0, p.derived.maxBlood);
   }
 
   // ---- settings ----

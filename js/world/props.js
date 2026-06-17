@@ -17,19 +17,24 @@
   const trees = []; for (let i = 0; i < TREE_CAP; i++) trees.push({ x: 0, y: 0, ptype: 3, variant: 0, assetKey: 'prop_tree', tint: '#24402a', scale: 1, prop: true });
   const misc = []; for (let i = 0; i < MISC_CAP; i++) misc.push({ x: 0, y: 0, ptype: 4, variant: 0, col: '#7a2630', scale: 1, prop: true });
   const standOut = new Array(LAMP_CAP + TREE_CAP + MISC_CAP);
+  // pre-allocated candidate slots (flat shape, mutated in place) — no per-frame object/extra-literal churn
   const candidates = new Array(CAND_CAP);
+  for (let i = 0; i < CAND_CAP; i++) candidates[i] = { x: 0, y: 0, ptype: -1, d2: 0, variant: 0, assetKey: '', tint: '', col: '', scale: 1 };
+  const byD2 = (a, b) => a.d2 - b.d2;
+  let _camX = 0, _camY = 0;
   let flatN = 0, lampN = 0, treeN = 0, miscN = 0, standN = 0, candN = 0, gatheredAt = -1;
 
   function hash2(c, r, seed) {
     return PV() ? PV().hash2(c, r, seed, 0) : 0;
   }
 
-  function pushCand(x, y, ptype, extra) {
+  // mutate a pooled slot in place — variant/assetKey/tint/col passed positionally (no extra-object alloc)
+  function pushCand(x, y, ptype, variant, assetKey, tint, col, scale) {
     if (candN >= CAND_CAP) return;
-    const cam = extra.cam;
-    const dx = x - cam.x, dy = y - cam.y;
-    const d2 = dx * dx + dy * dy;
-    candidates[candN++] = { x, y, ptype, d2, extra };
+    const dx = x - _camX, dy = y - _camY;
+    const s = candidates[candN++];
+    s.x = x; s.y = y; s.ptype = ptype; s.d2 = dx * dx + dy * dy;
+    s.variant = variant || 0; s.assetKey = assetKey || ''; s.tint = tint || ''; s.col = col || ''; s.scale = scale || 1;
   }
 
   function fillPool(pool, cap, sortKey, start) {
@@ -41,20 +46,19 @@
       if (c.ptype !== sortKey) continue;
       const s = pool[n++];
       s.x = c.x; s.y = c.y; s.ptype = c.ptype;
-      const ex = c.extra;
       if (sortKey === 0) {
-        s.variant = ex.variant;
-        s.assetKey = ex.assetKey;
-        s.scale = ex.scale || 1;
+        s.variant = c.variant;
+        s.assetKey = c.assetKey;
+        s.scale = c.scale || 1;
       } else if (sortKey === 3) {
-        s.variant = ex.variant;
-        s.assetKey = ex.assetKey;
-        s.tint = ex.tint;
-        s.scale = ex.scale || 1;
+        s.variant = c.variant;
+        s.assetKey = c.assetKey;
+        s.tint = c.tint;
+        s.scale = c.scale || 1;
       } else {
-        s.variant = ex.variant;
-        s.col = ex.col;
-        s.scale = ex.scale || 1;
+        s.variant = c.variant;
+        s.col = c.col;
+        s.scale = c.scale || 1;
       }
     }
     return n - start;
@@ -64,6 +68,7 @@
     if (gatheredAt === time) return;
     gatheredAt = time;
     flatN = 0; lampN = 0; treeN = 0; miscN = 0; standN = 0; candN = 0;
+    _camX = cam.x; _camY = cam.y;
     const TILE = world.TILE;
     const margin = Math.max(220, cam.viewH / cam.zoom * 0.28);
     const vr = cam.viewRect(margin);
@@ -76,56 +81,34 @@
         const cx = (c + 0.5) * TILE, cy = (r + 0.5) * TILE;
         const hs = hash2(c, r, world.seed);
         if (t === T.SIDEWALK && lampFn && lampFn(c, r)) {
-          pushCand(cx, cy, 0, {
-            cam, variant: (hs * 3) | 0,
-            assetKey: PV() ? PV().lampKey(c, r, world.seed) : 'prop_lamp',
-            scale: 0.92 + hs * 0.18,
-          });
+          pushCand(cx, cy, 0, (hs * 3) | 0, PV() ? PV().lampKey(c, r, world.seed) : 'prop_lamp', null, null, 0.92 + hs * 0.18);
           continue;
         }
         if (t === T.SIDEWALK) {
           if (hs < 0.072) {
-            pushCand(cx, cy, 3, {
-              cam, variant: (hs * 5) | 0,
-              assetKey: PV() ? PV().treeKey(c, r, world.seed) : 'prop_tree',
-              tint: PV() ? PV().treeTint(c, r, world.seed) : '#24402a',
-              scale: 0.82 + hs * 0.42,
-            });
+            pushCand(cx, cy, 3, (hs * 5) | 0, PV() ? PV().treeKey(c, r, world.seed) : 'prop_tree', PV() ? PV().treeTint(c, r, world.seed) : '#24402a', null, 0.82 + hs * 0.42);
           } else if (hs > 0.93 && flatN < FLAT_CAP) {
             const f = flat[flatN++]; f.x = cx; f.y = cy; f.k = 0;
           } else if (hs > 0.86 && hs < 0.9) {
-            pushCand(cx, cy, PV() ? PV().miscType(c, r, world.seed) : 4, {
-              cam, variant: (hs * 7) | 0,
-              col: PV() ? PV().miscColor(c, r, world.seed) : '#7a2630',
-              scale: 0.9 + hs * 0.2,
-            });
+            pushCand(cx, cy, PV() ? PV().miscType(c, r, world.seed) : 4, (hs * 7) | 0, null, null, PV() ? PV().miscColor(c, r, world.seed) : '#7a2630', 0.9 + hs * 0.2);
           } else if (hs > 0.82 && hs < 0.84) {
-            pushCand(cx, cy, 5, { cam, variant: 0, col: '#5a5a68', scale: 1 });
+            pushCand(cx, cy, 5, 0, null, null, '#5a5a68', 1);
           }
         } else if (t === T.ROAD) {
           if (hs < 0.03 && flatN < FLAT_CAP) { const f = flat[flatN++]; f.x = cx; f.y = cy; f.k = 1; }
         } else if (t === T.DIRT || t === T.CONCRETE) {
           if (hs < 0.04) {
-            pushCand(cx, cy, 2, { cam, variant: 0, col: '#23252b', scale: 1 });
+            pushCand(cx, cy, 2, 0, null, null, '#23252b', 1);
           } else if (hs > 0.95) {
-            pushCand(cx, cy, 3, {
-              cam, variant: (hs * 4) | 0,
-              assetKey: PV() ? PV().treeKey(c, r, world.seed) : 'prop_tree',
-              tint: PV() ? PV().treeTint(c, r, world.seed) : '#1e3822',
-              scale: 0.88 + hs * 0.3,
-            });
+            pushCand(cx, cy, 3, (hs * 4) | 0, PV() ? PV().treeKey(c, r, world.seed) : 'prop_tree', PV() ? PV().treeTint(c, r, world.seed) : '#1e3822', null, 0.88 + hs * 0.3);
           }
         } else if (t === T.GRASS && hs < 0.04) {
-          pushCand(cx, cy, 3, {
-            cam, variant: (hs * 6) | 0,
-            assetKey: PV() ? PV().treeKey(c, r, world.seed) : 'prop_tree',
-            tint: PV() ? PV().treeTint(c, r, world.seed) : '#1a3220',
-            scale: 0.72 + hs * 0.45,
-          });
+          pushCand(cx, cy, 3, (hs * 6) | 0, PV() ? PV().treeKey(c, r, world.seed) : 'prop_tree', PV() ? PV().treeTint(c, r, world.seed) : '#1a3220', null, 0.72 + hs * 0.45);
         }
       }
     }
-    candidates.sort((a, b) => a.d2 - b.d2);
+    for (let i = candN; i < CAND_CAP; i++) candidates[i].d2 = Infinity;   // park stale slots so sort leaves the active ones first
+    candidates.sort(byD2);
     lampN = fillPool(lamps, LAMP_CAP, 0);
     treeN = fillPool(trees, TREE_CAP, 3);
     miscN = 0;

@@ -9,6 +9,7 @@
   const U = VAMP.Util;
   // money label helper (kept separate so formatters never see '+$' literals)
   function cash(n){ return '$' + Math.round(n); }
+  const byY = (a, b) => a.y - b.y;   // hoisted draw-order comparator (no per-frame closure alloc)
   // #11 — per-clan palette used to tint the player sprite (cape + collar + eyes)
   const CLAN_COLORS = {
     brujah: { cape: '#1a0a14', cape2: '#3a1024', collar: '#7a1530', eye: '#ff4040', aura: '#ff5050' },
@@ -542,12 +543,13 @@
       VAMP.WorldRender.renderBuildings(ctx, this.cam, this.world, this.time * 1000);
       // cache player pos once/frame for NPC LOD distance checks
       const _pc = this.player; this._pcx = _pc.inVehicle ? _pc.inVehicle.x : _pc.x; this._pcy = _pc.inVehicle ? _pc.inVehicle.y : _pc.y;
-      const drawList = [];
+      const drawList = this._drawList || (this._drawList = []);   // reused each frame — no per-frame array alloc
+      drawList.length = 0;
       for (const v of this.vehicles) if (this.cam.inView(v.x, v.y, 60)) drawList.push(v);
       for (const n of this.npcs) if (this.cam.inView(n.x, n.y, 40)) drawList.push(n);
       if (VAMP.Props) { const sp = VAMP.Props.standing(); for (let i = 0; i < sp.n; i++) drawList.push(sp.arr[i]); }
       if (!this.player.inVehicle) drawList.push(this.player);
-      drawList.sort((a, b) => a.y - b.y);
+      drawList.sort(byY);
       for (const e of drawList) {
         if (e === this.player) VAMP.Player.render(e, ctx, this);
         else if (e.prop) VAMP.Props.drawStanding(e, ctx, this);

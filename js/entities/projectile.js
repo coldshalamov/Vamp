@@ -62,9 +62,10 @@
     const nx = pr.x + pr.vx * dt;
     const ny = pr.y + pr.vy * dt;
 
-    // trail
-    pr.trail.push({ x: pr.x, y: pr.y });
-    if (pr.trail.length > 8) pr.trail.shift();
+    // trail — reuse fixed slot objects (after it fills) instead of push/shift'ing a new {x,y} every frame
+    const tr = pr.trail;
+    if (tr.length < 8) tr.push({ x: pr.x, y: pr.y });
+    else { for (let i = 0; i < 7; i++) { tr[i].x = tr[i + 1].x; tr[i].y = tr[i + 1].y; } tr[7].x = pr.x; tr[7].y = pr.y; }
 
     // world collision (buildings/water)
     if (game.world.pointBlocked(nx, ny, pr.r)) { explode(pr, game); pr.dead = true; return; }

@@ -924,6 +924,8 @@
             if (VAMP.UI) VAMP.UI.notify('Not enough vitae — coterie loyalty suffers (−8)', '#a66');
           }
         }
+        // terror decays each dawn — the night's violence fades from collective memory
+        if (this.districtState) for (const id in this.districtState) { const ds = this.districtState[id]; if (ds.terror > 0) ds.terror = Math.max(0, ds.terror - 0.12); }
         const sb = Math.min(0.3, bs.dawnStreak * 0.03);
         p.buffs = p.buffs.filter((b) => b.id !== 'dawn_streak');
         p.addBuff({ id: 'dawn_streak', name: 'Survived the Dawn', dur: 9999, color: '#ffd24a', mods: { pct: { xpMult: sb, feedYield: sb } } });

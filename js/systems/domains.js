@@ -88,7 +88,8 @@
     let cash = 0, vitae = 0;
     for (const d of game.world.districts) {
       if (game.domains[d.id].owner === 'player') {
-        const mult = (1 + d.danger) * (1 + game.districtState[d.id].prosperity);
+        const ds = game.districtState[d.id];
+        const mult = (1 + d.danger) * (1 + ds.prosperity) * Math.max(0.1, 1 - (ds.terror || 0) * 0.6);
         cash += Math.round(45 * mult);
         vitae += Math.round(8 * mult);
       }

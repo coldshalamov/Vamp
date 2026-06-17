@@ -12,6 +12,14 @@
   let enabled = true, started = false, ambStarted = false;
   let musicTimer = null, musicStep = 0;
   let volume = { master: 0.8, music: 0.5, sfx: 0.9, amb: 0.6 };
+  // radio stations: named procedural moods that override driving music feel
+  const STATIONS = [
+    { name: 'KLUX 666.6 — Gothic Synth', scale: [0, 3, 5, 7, 10, 12, 15], tenLock: 0.2, noteType: 'triangle', color: '#c79bff' },
+    { name: 'Bloodwave 88.5 — Industrial', scale: [0, 2, 5, 7, 9, 12, 14], tenLock: 0.75, noteType: 'sawtooth', color: '#ff5a5a' },
+    { name: 'Eternal Night 93.1 — Dark Jazz', scale: [0, 3, 6, 10, 13, 15], tenLock: 0.05, noteType: 'sine', color: '#5aafff' },
+    { name: 'STATIC — Off', scale: [], tenLock: null, noteType: 'sine', color: '#888' },
+  ];
+  let radioIdx = 0, radioActive = false; // radioActive = player is in a vehicle
   let noiseBuf = null;                                       // shared 2s noise buffer (kills per-shot alloc)
   // persistent heartbeat nodes + state
   const hb = { thump: null, lp: null, gain: null, intensity: 0, acc: 0, bpm: 50 };
@@ -159,13 +167,18 @@
     // un-muting can't permanently kill the self-looping music chain.
     if (started && enabled) {
       musicStep++;
-      const baseT = tension;
+      const st = radioActive ? STATIONS[radioIdx] : null;
+      // radio Static station = silence music bus
+      if (st && st.tenLock === null) { musicTimer = setTimeout(musicTick, 600); return; }
+      const baseT = st ? st.tenLock : tension;
+      const scale = st ? st.scale : SCALE;
+      const nType = st ? st.noteType : (baseT > 0.5 ? 'sawtooth' : 'triangle');
       if (musicStep % 4 === 0) {
         tone({ type: 'sine', f0: ROOT / 2, dur: 1.6 + baseT, gain: 0.10 + baseT * 0.05, filter: 'lowpass', cutoff: 300, bus: 'music' });
       }
-      if (Math.random() < 0.35 + baseT * 0.4) {
-        const semi = SCALE[Math.floor(Math.random() * SCALE.length)] + (Math.random() < 0.4 ? 12 : 0);
-        tone({ type: baseT > 0.5 ? 'sawtooth' : 'triangle', f0: midiHz(semi), dur: 0.5 + Math.random() * 0.6, gain: 0.05 + baseT * 0.04, filter: 'lowpass', cutoff: 800 + baseT * 1200, bus: 'music' });
+      if (scale.length && Math.random() < 0.35 + baseT * 0.4) {
+        const semi = scale[Math.floor(Math.random() * scale.length)] + (Math.random() < 0.4 ? 12 : 0);
+        tone({ type: nType, f0: midiHz(semi), dur: 0.5 + Math.random() * 0.6, gain: 0.05 + baseT * 0.04, filter: 'lowpass', cutoff: 800 + baseT * 1200, bus: 'music' });
       }
       if (baseT > 0.5 && musicStep % 2 === 0) {
         tone({ type: 'square', f0: ROOT, dur: 0.12, gain: 0.05, bus: 'music' });
@@ -268,5 +281,12 @@
   }
   function isEnabled() { return enabled; }
 
-  VAMP.Audio = { resume, play, setTension, setVolume, toggle, isEnabled, tone, noise, update, setAmbience, unduck };
+  function nextStation() {
+    radioIdx = (radioIdx + 1) % STATIONS.length;
+    const st = STATIONS[radioIdx];
+    return st;  // caller shows the station name
+  }
+  function setRadioActive(on) { radioActive = on; }
+
+  VAMP.Audio = { resume, play, setTension, setVolume, toggle, isEnabled, tone, noise, update, setAmbience, unduck, nextStation, setRadioActive, STATIONS, get radioIdx() { return radioIdx; } };
 })();

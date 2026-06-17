@@ -223,12 +223,19 @@
 
   function updateInVehicle(p, dt, game) {
     const v = p.inVehicle;
+    if (VAMP.Audio) VAMP.Audio.setRadioActive(true);
     VAMP.Vehicle.update(v, dt, game);
     p.x = v.x; p.y = v.y;
     // drive-by always aims with the cursor (you steer with the keys, aim the gun with the mouse)
     const mw = game.cam.screenToWorld(In().mouse.x, In().mouse.y);
     p.aimX = mw.x; p.aimY = mw.y; p.facing = U.angleTo(v.x, v.y, mw.x, mw.y); p.freeAiming = true;
     if (In().wasPressed('keye')) VAMP.Vehicle.exit(p, game);
+    // R: cycle radio stations — GTA staple, 4 procedural synth moods
+    if (In().wasPressed('keyr') && VAMP.Audio && VAMP.Audio.nextStation) {
+      const st = VAMP.Audio.nextStation();
+      if (VAMP.UI) VAMP.UI.notify('♬ ' + st.name, st.color);
+      VAMP.Audio.play('ui');
+    }
     // drive-by: shoot toward mouse if has gun (LMB — Space is the handbrake while driving)
     if ((In().mouse.down) && p.equipment.weapon && p.equipment.weapon.kind !== 'claws' && p.attackCD <= 0) {
       rangedShot(p, game, true);

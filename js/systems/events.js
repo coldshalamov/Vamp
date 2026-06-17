@@ -11,11 +11,12 @@
   const U = VAMP.Util;
 
   const DEFS = [
-    { id: 'gangwar',  weight: 3, minStars: 0, run: gangWar,  name: 'Gang War' },
-    { id: 'crackdown',weight: 2, minStars: 2, run: crackDown,name: 'Police Crackdown' },
-    { id: 'bloodhunt',weight: 2, minStars: 3, run: bloodHunt,name: 'Blood Hunt' },
-    { id: 'vip',      weight: 2, minStars: 0, run: vipSight, name: 'Aristocrat Sighting' },
-    { id: 'faint',    weight: 2, minStars: 0, run: fainters, name: 'Fainting Mortals' },
+    { id: 'gangwar',    weight: 3, minStars: 0, run: gangWar,    name: 'Gang War' },
+    { id: 'crackdown',  weight: 2, minStars: 2, run: crackDown,  name: 'Police Crackdown' },
+    { id: 'bloodhunt',  weight: 2, minStars: 3, run: bloodHunt,  name: 'Blood Hunt' },
+    { id: 'vip',        weight: 2, minStars: 0, run: vipSight,   name: 'Aristocrat Sighting' },
+    { id: 'faint',      weight: 2, minStars: 0, run: fainters,   name: 'Fainting Mortals' },
+    { id: 'domainraid', weight: 2, minStars: 0, run: domainRaid, name: 'Rival Domain Raid', needsDomain: true },
   ];
 
   function pickPosNear(game, minD, maxD) {
@@ -88,6 +89,41 @@
     return true;
   }
 
+  // rival gang moves into a player-owned domain, raises terror and cuts tithe unless player intervenes
+  function domainRaid(game) {
+    if (!VAMP.Domains || !game.world.districts) return false;
+    const owned = game.world.districts.filter((d) => VAMP.Domains.isOwned(game, d.id));
+    if (!owned.length) return false;
+    const target = owned[(Math.random() * owned.length) | 0];
+    // spawn raiders in the district's center area
+    const cx = (target.x + target.w / 2) || 0, cy = (target.y + target.h / 2) || 0;
+    let pos = null;
+    for (let i = 0; i < 30; i++) { const a = Math.random() * U.TAU, d = U.range(80, 300); const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d; if (game.world.isWalkable(x, y)) { pos = { x, y }; break; } }
+    if (!pos) pos = pickPosNear(game, 400, 800);
+    if (!pos) return false;
+    const count = 4 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < count; i++) {
+      const r = VAMP.Npc.create(game.world, Math.random() < 0.5 ? 'gunner' : 'thug', pos.x + (Math.random() - 0.5) * 100, pos.y + (Math.random() - 0.5) * 100, {});
+      r.faction = 'gang'; r.hostileToPlayer = false; r.aggro = false; r.domainRaider = true;
+      r.onDead = () => { if (VAMP.UI) VAMP.UI.notify('Raider down — defend your domain!', '#ffd24a'); };
+      game.addNPC(r);
+    }
+    game.addBlip({ pos, color: '#ff9030', kind: 'event', ttl: game.time + 120 });
+    // after 90s if raiders still alive → raise terror
+    const raiderGroup = game.npcs.filter((n) => n.domainRaider && !n.dead);
+    setTimeout(() => {
+      const stillAlive = game.npcs.filter((n) => n.domainRaider && !n.dead && !n._terrorApplied).length;
+      if (stillAlive > 0) {
+        VAMP.Domains.raiseTerror(game, pos.x, pos.y, 0.25);
+        if (VAMP.UI) VAMP.UI.notify('Rival gang seized ground in ' + (VAMP.Domains.distName ? VAMP.Domains.distName(game, target.id) : 'your domain') + ' — tithe cut!', '#ff7030');
+        for (const n of game.npcs) if (n.domainRaider) n._terrorApplied = true;
+      }
+    }, 90000);
+    VAMP.UI.banner('DOMAIN UNDER ATTACK', 'Rival gang moves into ' + (VAMP.Domains.distName ? VAMP.Domains.distName(game, target.id) : 'your district') + '! Drive them out within 90 seconds.', '#ff9030');
+    if (VAMP.Audio) VAMP.Audio.play('siren');
+    return true;
+  }
+
   function create(game) {
     return {
       timer: U.range(60, 110),  // first event a minute or two in
@@ -95,10 +131,11 @@
         this.timer -= dt;
         if (this.timer > 0) return;
         this.timer = U.range(90, 160);   // then every ~2 minutes
-        // build a weighted pool gated by current heat
+        // build a weighted pool gated by current heat and domain ownership
         const stars = g.masquerade ? g.masquerade.stars : 0;
+        const hasDomain = VAMP.Domains && VAMP.Domains.ownedCount && VAMP.Domains.ownedCount(g) > 0;
         const pool = [];
-        for (const d of DEFS) if (stars >= d.minStars) for (let i = 0; i < d.weight; i++) pool.push(d);
+        for (const d of DEFS) { if (stars < d.minStars) continue; if (d.needsDomain && !hasDomain) continue; for (let i = 0; i < d.weight; i++) pool.push(d); }
         if (!pool.length) return;
         const def = pool[(Math.random() * pool.length) | 0];
         try { def.run(g); } catch (e) { /* never let an event break the loop */ }

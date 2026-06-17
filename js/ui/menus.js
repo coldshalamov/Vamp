@@ -695,7 +695,22 @@
       const pw = 640, ph = 420, x = (w - pw) / 2, y = (h - ph) / 2;
       this.panel(ctx, x, y, pw, ph, 'CONTRACTS');
       if (this.btn(ctx, x + pw - 92, y + 14, 78, 28, 'LEAVE [E]')) this.close();
-      let cy = y + 50;
+      // legend-title context: flavor text that reacts to the player's standing
+      if (VAMP.Legend) {
+        const BOARD_FLAVOR = {
+          'Fledgling':          'A local runner slides an envelope across the bar. "New blood? We got work."',
+          'Neonate':            'The broker nods — you\'re no longer a stranger. Word travels fast.',
+          'Anarch':             'Your name moves through the underground. These contacts came to YOU.',
+          'Ancilla':            'Three factions sent runners tonight. Your reputation holds doors open.',
+          'Baron':              'The city watches you. Even rivals offer you first refusal on these contracts.',
+          'Elder':              'They wait for YOUR approval. The contracts on this board are yours by right.',
+          'Prince of the City': 'There is no one above you. These are not contracts — they are demands you choose to honor.',
+        };
+        const titleName = VAMP.Legend.title(game.player).name;
+        const flavor = BOARD_FLAVOR[titleName] || '';
+        if (flavor) { ctx.fillStyle = '#7a6888'; ctx.font = 'italic 10px Verdana'; ctx.fillText(flavor, x + 16, y + 43); }
+      }
+      let cy = y + 55;
       if (game.activeMission) {
         ctx.fillStyle = '#e0a0b8'; ctx.font = '12px Verdana'; ctx.fillText('You already have an active contract: ' + game.activeMission.name, x + 16, cy + 4);
         if (this.btn(ctx, x + 16, cy + 14, 200, 28, 'Abandon current contract', { color: 'rgba(80,20,30,0.9)' })) VAMP.Missions.abandon(game);

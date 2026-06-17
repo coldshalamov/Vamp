@@ -192,6 +192,7 @@
     if (!v) return;
     v.driver = null; v.lastDriveT = game.time; v.speed *= 0.3;   // stamp the bail-out time for blast attribution
     p.inVehicle = null;
+    if (VAMP.Audio) VAMP.Audio.setRadioActive(false);
     // place beside car
     const a = v.angle + Math.PI / 2;
     p.x = v.x + Math.cos(a) * (v.r + 12);

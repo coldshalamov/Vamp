@@ -95,6 +95,7 @@
         case 'shop': this.renderShop(ctx, game, w, h); break;
         case 'board': this.renderBoard(ctx, game, w, h); break;
         case 'haven': this.renderHaven(ctx, game, w, h); break;
+        case 'credits': this.renderCredits(ctx, game, w, h); break;
       }
       if (this.tip) this.drawTip(ctx, this.tip, w, h);
     },
@@ -577,7 +578,7 @@
     // ----- PAUSE -----
     renderPause(ctx, game, w, h) {
       const canTorpor = VAMP.Legacy && VAMP.Legacy.canTorpor(game.player) && (!VAMP.Progress || VAMP.Progress.isRevealed(game.player, 'prestige'));
-      const pw = 320, ph = canTorpor ? 496 : 444, x = (w - pw) / 2, y = (h - ph) / 2;
+      const pw = 320, ph = canTorpor ? 538 : 490, x = (w - pw) / 2, y = (h - ph) / 2;
       this.panel(ctx, x, y, pw, ph, 'PAUSED');
       let by = y + 50;
       if (this.btn(ctx, x + 30, by, pw - 60, 36, 'Resume')) this.close(); by += 44;
@@ -594,18 +595,65 @@
       if (this.btn(ctx, x + 30, by, (pw - 70) / 2, 32, 'Ambience -')) VAMP.Audio.setVolume('amb', Math.max(0, (game.vol.amb = (game.vol.amb || 0.6) - 0.1)));
       if (this.btn(ctx, x + 40 + (pw - 70) / 2, by, (pw - 70) / 2, 32, 'Ambience +')) VAMP.Audio.setVolume('amb', Math.min(1, (game.vol.amb = (game.vol.amb || 0.6) + 0.1)));
       by += 40;
-      // brightness (gamma): a night game must let each player tune to their own monitor
       const gm = (game.vol.gamma == null ? 1 : game.vol.gamma);
       if (this.btn(ctx, x + 30, by, (pw - 70) / 2, 32, 'Brightness -')) { game.vol.gamma = Math.max(0.6, +(gm - 0.1).toFixed(2)); VAMP.Save.saveSettings(game.vol); }
       if (this.btn(ctx, x + 40 + (pw - 70) / 2, by, (pw - 70) / 2, 32, 'Brightness + (' + Math.round(gm * 100) + '%)')) { game.vol.gamma = Math.min(1.6, +(gm + 0.1).toFixed(2)); VAMP.Save.saveSettings(game.vol); }
-      by += 44;
+      by += 40;
+      // fullscreen + credits row
+      if (this.btn(ctx, x + 30, by, (pw - 70) / 2, 30, document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen [F11]')) { if (game.toggleFullscreen) game.toggleFullscreen(); }
+      if (this.btn(ctx, x + 40 + (pw - 70) / 2, by, (pw - 70) / 2, 30, 'Credits')) this.openScreen('credits');
+      by += 38;
       if (this.btn(ctx, x + 30, by, pw - 60, 36, 'Quit to Title (saves)', { color: 'rgba(80,20,30,0.9)' })) { VAMP.Save.save(game); game.toTitle(); }
       by += 44;
       if (canTorpor) {
         if (this.btn(ctx, x + 30, by, pw - 60, 36, 'Enter Torpor (Prestige ▸)', { color: 'rgba(80,40,120,0.95)', accent: '#c79bff' })) { if (VAMP.Legacy.enterTorpor(game)) { this.close(); game.toTitle(); } }
       }
-      ctx.fillStyle = '#998'; ctx.font = '10px Verdana'; ctx.textAlign = 'center';
-      ctx.fillText('ESC to resume', x + pw / 2, y + ph - 12); ctx.textAlign = 'left';
+      ctx.fillStyle = '#776'; ctx.font = '9px Verdana'; ctx.textAlign = 'center';
+      ctx.fillText('v' + (VAMP.Game && VAMP.Game.VERSION || '0.1.0') + '  ·  ESC to resume', x + pw / 2, y + ph - 12); ctx.textAlign = 'left';
+    },
+
+    // ----- CREDITS -----
+    renderCredits(ctx, game, w, h) {
+      const pw = 500, ph = Math.min(520, h - 80), x = (w - pw) / 2, y = (h - ph) / 2;
+      this.panel(ctx, x, y, pw, ph, 'CREDITS');
+      if (this.btn(ctx, x + pw - 92, y + 14, 78, 28, 'CLOSE [E]')) this.close();
+      const ver = VAMP.Game && VAMP.Game.VERSION ? VAMP.Game.VERSION : '0.1.0';
+      const lines = [
+        { text: 'VAMPIRE CITY  v' + ver, style: 'bold 18px Georgia, serif', color: '#c0303a' },
+        { text: 'A top-down open-world vampire RPG', style: 'italic 13px Georgia, serif', color: '#9a8' },
+        { text: '', style: '12px Verdana', color: '#cdd' },
+        { text: 'DESIGN & CODE', style: 'bold 11px Verdana', color: '#998' },
+        { text: 'coldshalamov', style: 'bold 14px Verdana', color: '#f0e6ee' },
+        { text: '', style: '12px Verdana', color: '#cdd' },
+        { text: 'INSPIRATIONS', style: 'bold 11px Verdana', color: '#998' },
+        { text: 'Vampire: The Masquerade — Bloodlines', style: '13px Verdana', color: '#cdd' },
+        { text: 'Grand Theft Auto (1997, 1999)', style: '13px Verdana', color: '#cdd' },
+        { text: 'Hotline Miami', style: '13px Verdana', color: '#cdd' },
+        { text: 'Hades', style: '13px Verdana', color: '#cdd' },
+        { text: '', style: '12px Verdana', color: '#cdd' },
+        { text: 'TOOLS', style: 'bold 11px Verdana', color: '#998' },
+        { text: 'Vanilla JavaScript + HTML5 Canvas', style: '13px Verdana', color: '#cdd' },
+        { text: 'Web Audio API (all sound procedural)', style: '13px Verdana', color: '#cdd' },
+        { text: 'No external frameworks or assets', style: '13px Verdana', color: '#cdd' },
+        { text: '', style: '12px Verdana', color: '#cdd' },
+        { text: 'Thank you for playing.', style: 'italic 14px Georgia, serif', color: '#e0a0b8' },
+        { text: 'The night is yours.', style: 'italic 13px Georgia, serif', color: '#9a8' },
+      ];
+      let ly = y + 56 - this.scroll;
+      ctx.save();
+      ctx.rect(x + 16, y + 50, pw - 32, ph - 66); ctx.clip();
+      for (const line of lines) {
+        if (ly > y + ph) break;
+        if (ly > y + 40) {
+          ctx.fillStyle = line.color; ctx.font = line.style; ctx.textAlign = 'center';
+          ctx.fillText(line.text, x + pw / 2, ly);
+        }
+        ly += line.text ? 24 : 10;
+      }
+      ctx.restore();
+      this.maxScroll = Math.max(0, ly - (y + ph) + 60);
+      ctx.fillStyle = '#776'; ctx.font = '9px Verdana'; ctx.textAlign = 'center';
+      ctx.fillText('Scroll to read · ESC to close', x + pw / 2, y + ph - 10); ctx.textAlign = 'left';
     },
 
     // ----- SHOP (vendor POI) -----

@@ -6,11 +6,41 @@
 (function () {
   'use strict';
   const VAMP = (window.VAMP = window.VAMP || {});
-  const KEY = 'vampcity_save_v1';
+  const KEY = 'vampcity_save_v1';                    // legacy single-slot key (kept for migration)
+  const SLOT_KEYS = ['vampcity_save_v1_0', 'vampcity_save_v1_1', 'vampcity_save_v1_2'];
   const SET = 'vampcity_settings_v1';
   const VERSION = 3;
 
-  function hasSave() { try { return !!localStorage.getItem(KEY); } catch (e) { return false; } }
+  function migrateLegacy() {
+    try {
+      const legacy = localStorage.getItem(KEY);
+      if (!legacy) return;
+      if (localStorage.getItem(SLOT_KEYS[0])) { localStorage.removeItem(KEY); return; }
+      localStorage.setItem(SLOT_KEYS[0], legacy);
+      localStorage.removeItem(KEY);
+    } catch (e) {}
+  }
+
+  function hasSaveSlot(i) { try { return !!localStorage.getItem(SLOT_KEYS[i]); } catch (e) { return false; } }
+  function hasSave() {
+    if (hasSaveSlot(0) || hasSaveSlot(1) || hasSaveSlot(2)) return true;
+    try { return !!localStorage.getItem(KEY); } catch (e) { return false; }
+  }
+
+  function getSlotSummary(i) {
+    try {
+      const raw = localStorage.getItem(SLOT_KEYS[i]);
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      if (!d || !d.player) return null;
+      return {
+        clan: d.player.clan || 'brujah',
+        level: d.player.level || 1,
+        day: d.day || 1,
+        humanity: (d.player.bloodState && d.player.bloodState.humanity != null) ? d.player.bloodState.humanity : 5,
+      };
+    } catch (e) { return null; }
+  }
 
   function serialize(game) {
     const p = game.player;
@@ -21,7 +51,9 @@
       clock: game.clock,
       day: game.day,
       missionsDone: game.missionsDone || 0,
+      activeMission: VAMP.Missions && VAMP.Missions.serialize ? VAMP.Missions.serialize(game) : null,
       heat: game.masquerade.heat,
+      difficulty: game.difficulty || 'normal',
       achievements: game.achievements ? game.achievements.unlocked : {},
       player: {
         x: p.x, y: p.y, clan: p.clan,
@@ -56,22 +88,34 @@
     return data;
   }
 
-  function save(game) {
+  function saveSlot(i, game) {
     try {
-      localStorage.setItem(KEY, JSON.stringify(serialize(game)));
+      localStorage.setItem(SLOT_KEYS[i], JSON.stringify(serialize(game)));
       return true;
     } catch (e) { console.warn('save failed', e); return false; }
   }
 
-  function load() {
+  function save(game) {
+    const slot = (game && game._saveSlot != null) ? game._saveSlot : 0;
+    return saveSlot(slot, game);
+  }
+
+  function loadSlot(i) {
     try {
-      const raw = localStorage.getItem(KEY);
+      const raw = localStorage.getItem(SLOT_KEYS[i]);
       if (!raw) return null;
       return JSON.parse(raw);
     } catch (e) { return null; }
   }
 
-  function clear() { try { localStorage.removeItem(KEY); } catch (e) {} }
+  function load() {
+    // First occupied slot (for backward-compat callers)
+    for (let i = 0; i < SLOT_KEYS.length; i++) { const d = loadSlot(i); if (d) return d; }
+    try { const raw = localStorage.getItem(KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+  }
+
+  function clearSlot(i) { try { localStorage.removeItem(SLOT_KEYS[i]); } catch (e) {} }
+  function clear() { for (let i = 0; i < SLOT_KEYS.length; i++) clearSlot(i); try { localStorage.removeItem(KEY); } catch (e) {} }
 
   function safeLoadedPosition(p, sp) {
     const x = +sp.x, y = +sp.y;
@@ -316,6 +360,7 @@
 
   function sanitizeRun(data) {
     if (!obj(data)) return data;
+    const diffs = { normal: 1, easy: 1, hard: 1 };
     return Object.assign({}, data, {
       seed: Math.floor(num(data.seed, 12345, 1, 0xffffffff)),
       time: num(data.time, 0, 0, 1000000000),
@@ -323,6 +368,7 @@
       day: Math.floor(num(data.day, 1, 1, 1000000)),
       missionsDone: Math.floor(num(data.missionsDone, 0, 0, 1000000000)),
       heat: num(data.heat, 0, 0, 100),
+      difficulty: diffs[data.difficulty] ? data.difficulty : 'normal',
     });
   }
 
@@ -394,5 +440,5 @@
   function saveSettings(s) { try { localStorage.setItem(SET, JSON.stringify(s)); } catch (e) {} }
   function loadSettings() { try { const r = localStorage.getItem(SET); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
 
-  VAMP.Save = { hasSave, save, load, clear, applyToPlayer, serialize, sanitizeRun, sanitizeWorldState, saveSettings, loadSettings, VERSION };
+  VAMP.Save = { hasSave, hasSaveSlot, save, saveSlot, load, loadSlot, clear, clearSlot, migrateLegacy, getSlotSummary, applyToPlayer, serialize, sanitizeRun, sanitizeWorldState, saveSettings, loadSettings, VERSION };
 })();

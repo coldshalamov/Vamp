@@ -105,7 +105,9 @@
       this.lightCtx = this.lightCanvas.getContext('2d');
     },
     // ---------------------------------------------------------------- start
-    newGame(seed, clan) {
+    newGame(seed, clan, slot, difficulty) {
+      this._saveSlot = slot != null ? slot : (this._saveSlot || 0);
+      this.difficulty = difficulty || 'normal';
       seed = seed >>> 0 || ((Math.random() * 1e9) >>> 0);
       this.time = 0; this.clock = 21; this.day = 1;
       this.safeUntil = 55;
@@ -135,7 +137,8 @@
       if (VAMP.Legacy) VAMP.Legacy.applyNewGame(this);
       this.mode = 'play';
     },
-    loadGame(data) {
+    loadGame(data, slot) {
+      this._saveSlot = slot != null ? slot : (this._saveSlot || 0);
       if (!data || !data.player || data.seed == null) {
         VAMP.UI.notify('Save was corrupt — starting fresh.', '#a66');
         this.mode = 'title'; return;
@@ -149,11 +152,13 @@
       this.domains = worldState.domains; this.districtState = worldState.districtState;
       this.clock = run.clock; this.day = run.day; this.time = run.time;
       this.missionsDone = run.missionsDone;
+      this.difficulty = run.difficulty || 'normal';
       this.night = { kills: 0, feeds: 0, money: 0 };
       this.afterPlayer();
       if (VAMP.Legacy) VAMP.Legacy.applyNewGame(this);
       this.masquerade.heat = run.heat;
       this.achievements = VAMP.Achievements.create(this, run.achievements || {});
+      if (VAMP.Missions && VAMP.Missions.restore) VAMP.Missions.restore(this, run.activeMission);
       VAMP.UI.notify('Welcome back to the long night.', '#e0a0b8');
       this.mode = 'play';
     },
@@ -262,7 +267,15 @@
       if (w.pois.length) w.pois[0].discovered = true;
     },
     // ---------------------------------------------------------------- update
+    toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    },
     update(dt) {
+      if (VAMP.Input.wasPressed('f11')) this.toggleFullscreen();
       if (this.mode === 'title') { VAMP.UI.update(dt); return; }
       if (this.mode === 'dead') { this.deathT += dt; VAMP.FX.update(dt); VAMP.UI.update(dt); return; }
       this.updateCursor();
@@ -900,6 +913,10 @@
       if (this.mode === 'dead') return;
       this.mode = 'dead'; this.deathT = 0;
       this.player.dead = true;
+      if (this.difficulty === 'hard') {
+        // Bloodhunt: death costs 1 permanent Humanity (irrecoverable)
+        VAMP.Blood.adjustHumanity(this.player, -1, 'death on The Bloodhunt — the soul frays');
+      }
       if (VAMP.Audio) { VAMP.Audio.play('death'); if (VAMP.Audio.unduck) VAMP.Audio.unduck(); }
       VAMP.FX.flash('rgba(120,0,0,0.5)', 1);
     },
@@ -974,13 +991,55 @@
         if (VAMP.Menus.btn(ctx, bx, by, bw, bh, clans[i][1], { color: sel ? 'rgba(150,40,70,0.95)' : 'rgba(30,18,28,0.9)', accent: sel ? '#ff7a9a' : null })) this._clan = clans[i][0];
         if (sel) { ctx.fillStyle = '#9a8'; ctx.font = '10px Verdana'; ctx.textAlign = 'center'; ctx.fillText(clans[i][2], bx + bw / 2, by + bh - 5); }
       }
-      const byy = startY + totalH + 14;
-      if (VAMP.Menus.btn(ctx, w / 2 - 160, byy, 150, 46, 'NEW NIGHT', { color: 'rgba(120,20,40,0.95)', font: 'bold 16px' })) { this.newGame(0, this._clan); }
-      const canContinue = VAMP.Save.hasSave();
-      if (VAMP.Menus.btn(ctx, w / 2 + 10, byy, 150, 46, 'CONTINUE', { disabled: !canContinue, font: 'bold 16px' })) { const d = VAMP.Save.load(); if (d) this.loadGame(d); }
+      if (!this._difficulty) this._difficulty = 'normal';
+      if (!this._saveSlot) this._saveSlot = 0;
+      // ---- difficulty selector
+      const diffY = startY + totalH + 10;
+      ctx.fillStyle = '#cdd'; ctx.font = 'bold 11px Verdana'; ctx.textAlign = 'center';
+      ctx.fillText('DIFFICULTY', w / 2, diffY - 2);
+      const diffs = [['normal', 'Danse Macabre (Normal)'], ['easy', 'The Masquerade (Easy)'], ['hard', 'The Bloodhunt (Hard)']];
+      const dw = 188, dg = 6;
+      const totalDW = diffs.length * dw + (diffs.length - 1) * dg;
+      for (let di = 0; di < diffs.length; di++) {
+        const dx = w / 2 - totalDW / 2 + di * (dw + dg);
+        const dsel = this._difficulty === diffs[di][0];
+        if (VAMP.Menus.btn(ctx, dx, diffY + 6, dw, 28, diffs[di][1], { color: dsel ? 'rgba(120,40,70,0.95)' : 'rgba(20,14,24,0.8)', accent: dsel ? '#ff7a9a' : null, font: 'bold 11px' })) this._difficulty = diffs[di][0];
+      }
+      // ---- save slot selector
+      const slotY = diffY + 48;
+      ctx.fillStyle = '#cdd'; ctx.font = 'bold 11px Verdana'; ctx.textAlign = 'center';
+      ctx.fillText('SAVE SLOT', w / 2, slotY - 2);
+      const sw2 = 120, sg2 = 8, totalSW = 3 * sw2 + 2 * sg2;
+      const m2 = VAMP.Input.mouse;
+      for (let si = 0; si < 3; si++) {
+        const sx = w / 2 - totalSW / 2 + si * (sw2 + sg2), sy = slotY + 6, sh2 = 38;
+        const summary = VAMP.Save.getSlotSummary ? VAMP.Save.getSlotSummary(si) : null;
+        const ssel = this._saveSlot === si;
+        ctx.fillStyle = ssel ? 'rgba(140,40,70,0.9)' : (summary ? 'rgba(24,16,28,0.9)' : 'rgba(12,8,16,0.7)');
+        ctx.fillRect(sx, sy, sw2, sh2);
+        ctx.strokeStyle = ssel ? '#c0506a' : 'rgba(160,120,140,0.3)'; ctx.lineWidth = 1.2; ctx.strokeRect(sx + 0.5, sy + 0.5, sw2 - 1, sh2 - 1);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#aaa'; ctx.font = '9px Verdana'; ctx.fillText('SLOT ' + (si + 1), sx + sw2 / 2, sy + 12);
+        if (summary) {
+          ctx.fillStyle = '#f0e0ec'; ctx.font = 'bold 10px Verdana';
+          ctx.fillText(summary.clan[0].toUpperCase() + summary.clan.slice(1) + ' L' + summary.level, sx + sw2 / 2, sy + 25);
+          ctx.fillStyle = '#998'; ctx.font = '9px Verdana';
+          ctx.fillText('Night ' + summary.day, sx + sw2 / 2, sy + 36);
+        } else {
+          ctx.fillStyle = '#554'; ctx.font = '10px Verdana'; ctx.fillText('— empty —', sx + sw2 / 2, sy + 27);
+        }
+        if (m2.x >= sx && m2.x <= sx + sw2 && m2.y >= sy && m2.y <= sy + sh2 && m2.pressed) { this._saveSlot = si; if (VAMP.Audio) VAMP.Audio.play('ui'); }
+      }
+      // ---- action buttons
+      const byy = slotY + 58;
+      const slotSummary = VAMP.Save.getSlotSummary ? VAMP.Save.getSlotSummary(this._saveSlot) : null;
+      if (VAMP.Menus.btn(ctx, w / 2 - 160, byy, 150, 46, 'NEW NIGHT', { color: 'rgba(120,20,40,0.95)', font: 'bold 16px' })) { VAMP.Save.migrateLegacy && VAMP.Save.migrateLegacy(); this.newGame(0, this._clan, this._saveSlot, this._difficulty); }
+      const canContinue = !!(VAMP.Save.hasSaveSlot ? VAMP.Save.hasSaveSlot(this._saveSlot) : VAMP.Save.hasSave());
+      if (VAMP.Menus.btn(ctx, w / 2 + 10, byy, 150, 46, 'CONTINUE', { disabled: !canContinue, font: 'bold 16px' })) { const d = VAMP.Save.loadSlot ? VAMP.Save.loadSlot(this._saveSlot) : VAMP.Save.load(); if (d) this.loadGame(d, this._saveSlot); }
+      ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.font = '10px Verdana';
+      ctx.fillText('v' + GAME_VERSION, w - 8, h - 8);
       ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '11px Verdana';
-      ctx.fillText('WASD / arrows move (you face where you move) · SPACE attack · DBL-TAP a direction to DASH/dodge · RMB free-aim · F feed/takedown · E interact · Shift sprint · X sneak · Ctrl pounce · 1-8 powers · C character · M map', w / 2, h - 24);
-      ctx.fillText('A Vampire: The Masquerade-inspired open-world RPG', w / 2, h - 8);
+      ctx.fillText('WASD / arrows move · SPACE attack · DBL-TAP direction to DASH · RMB free-aim · F feed · E interact · Shift sprint · X sneak · Ctrl pounce · 1-8 powers · C char · M map · F11 fullscreen', w / 2, h - 10);
       ctx.textAlign = 'left';
       if (VAMP.Input.mouse.pressed) VAMP.Audio.resume();
     },
@@ -988,20 +1047,56 @@
       ctx.fillStyle = 'rgba(20,0,4,' + Math.min(0.7, this.deathT) + ')'; ctx.fillRect(0, 0, w, h);
       ctx.textAlign = 'center';
       ctx.fillStyle = '#c0303a'; ctx.font = 'bold 56px Georgia, serif';
-      ctx.fillText('YOU FALL', w / 2, h * 0.34);
-      ctx.fillStyle = '#cdd'; ctx.font = '15px Verdana';
-      ctx.fillText('The Beast is not so easily slain. Rise, and the night is yours again.', w / 2, h * 0.40);
-      if (this.deathT > 1.0) {
+      ctx.fillText('YOU FALL', w / 2, h * 0.26);
+      const p = this.player;
+      const humanity = p ? p.bloodState.humanity : 5;
+      const night = this.night || { kills: 0, feeds: 0, money: 0 };
+      const legendTitle = p && VAMP.Legend && VAMP.Legend.titleFor ? VAMP.Legend.titleFor(p.legend) : 'Fledgling';
+      const epitaphs = [
+        'There is only the Beast. And now, the Beast has fallen.', // H 0
+        'You had already lost yourself. This was just the end.',   // H 1
+        'The darkness you fed grew hungry. Tonight it fed on you.',// H 2
+        'The Beast took its due. It always does.',                 // H 3-4
+        'You walked the edge of the Abyss. Tonight it claimed you.', // H 5-6
+        'The city does not forget its predators. It only waits.',  // H 7-8
+        'Even the mighty fall. The night is patient.',             // H 9-10
+      ];
+      const epitaphIdx = Math.min(6, Math.max(0, humanity <= 0 ? 0 : humanity <= 2 ? 1 : humanity <= 3 ? 2 : humanity <= 4 ? 3 : humanity <= 6 ? 4 : humanity <= 8 ? 5 : 6));
+      ctx.fillStyle = '#9a8'; ctx.font = 'italic 14px Georgia, serif';
+      ctx.fillText(epitaphs[epitaphIdx], w / 2, h * 0.33);
+      if (this.deathT > 0.7) {
+        const sw = 380, sh = 108, sx = w / 2 - sw / 2, sy = h * 0.38;
+        ctx.fillStyle = 'rgba(12,8,16,0.88)'; ctx.fillRect(sx, sy, sw, sh);
+        ctx.strokeStyle = 'rgba(192,48,58,0.45)'; ctx.lineWidth = 1; ctx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1);
+        const rows = [
+          ['NIGHT', this.day || 1, 'LEGEND', legendTitle],
+          ['KILLS', night.kills || 0, 'FEEDS', night.feeds || 0],
+          ['MISSIONS', this.missionsDone || 0, 'HUMANITY', humanity + ' / 10'],
+        ];
+        for (let r = 0; r < rows.length; r++) {
+          for (let c = 0; c < 2; c++) {
+            const lx = sx + 20 + c * (sw / 2), ly = sy + 22 + r * 30;
+            ctx.fillStyle = '#776'; ctx.font = '9px Verdana'; ctx.textAlign = 'left'; ctx.fillText(String(rows[r][c * 2]).toUpperCase(), lx, ly);
+            ctx.fillStyle = '#f0e6ee'; ctx.font = 'bold 13px Verdana'; ctx.fillText(String(rows[r][c * 2 + 1]), lx, ly + 14);
+          }
+        }
+        if (p && p.nemeses && p.nemeses.length) {
+          ctx.fillStyle = '#c79bff'; ctx.font = 'italic 10px Verdana'; ctx.textAlign = 'center';
+          ctx.fillText(p.nemeses[0].name + ' watches from the shadows.', w / 2, sy + sh - 10);
+        }
+      }
+      if (this.deathT > 1.2) {
         const pct = Math.round((VAMP.Haven ? VAMP.Haven.deathPenalty(this.player) : 0.2) * 100);
         const bw = 320, bx = w / 2 - bw / 2;
-        if (VAMP.Menus.btn(ctx, bx, h * 0.5, bw, 48, 'RISE AGAIN  ·  lose ' + pct + '% money', { color: 'rgba(120,20,40,0.95)', font: 'bold 15px' })) this.respawn();
-        if (VAMP.Menus.btn(ctx, bx, h * 0.5 + 60, bw, 40, 'Quit to Title (saves)')) { VAMP.Save.save(this); this.toTitle(); }
-        ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '11px Verdana';
-        ctx.fillText('You will rise at a distant haven, your wanted level cleared.', w / 2, h * 0.5 + 124);
+        if (VAMP.Menus.btn(ctx, bx, h * 0.68, bw, 48, 'RISE AGAIN  ·  lose ' + pct + '% money', { color: 'rgba(120,20,40,0.95)', font: 'bold 15px' })) this.respawn();
+        if (VAMP.Menus.btn(ctx, bx, h * 0.68 + 56, bw, 40, 'Quit to Title (saves)')) { VAMP.Save.save(this); this.toTitle(); }
+        ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '11px Verdana'; ctx.textAlign = 'center';
+        ctx.fillText('You will rise at a distant haven, your wanted level cleared.', w / 2, h * 0.68 + 112);
       }
       ctx.textAlign = 'left';
       VAMP.Input.endFrame();
     },
   };
+  Game.VERSION = GAME_VERSION;
   VAMP.Game = Game;
 })();

@@ -84,9 +84,35 @@
 
   // Apply a Humanity change. Negative for sins.
   function adjustHumanity(p, delta, reason) {
+    if (delta < 0 && VAMP.Game && VAMP.Game.difficulty) {
+      const mult = VAMP.Game.difficulty === 'easy' ? 0.5 : VAMP.Game.difficulty === 'hard' ? 1.5 : 1;
+      delta = delta * mult;
+    }
     const b = p.bloodState;
+    const prev = b.humanity;
     b.humanity = U.clamp(b.humanity + delta, 0, 10);
-    if (delta < 0 && VAMP.UI) VAMP.UI.notify(`Humanity ${delta.toFixed(1)} — ${reason}`, '#b5485f');
+    if (delta < 0 && VAMP.UI) {
+      VAMP.UI.notify(`Humanity ${delta.toFixed(1)} — ${reason}`, '#b5485f');
+      // Humanity drama: authored flavor on step-down
+      const BANNERS = [
+        null,                                                         // 10→9: no drama
+        null,                                                         // 9→8
+        'You told yourself it was necessary.',                        // 8→7 (step to H7)
+        'Their face is already fading.',                              // 7→6
+        'You notice you stopped thinking of them as people.',         // 6→5
+        'The hunger doesn\'t care what you were.',                    // 5→4
+        'Something quieted inside you.',                              // 4→3
+        'The darkness you feed grows hungry.',                        // 3→2
+        'The Beast is all that remains.',                             // 2→1
+        'There is only the Beast.',                                   // 1→0
+      ];
+      const crossed = Math.floor(prev) - Math.floor(b.humanity);
+      for (let step = 0; step < crossed; step++) {
+        const idx = 10 - (Math.floor(prev) - step);
+        const line = BANNERS[idx];
+        if (line && VAMP.UI.banner) VAMP.UI.banner('HUMANITY FADES', line, '#b5485f');
+      }
+    }
     VAMP.bus && VAMP.bus.emit('humanity', b.humanity);
   }
 

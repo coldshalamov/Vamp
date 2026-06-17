@@ -16,6 +16,7 @@
       return;
     }
     VAMP.Game.mode = 'title';
+    if (VAMP.Save.migrateLegacy) VAMP.Save.migrateLegacy();
 
     const loop = VAMP.Loop({
       canvas,

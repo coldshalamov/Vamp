@@ -27,6 +27,32 @@
     return game.walkableNear(game.player.x + 200, game.player.y);
   }
 
+  function guardSpot(game, anchor, spread) {
+    const world = game.world;
+    for (let i = 0; i < 24; i++) {
+      const p = { x: anchor.x + (Math.random() - 0.5) * spread, y: anchor.y + (Math.random() - 0.5) * spread };
+      if (world.isWalkable(p.x, p.y)) return p;
+      if (game.walkableNear) {
+        const near = game.walkableNear(p.x, p.y);
+        if (world.isWalkable(near.x, near.y)) return near;
+      }
+    }
+    if (world.isWalkable(anchor.x, anchor.y)) return { x: anchor.x, y: anchor.y };
+    if (game.walkableNear) {
+      const near = game.walkableNear(anchor.x, anchor.y);
+      if (world.isWalkable(near.x, near.y)) return near;
+    }
+    return world.randomWalkPos ? world.randomWalkPos(Math.random) : { x: anchor.x, y: anchor.y };
+  }
+
+  function spawnBaronGuard(game, id, anchor) {
+    const gp = guardSpot(game, anchor, 80);
+    const g2 = VAMP.Npc.create(game.world, 'gunner', gp.x, gp.y, {});
+    g2.faction = 'gang'; g2.aggro = true; g2.hostileToPlayer = true; g2.baronGuard = id;
+    game.addNPC(g2);
+    return g2;
+  }
+
   function contest(game, id) {
     ensure(game);
     const dm = game.domains[id];
@@ -57,12 +83,12 @@
         if (VAMP.UI) VAMP.UI.notify('The Baron calls for aid! ("Phase 3")', '#ff3030');
         if (VAMP.FX) { VAMP.FX.ring(baron.x, baron.y, 100, '#ff3030'); VAMP.FX.flash('rgba(255,40,20,0.3)', 0.35); }
         // summon 2 fresh lieutenants
-        for (let k = 0; k < 2; k++) { const g2 = VAMP.Npc.create(g.world, 'gunner', baron.x + (Math.random() - 0.5) * 80, baron.y + (Math.random() - 0.5) * 80, {}); g2.faction = 'gang'; g2.aggro = true; g2.hostileToPlayer = true; g2.baronGuard = id; g.addNPC(g2); }
+        for (let k = 0; k < 2; k++) spawnBaronGuard(g, id, baron);
         if (g.cam) g.cam.shake(6, 0.35);
       }
     };
     // a couple of lieutenants
-    for (let i = 0; i < 3; i++) { const g2 = VAMP.Npc.create(game.world, 'gunner', pos.x + (Math.random() - 0.5) * 80, pos.y + (Math.random() - 0.5) * 80, {}); g2.faction = 'gang'; g2.aggro = true; g2.hostileToPlayer = true; g2.baronGuard = id; game.addNPC(g2); }
+    for (let i = 0; i < 3; i++) spawnBaronGuard(game, id, pos);
     game.addNPC(baron);
     game.addBlip({ ref: baron, color: '#d6953f', kind: 'event' });
     VAMP.UI.banner('CONTEST: ' + distName(game, id), 'Slay the Baron to claim this district.', '#d6953f');

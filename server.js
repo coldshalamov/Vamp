@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = parseInt(process.argv[2] || process.env.PORT || '5599', 10);
-const ROOT = __dirname;
+const ROOT = path.resolve(__dirname);
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -18,8 +18,9 @@ const server = http.createServer((req, res) => {
   try {
     let urlPath = decodeURIComponent(req.url.split('?')[0]);
     if (urlPath === '/') urlPath = '/index.html';
-    const filePath = path.normalize(path.join(ROOT, urlPath));
-    if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
+    const filePath = path.resolve(ROOT, '.' + urlPath);
+    const relPath = path.relative(ROOT, filePath);
+    if (relPath === '' || relPath === '..' || relPath.startsWith('..' + path.sep) || path.isAbsolute(relPath)) { res.writeHead(403); res.end('Forbidden'); return; }
     fs.readFile(filePath, (err, data) => {
       if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found: ' + urlPath); return; }
       const ext = path.extname(filePath).toLowerCase();

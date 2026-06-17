@@ -787,7 +787,7 @@
       poi.discovered = true;
       VAMP.Audio.resume();
       if (poi.type === 'haven' || poi.type === 'bloodbank') { this.inHaven = true; if (VAMP.Progress) VAMP.Progress.reveal(this, 'havenUpgrade'); VAMP.Menus.poi = poi; VAMP.Menus.openScreen('haven'); }
-      else if (poi.type === 'market') { VAMP.Menus.poi = poi; VAMP.Menus.shopStock = VAMP.Economy.generateStock(this.player.level, 8); VAMP.Menus.shopMode = 'buy'; VAMP.Menus.openScreen('shop'); }
+      else if (poi.type === 'market') { VAMP.Menus.poi = poi; if (poi._stockDay !== this.day) { poi._stockDay = this.day; poi._stock = VAMP.Economy.generateStock(this.player.level, 8); } VAMP.Menus.shopStock = poi._stock; VAMP.Menus.shopMode = 'buy'; VAMP.Menus.openScreen('shop'); }
       else if (poi.type === 'board') { if (VAMP.Progress) VAMP.Progress.markSeen(this.player, 'missions'); VAMP.Menus.offers = VAMP.Missions.offers(this); VAMP.Menus.openScreen('board'); }
     },
     fastTravel(poi) {

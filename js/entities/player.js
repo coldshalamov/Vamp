@@ -204,9 +204,19 @@
     if (input.wasPressed('keyr')) VAMP.Disc.castSlot(p, game, 2);  // R = slot 3 alt-bind
     // pot_key (Blood Rage): B enters/exits deliberate frenzy — the player commands the Beast
     if (p.treeNodes && p.treeNodes['pot_key'] && input.wasPressed('keyb')) {
-      if (p.bloodState.frenzied) { VAMP.Blood.endFrenzy(p); if (VAMP.UI) VAMP.UI.notify('Blood Rage fades', '#c79bff'); }
-      else { VAMP.Blood.startFrenzy(p); if (VAMP.UI) VAMP.UI.notify('BLOOD RAGE — [B] to end', '#c01028'); }
+      if (p.bloodState.frenzied) {
+        VAMP.Blood.endFrenzy(p); p._bloodRageCD = 3;
+        if (VAMP.UI) VAMP.UI.notify('Blood Rage fades', '#c79bff');
+      } else if ((p._bloodRageCD || 0) > 0) {
+        if (VAMP.UI) VAMP.UI.notify('Blood Rage cooling down…', '#a88');
+      } else if (p.blood < 2) {
+        if (VAMP.UI) VAMP.UI.notify('Not enough vitae to enter Blood Rage', '#a88');
+      } else {
+        p.blood -= 2; VAMP.Blood.startFrenzy(p);
+        if (VAMP.UI) VAMP.UI.notify('BLOOD RAGE — [B] to end', '#c01028');
+      }
     }
+    if (p._bloodRageCD > 0) p._bloodRageCD -= dt;
 
     // ---- shadow-pounce (Ctrl): leap onto distant prey (Space is now the attack button) ----
     if (!carrying && (input.wasPressed('controlleft') || input.wasPressed('controlright')) && p.pounceUnlocked) tryPounce(p, game);

@@ -121,7 +121,11 @@
     ensure(game); const d = game.world.districtAt(x, y);
     if (d) game.districtState[d.id].terror = U.clamp((game.districtState[d.id].terror || 0) + amt, 0, 1);
   }
+  function raiseTerrorById(game, id, amt) {
+    ensure(game);
+    if (game.districtState[id]) game.districtState[id].terror = U.clamp((game.districtState[id].terror || 0) + amt, 0, 1);
+  }
   function stateAt(game, x, y) { ensure(game); const d = game.world.districtAt(x, y); return d ? game.districtState[d.id] : null; }
 
-  VAMP.Domains = { ensure, contest, onBaronDead, collectTithe, domainUpkeep, heatMult, ownedCount, isOwned, raiseTerror, stateAt, distName };
+  VAMP.Domains = { ensure, contest, onBaronDead, collectTithe, domainUpkeep, heatMult, ownedCount, isOwned, raiseTerror, raiseTerrorById, stateAt, distName };
 })();

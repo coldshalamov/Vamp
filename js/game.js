@@ -900,10 +900,13 @@
       if (safe) {
         const bs = p.bloodState;
         bs.dawnStreak = (bs.dawnStreak || 0) + 1;
-        let cashN = 0, vitae = 0;
-        if (VAMP.Domains && VAMP.Domains.collectTithe) { const r = VAMP.Domains.collectTithe(this); cashN += r.cash; vitae += r.vitae; }
-        if (VAMP.Business && VAMP.Business.collect) { const r = VAMP.Business.collect(this); cashN += r.cash; vitae += r.vitae; }
-        if (VAMP.Coterie && VAMP.Coterie.collectJobs) { const r = VAMP.Coterie.collectJobs(this); cashN += r.cash; vitae += r.vitae; }
+        // capture income per source for the dawn ledger
+        const _z = { cash: 0, vitae: 0 };
+        const titheR = (VAMP.Domains && VAMP.Domains.collectTithe) ? VAMP.Domains.collectTithe(this) : _z;
+        const bizR   = (VAMP.Business && VAMP.Business.collect)    ? VAMP.Business.collect(this)    : _z;
+        const jobsR  = (VAMP.Coterie  && VAMP.Coterie.collectJobs) ? VAMP.Coterie.collectJobs(this) : _z;
+        let cashN = titheR.cash + bizR.cash + jobsR.cash;
+        let vitae = titheR.vitae + bizR.vitae + jobsR.vitae;
         if (cashN) this.addMoney(cashN, px, py);
         if (vitae && VAMP.Haven) VAMP.Haven.depositVitae(p, vitae);
         // upkeep: domains cost bribes; thralls cost vitae — the empire has a price
@@ -930,18 +933,23 @@
         const sb = Math.min(0.3, bs.dawnStreak * 0.03);
         p.buffs = p.buffs.filter((b) => b.id !== 'dawn_streak');
         p.addBuff({ id: 'dawn_streak', name: 'Survived the Dawn', dur: 9999, color: '#ffd24a', mods: { pct: { xpMult: sb, feedYield: sb } } });
+        // per-source ledger for the recap card
+        const lootC = (this.night && this.night.money) || 0;
+        const netC = cashN + lootC - upkeepCash;
+        const netV = Math.round(vitae) - upkeepVitae;
+        const incParts = [titheR.cash && 'Tithe ' + cash(titheR.cash), bizR.cash && 'Fronts ' + cash(bizR.cash), jobsR.cash && 'Jobs ' + cash(jobsR.cash), lootC && 'Loot ' + cash(lootC)].filter(Boolean);
+        const expParts = [upkeepCash && '-' + cash(upkeepCash) + ' upkeep', upkeepVitae && '-' + upkeepVitae + ' vitae wages'].filter(Boolean);
         this.showRecap({   // #25
           title: 'NIGHT ' + (this.day - 1) + ' BANKED',
           lines: [
-            'Dawn streak: ' + bs.dawnStreak,
-            'Kills: ' + (this.night && this.night.kills || 0) + '   Feeds: ' + (this.night && this.night.feeds || 0),
-            'Earned: ' + cash(cashN + (this.night && this.night.money || 0)) + (vitae ? '   +' + Math.round(vitae) + ' vitae' : '') + (upkeepCash ? '   Upkeep: -$' + upkeepCash : '') + (upkeepVitae ? '   Wages: -' + upkeepVitae + ' vitae' : ''),
-            'Level ' + p.level + '   ' + (VAMP.Domains ? VAMP.Domains.ownedCount(this) : 0) + ' domains held',
-          ],
+            'Streak: ' + bs.dawnStreak + '   Kills: ' + (this.night && this.night.kills || 0) + '   Feeds: ' + (this.night && this.night.feeds || 0),
+            incParts.length ? 'Income: ' + incParts.join('  ') : null,
+            expParts.length ? 'Expenses: ' + expParts.join('  ') : null,
+            'Net: ' + cash(netC) + (netV > 0 ? '   +' + netV + ' vitae' : '') + '   Level ' + p.level + '   ' + (VAMP.Domains ? VAMP.Domains.ownedCount(this) : 0) + ' domains',
+          ].filter(Boolean),
           color: '#ffd24a',
         });
-        VAMP.UI.banner('NIGHT ' + (this.day - 1) + ' BANKED', 'Dawn streak ' + bs.dawnStreak + (cashN ? '  ' + cash(cashN) : '') + (vitae ? '  +' + Math.round(vitae) + ' vitae' : '') + '. Rest until dusk.', '#ffd24a');
-        if (VAMP.Audio) VAMP.Audio.play('win');
+        VAMP.UI.banner('NIGHT ' + (this.day - 1) + ' BANKED', 'Streak ' + bs.dawnStreak + (netC ? '  Net ' + cash(netC) : '') + (netV > 0 ? '  +' + netV + ' vitae' : '') + '. Rest until dusk.', '#ffd24a');
         this.night = { kills: 0, feeds: 0, money: 0 };
       } else if (p.bloodState.dawnStreak) {
         p.bloodState.dawnStreak = 0;

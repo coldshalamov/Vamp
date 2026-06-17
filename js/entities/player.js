@@ -68,6 +68,7 @@
     if (p.attackCD > 0) p.attackCD -= dt;
     if (p.interactCD > 0) p.interactCD -= dt;
     if (p.pounceCD > 0) p.pounceCD -= dt;
+    if (p.dashCD > 0) p.dashCD -= dt;       // dodge cooldown
     if (p.swingT > 0) p.swingT -= dt;       // claw-swing animation timer
     if (p.ward > 0 && !p.hasBuff('blood_ward')) p.ward = Math.max(0, p.ward - dt * 4);
 
@@ -88,6 +89,7 @@
     // ---- scripted cinematic verbs own the frame ----
     if (p.finisher) { tickFinisher(p, dt, game); return; }
     if (p.pounce) { tickPounce(p, dt, game); return; }
+    if (p.dash) { tickDash(p, dt, game); return; }
 
     // ---- feeding overrides everything ----
     if (p.feeding) {
@@ -118,6 +120,23 @@
     // sneak (X toggle): a slow, quiet, low-exposure gait — the deliberate predator's approach
     if (input.wasPressed('keyx')) { p.sneaking = !p.sneaking; if (VAMP.UI) VAMP.UI.notify(p.sneaking ? 'Sneaking — slow, quiet, hard to see' : 'No longer sneaking', '#9bf'); }
     const carrying = !!p.carrying;
+
+    // ---- DODGE (double-tap a direction): a quick i-frame dash — the action-combat skill floor that
+    // turns enemy telegraphs into read-and-react moments instead of damage you just eat. ----
+    if (!carrying && !(p.dashCD > 0) && !C().isRooted(p)) {
+      if (!p._tapT) p._tapT = { up: -99, down: -99, left: -99, right: -99 };
+      const TAPS = [
+        ['up', (input.wasPressed('keyw') || input.wasPressed('arrowup')), 0, -1],
+        ['down', (input.wasPressed('keys') || input.wasPressed('arrowdown')), 0, 1],
+        ['left', (input.wasPressed('keya') || input.wasPressed('arrowleft')), -1, 0],
+        ['right', (input.wasPressed('keyd') || input.wasPressed('arrowright')), 1, 0],
+      ];
+      for (let i = 0; i < TAPS.length; i++) {
+        const t = TAPS[i]; if (!t[1]) continue;
+        if (game.time - p._tapT[t[0]] < 0.28) { tryDash(p, game, t[2], t[3]); break; }
+        p._tapT[t[0]] = game.time;
+      }
+    }
 
     // sprint (blood-fueled vampiric burst) — Shift
     p.sprinting = false;
@@ -436,6 +455,31 @@
     if (prey) { prey.mesmerizedT = Math.max(prey.mesmerizedT || 0, 1.2); VAMP.Blood.startFeeding(p, prey); prey.state = 'fed'; prey.path = null; return; }
     const enemy = game.nearestNPC ? game.nearestNPC(p.x, p.y, (m) => !m.dead && !m.ally, 44) : null;
     if (enemy) C().damageNPC(game, enemy, p.derived.meleeDmg * 1.2, { knockback: 200, heavy: true, angle: p.pounce.ang, color: '#d33', dmgType: 'phys' });
+  }
+
+  // ---- DODGE DASH: a free, low-cooldown evade with brief i-frames (no targeting — purely defensive).
+  // Kept free + cooldown-gated (not vitae-cost) so it's a RELIABLE answer to telegraphs even when your
+  // vitae is spent on spells — the whole point of a skill-floor defense. ----
+  function tryDash(p, game, dx, dy) {
+    if (p.dashCD > 0 || C().isRooted(p) || p.feeding) return;
+    const ang = Math.atan2(dy, dx);
+    const dist = 128;
+    p.dash = { ang, t: 0, dur: 0.16, fromX: p.x, fromY: p.y, toX: p.x + Math.cos(ang) * dist, toY: p.y + Math.sin(ang) * dist };
+    p.dashCD = 0.6;
+    p.invuln = Math.max(p.invuln, 0.30);   // i-frames — phase through the blow you read
+    p.facing = ang;
+    if (VAMP.FX) VAMP.FX.dashTrail(p.x, p.y, ang);
+    if (VAMP.Audio) VAMP.Audio.play('step');
+  }
+  function tickDash(p, dt, game) {
+    const d = p.dash; d.t += dt;
+    const k = U.clamp(d.t / d.dur, 0, 1);
+    const e = U.ease ? U.ease.outCubic(k) : k;
+    const px = p.x, py = p.y;
+    p.x = U.lerp(d.fromX, d.toX, e); p.y = U.lerp(d.fromY, d.toY, e);
+    if (!p.mistForm) { game.world.collideCircle(p, p.r); if (p._inWater) { p.x = px; p.y = py; p.dash = null; return; } }
+    if (VAMP.FX && Math.random() < 0.9) VAMP.FX.afterimage(p.x, p.y, p.facing);
+    if (k >= 1) p.dash = null;
   }
 
   // SOCIAL VERB — intimidate a lone, unalarmed mortal: they break and flee (no combat, calm

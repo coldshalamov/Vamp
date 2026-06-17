@@ -128,7 +128,7 @@
       VAMP.UI.banner('VAMPIRE CITY', 'Feed. Grow. Rule the night.', '#c0303a');
       this.tutorialStage = 'move';
       this.tutorialGoal = 'MOVE: WASD / arrow keys. You face the way you move — SPACE attacks that way. Hold RIGHT-MOUSE to free-aim. Explore — the night is yours.';
-      this.tips = { moved: false, fed: false, power: false, usedC: false, body: false };  // #15
+      this.tips = { moved: false, fed: false, power: false, usedC: false, body: false, dash: false };  // #15
       this.night = { kills: 0, feeds: 0, money: 0 };                         // #25
       // board blip is revealed by VAMP.Progress when 'missions' unlocks (not at start)
       const hv = this.world.pois.find((p) => p.type === 'haven'); if (hv) this.addBlip({ x: hv.x, y: hv.y, color: '#5a9cff', kind: 'guide' });
@@ -314,6 +314,7 @@
         if (!this.tips.power && Object.values(p.powers || {}).length >= 1 && p.skillPoints > 0) { this.tips.power = true; this.showTip('Tip: press C -> Skills to spend points, then bind a power to a hotbar slot (1-8).'); }
         if (!this.tips.usedC && p.attrPoints > 0) { this.tips.usedC = true; this.showTip('Tip: you have Attribute points to spend — press C to open your character sheet.'); }
         if (!this.tips.body && this.npcs.some((n) => (n.downed || (n.dead && !n._disposed)) && !n.ally && U.dist(p.x, p.y, n.x, n.y) < 220)) { this.tips.body = true; this.showTip('Tip: a spared victim is left UNCONSCIOUS — a body. If a mortal finds one it raises the alarm. Press E to carry it to a dumpster/manhole (or drop it in shadow). Sneak with X; F behind an unaware foe is a silent takedown.'); }
+        if (!this.tips.dash && this.npcs.some((n) => n.hostileToPlayer && !n.dead && U.dist(p.x, p.y, n.x, n.y) < 240)) { this.tips.dash = true; this.showTip('Tip: DOUBLE-TAP a direction to DASH — you\'re briefly invulnerable. Watch for the red attack telegraph and dash THROUGH it, then strike back.'); }
       }
       if (this._tipT > 0) this._tipT -= dt;
       if (this._recapT > 0) this._recapT -= dt;
@@ -970,7 +971,7 @@
       const canContinue = VAMP.Save.hasSave();
       if (VAMP.Menus.btn(ctx, w / 2 + 10, byy, 150, 46, 'CONTINUE', { disabled: !canContinue, font: 'bold 16px' })) { const d = VAMP.Save.load(); if (d) this.loadGame(d); }
       ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '11px Verdana';
-      ctx.fillText('WASD / arrows move (you face where you move) · SPACE attack · RMB free-aim · F feed/takedown · E interact/carry · Shift sprint · X sneak · Ctrl pounce · 1-8 powers · C character · M map', w / 2, h - 24);
+      ctx.fillText('WASD / arrows move (you face where you move) · SPACE attack · DBL-TAP a direction to DASH/dodge · RMB free-aim · F feed/takedown · E interact · Shift sprint · X sneak · Ctrl pounce · 1-8 powers · C character · M map', w / 2, h - 24);
       ctx.fillText('A Vampire: The Masquerade-inspired open-world RPG', w / 2, h - 8);
       ctx.textAlign = 'left';
       if (VAMP.Input.mouse.pressed) VAMP.Audio.resume();

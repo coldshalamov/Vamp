@@ -412,7 +412,7 @@
       }
       // controls hint
       ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '10px Verdana'; ctx.textAlign = 'center';
-      ctx.fillText('SPACE attack · RMB free-aim · F feed/takedown · E interact/carry · T intimidate · Shift sprint · X sneak · Ctrl pounce · 1-8 powers · C character · M map', w / 2, h - 4);
+      ctx.fillText('SPACE attack · DBL-TAP dir = DASH (dodge) · RMB free-aim · F feed/takedown · E interact · T intimidate · Shift sprint · X sneak · Ctrl pounce · 1-8 powers · C character · M map', w / 2, h - 4);
       ctx.textAlign = 'left';
     },
 

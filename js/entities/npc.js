@@ -86,9 +86,9 @@
     if (pre.faction === 'civ') { n._jogger = (n.id % 7 === 0); n._loiter = (n.id % 4 === 0); n.idleT = 0; }   // ambient-life variety
     n.onDamaged = function (dmg, o, game) {
       n.aggro = true;
-      n.hitFlashT = 0.12;   // #10 — brief white flash so hits read clearly
+      n.hitFlashT = (o && o.heavy) ? 0.20 : 0.15;   // #10 — white flash so hits read; heavier hits flash longer
       // unified hit-reaction (stagger): a brief lean away from the blow + interrupts windup
-      n.staggerT = Math.max(n.staggerT || 0, (o && o.heavy) ? 0.22 : 0.12);
+      n.staggerT = Math.max(n.staggerT || 0, (o && o.heavy) ? 0.26 : 0.15);
       n.staggerA = (o && o.angle != null) ? o.angle : n.angle;
       if (n.faction === 'civ' || n.faction === 'animal') { n.state = 'flee'; n.fleeT = 6; reportPanic(n, game); }
       else if (n.state === 'wander' || n.state === 'follow') n.state = n.ally ? 'follow' : 'chase';
@@ -531,8 +531,9 @@
     const aiming = (n.state === 'attack' && n.weapon);
 
     ctx.rotate(n.angle + sway);
-    if (stag > 0) ctx.translate(-Math.cos(n.staggerA - n.angle) * stag * 3, 0);   // lean away from blow
+    if (stag > 0) ctx.translate(-Math.cos(n.staggerA - n.angle) * stag * 5, 0);   // lean away from blow (a real flinch, not a twitch)
     else if (aiming) ctx.translate(r * 0.12, 0);
+    if (n.hitFlashT > 0) { const pop = 1 + Math.min(0.18, n.hitFlashT * 0.9); ctx.scale(pop, pop); }   // brief sprite "pop" sells the impact
     const sp = spriteOf(n);
     const sheetKey = n.faction === 'gang' ? 'npc_gang'
       : n.faction === 'police' ? 'npc_cop'

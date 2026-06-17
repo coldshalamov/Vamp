@@ -111,7 +111,7 @@
       if (game.hitStop) game.hitStop(0.05);   // #7 — micro-freeze on a crit
     }
     if (!opts.dot && VAMP.FX) VAMP.FX.hit(npc.x, npc.y, opts.color || '#d33');
-    if (!opts.dot && VAMP.Audio && Math.random() < 0.5) VAMP.Audio.play('hit');
+    if (!opts.dot && VAMP.Audio) VAMP.Audio.play('hit');   // every connecting blow cracks — limp 50%-of-the-time audio made hits feel soft
 
     // knockback
     if (opts.knockback && p) {

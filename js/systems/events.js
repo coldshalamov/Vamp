@@ -95,30 +95,21 @@
     const owned = game.world.districts.filter((d) => VAMP.Domains.isOwned(game, d.id));
     if (!owned.length) return false;
     const target = owned[(Math.random() * owned.length) | 0];
-    // spawn raiders in the district's center area
-    const cx = (target.x + target.w / 2) || 0, cy = (target.y + target.h / 2) || 0;
-    let pos = null;
-    for (let i = 0; i < 30; i++) { const a = Math.random() * U.TAU, d = U.range(80, 300); const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d; if (game.world.isWalkable(x, y)) { pos = { x, y }; break; } }
-    if (!pos) pos = pickPosNear(game, 400, 800);
+    // district objects don't carry pixel coords — spawn near player
+    const pos = pickPosNear(game, 400, 800);
     if (!pos) return false;
+    // unique id per raid so multiple simultaneous raids track separately
+    const raidId = target.id + '_' + ((game.time * 1000) | 0);
     const count = 4 + Math.floor(Math.random() * 3);
     for (let i = 0; i < count; i++) {
       const r = VAMP.Npc.create(game.world, Math.random() < 0.5 ? 'gunner' : 'thug', pos.x + (Math.random() - 0.5) * 100, pos.y + (Math.random() - 0.5) * 100, {});
-      r.faction = 'gang'; r.hostileToPlayer = false; r.aggro = false; r.domainRaider = true;
-      r.onDead = () => { if (VAMP.UI) VAMP.UI.notify('Raider down — defend your domain!', '#ffd24a'); };
+      r.faction = 'gang'; r.hostileToPlayer = false; r.aggro = false; r.domainRaider = raidId;
       game.addNPC(r);
     }
     game.addBlip({ pos, color: '#ff9030', kind: 'event', ttl: game.time + 120 });
-    // after 90s if raiders still alive → raise terror
-    const raiderGroup = game.npcs.filter((n) => n.domainRaider && !n.dead);
-    setTimeout(() => {
-      const stillAlive = game.npcs.filter((n) => n.domainRaider && !n.dead && !n._terrorApplied).length;
-      if (stillAlive > 0) {
-        VAMP.Domains.raiseTerror(game, pos.x, pos.y, 0.25);
-        if (VAMP.UI) VAMP.UI.notify('Rival gang seized ground in ' + (VAMP.Domains.distName ? VAMP.Domains.distName(game, target.id) : 'your domain') + ' — tithe cut!', '#ff7030');
-        for (const n of game.npcs) if (n.domainRaider) n._terrorApplied = true;
-      }
-    }, 90000);
+    // register deadline for game-time tracking in update() — avoids real-time setTimeout
+    if (!game._pendingRaids) game._pendingRaids = [];
+    game._pendingRaids.push({ raidId, districtId: target.id, pos, deadline: game.time + 90 });
     VAMP.UI.banner('DOMAIN UNDER ATTACK', 'Rival gang moves into ' + (VAMP.Domains.distName ? VAMP.Domains.distName(game, target.id) : 'your district') + '! Drive them out within 90 seconds.', '#ff9030');
     if (VAMP.Audio) VAMP.Audio.play('siren');
     return true;
@@ -128,6 +119,20 @@
     return {
       timer: U.range(60, 110),  // first event a minute or two in
       update(dt, g) {
+        // resolve domain-raid deadlines using game time (not wall-clock setTimeout)
+        if (g._pendingRaids && g._pendingRaids.length) {
+          for (const raid of g._pendingRaids) {
+            if (!raid.fired && g.time >= raid.deadline) {
+              raid.fired = true;
+              const stillAlive = g.npcs.filter((n) => n.domainRaider === raid.raidId && !n.dead).length;
+              if (stillAlive > 0) {
+                VAMP.Domains.raiseTerror(g, raid.pos.x, raid.pos.y, 0.25);
+                if (VAMP.UI) VAMP.UI.notify('Rival gang seized ground in ' + (VAMP.Domains.distName ? VAMP.Domains.distName(g, raid.districtId) : 'your domain') + ' — tithe cut!', '#ff7030');
+              }
+            }
+          }
+          g._pendingRaids = g._pendingRaids.filter((r) => !r.fired);
+        }
         this.timer -= dt;
         if (this.timer > 0) return;
         this.timer = U.range(90, 160);   // then every ~2 minutes

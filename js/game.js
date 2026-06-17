@@ -801,11 +801,12 @@
     convertThrall(npc) {
       const p = this.player;
       const thralls = this.npcs.filter((n) => n.ally && !n.dead);
-      // dom_key Iron Will: thralls are permanent — they cannot be displaced; cap = max(2, floor(Influence))
+      // dom_key Iron Will: thralls are permanent — cap = max(normalCap, floor(Influence))
       const ironWill = p.treeNodes && p.treeNodes['dom_key'];
+      const normalCap = VAMP.Haven ? VAMP.Haven.thrallCap(p) : (3 + (p.attributes.presence > 6 ? 1 : 0));
       const cap = ironWill
-        ? Math.max(2, Math.floor((p.derived && p.derived.influence != null) ? p.derived.influence : 0))
-        : (VAMP.Haven ? VAMP.Haven.thrallCap(p) : (3 + (p.attributes.presence > 6 ? 1 : 0)));
+        ? Math.max(normalCap, Math.floor((p.derived && p.derived.influence != null) ? p.derived.influence : 0))
+        : normalCap;
       if (thralls.length >= cap) {
         if (ironWill) { if (VAMP.UI) VAMP.UI.notify('Iron Will: cap reached — invest in Presence', '#a88'); return; }
         const oldest = thralls.slice().sort((a, b) => (a.thrallBornT || 0) - (b.thrallBornT || 0))[0];

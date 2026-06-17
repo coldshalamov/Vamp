@@ -4,7 +4,7 @@
  */
 import { chromium } from 'playwright';
 
-const BASE = process.env.VAMP_URL || 'http://localhost:3456';
+const BASE = process.env.VAMP_URL || 'http://localhost:5599';
 const errors = [];
 const warnings = [];
 

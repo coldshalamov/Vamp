@@ -262,6 +262,7 @@
       _snapInnocent: Math.floor(finiteNum(raw.snapInnocent, game.player && game.player.bloodState ? game.player.bloodState.innocentKills : 0, 0, 1000000000)),
     };
     if (m.id >= MID) MID = m.id + 1;
+    if (raw.type === 'cleanse' && savedData.center) m.data.center = savedData.center;
     game.activeMission = m;
     setup(game, m);
     Object.assign(m.data, savedData);
@@ -306,7 +307,7 @@
       const y = center.y + (Math.random() - 0.5) * spread;
       if (game.world.isWalkable(x, y)) return { x, y };
     }
-    return spot(game, fallbackMin || 240, fallbackMax || 900);
+    return objectiveSpot(game, center.x, center.y) || spot(game, fallbackMin || 240, fallbackMax || 900);
   }
 
   function objectiveSpot(game, x, y) {
@@ -366,7 +367,7 @@
         break;
       }
       case 'cleanse': {
-        const center = spot(game, 360, 800);
+        const center = m.data.center || spot(game, 360, 800);
         for (let i = 0; i < m.need; i++) {
           const gp = spotNear(game, center, 160, 360, 800);
           const type = (lvl > 15 && Math.random() < 0.4) ? 'hunter' : (Math.random() < 0.5 ? 'gunner' : 'thug');

@@ -745,7 +745,8 @@
         ctx.drawImage(VAMP.Assets.get('haven_bg'), 0, 0, w, h);
         ctx.fillStyle = 'rgba(5,6,12,0.55)'; ctx.fillRect(0, 0, w, h);
       }
-      const pw = Math.min(760, w - 80), ph = Math.min(520, h - 60), x = (w - pw) / 2, y = (h - ph) / 2;
+      const workshopBuilt = VAMP.Haven && VAMP.Haven.hasWorkshop && VAMP.Haven.hasWorkshop(p);
+      const pw = Math.min(760, w - 80), ph = Math.min(workshopBuilt ? 620 : 520, h - 60), x = (w - pw) / 2, y = (h - ph) / 2;
       this.panel(ctx, x, y, pw, ph, this.poi ? this.poi.label : 'Your Haven');
       if (this.btn(ctx, x + pw - 92, y + 14, 78, 28, 'LEAVE [E]')) this.close();
       ctx.fillStyle = '#ffd24a'; ctx.font = 'bold 14px Verdana'; ctx.textAlign = 'right'; ctx.fillText('$ ' + U.fmt(p.money), x + pw - 110, y + 30); ctx.textAlign = 'left';
@@ -781,6 +782,19 @@
         ctx.fillStyle = '#9a8'; ctx.font = '9px Verdana'; wrap(ctx, room.desc, rx + 8, ry + 28, colW - 90, 10);
         if (this.btn(ctx, rx + colW - 78, ry + 10, 70, 26, maxed ? 'MAX' : '$' + cost, { disabled: maxed || p.money < cost, font: 'bold 10px' })) VAMP.Haven.upgrade(game, room.id);
         ry += 50;
+      }
+      // ALCHEMY — visible once the Workshop room is built
+      if (VAMP.Haven.hasWorkshop(p) && VAMP.Alchemy) {
+        const wsLv = VAMP.Haven.level(p, 'workshop');
+        ry += 8;
+        ctx.fillStyle = '#ffcc88'; ctx.font = 'bold 12px Verdana'; ctx.fillText('⚒ ALCHEMY  (Workshop lv' + wsLv + ')', rx, ry); ry += 20;
+        for (const recipe of VAMP.Alchemy.available(p, wsLv)) {
+          const cnt = VAMP.Alchemy.inputCount(p, recipe);
+          const canBrew = cnt >= recipe.need;
+          const label = recipe.name + '  (' + cnt + (recipe.need > 1 ? '/' + recipe.need : '') + ')';
+          if (this.btn(ctx, rx, ry, colW, 26, label, { disabled: !canBrew, font: 'bold 10px', align: 'left', color: canBrew ? 'rgba(80,50,10,0.92)' : undefined })) VAMP.Alchemy.brew(game, recipe.id);
+          ry += 30;
+        }
       }
     },
 

@@ -358,6 +358,16 @@
         }
         // key number
         ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillText('' + (i + 1), x + 4, y + 11);
+        // first-power hint: pulse slot 1 until the player casts their clan Discipline for the first time
+        if (i === 0 && def && game._pulseSlot1Until > game.time && (p.stats.castsTotal || 0) === 0) {
+          const pulse = 0.5 + 0.5 * Math.sin(game.time * 6);
+          ctx.save();
+          ctx.strokeStyle = 'rgba(176,123,255,' + (0.55 + pulse * 0.45) + ')';
+          ctx.lineWidth = 2 + pulse * 1.6;
+          this.rr(ctx, x - 2, y - 2, sw + 4, sw + 4, 7); ctx.stroke();
+          ctx.restore();
+          ctx.font = 'bold 9px Verdana';
+        }
         if (def) {
           const iconKey = (VAMP.powerIconKey && VAMP.powerIconKey(id))
             || (function () {

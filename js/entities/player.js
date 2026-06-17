@@ -665,6 +665,12 @@
       ctx.beginPath(); ctx.arc(p.x, p.y, rr2, 0.42 * U.TAU, 0.62 * U.TAU); ctx.stroke();
       const ma = (f.beat || 0) * U.TAU;
       ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(p.x + Math.cos(ma) * rr2, p.y + Math.sin(ma) * rr2, 3.5, 0, U.TAU); ctx.fill();
+      // live kill-vs-spare readout — the central predator choice, made legible (you SEE the consequence)
+      const lethal = p.holdingFeed;
+      ctx.font = 'bold 9px Verdana'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = lethal ? '#ff6a6a' : '#86ffae';
+      ctx.fillText(lethal ? '☠ HOLD F — draining to death' : '○ release to SPARE (leaves a body)', p.x, p.y - r - 20);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
   }
 

@@ -53,7 +53,9 @@
       apply: (p) => { p.finisherUnlocked = true; },
       reveal: (g) => { if (VAMP.UI) VAMP.UI.notify('EXECUTE — press F on a helpless or near-dead foe for a brutal killing blow.', '#ff5a5a'); } },
     { key: 'missions', prereq: 'feed',
-      trigger: (g) => (g.player.bloodState.fedCount >= 2) || g.player.level >= 2,
+      // the FIRST feed earns a contract — the opening must promise "now there's work" fast,
+      // not make the player do ~9 identical feeds before anything new appears (refund-window risk).
+      trigger: (g) => (g.player.bloodState.fedCount >= 1) || g.player.level >= 2,
       bf: (p) => (p.bloodState && p.bloodState.fedCount >= 2) || p.level >= 2,
       objective: () => 'A contract waits on a Board (#) — accept it for XP and coin.',
       reveal: (g) => {

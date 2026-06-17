@@ -215,6 +215,12 @@
         this.player.treeNodes[c.node] = 1;
         VAMP.Disc.learn(this.player, c.power);
         VAMP.UI.notify(c.msg + ' Bane: ' + c.baneName, '#c79bff');
+        // the vampire identity must land in minute one: the clan power is already bound to slot 1,
+        // but nothing told the player it exists. Name it and the key (decoupled from the skill-point gate).
+        const pwr = VAMP.Data && VAMP.Data.POWERS && VAMP.Data.POWERS[c.power];
+        const pname = (pwr && pwr.name) ? pwr.name : 'your clan Discipline';
+        VAMP.UI.notify('⚡ ' + pname.toUpperCase() + ' — your clan Discipline is ready. Press 1 to unleash it.', '#b07bff');
+        this._pulseSlot1Until = this.time + 30;   // hint: pulse hotbar slot 1 until first cast or 30s
       }
       VAMP.Stats.recompute(this.player);
     },
@@ -310,7 +316,7 @@
       }
       if (this.tips) {   // #15 first-use tips
         if (!this.tips.moved && p.stats.distance > 60) { this.tips.moved = true; this.showTip('Tip: SPACE strikes where you face · hold RIGHT-MOUSE to aim freely (shoot while fleeing) · hold Shift to sprint.'); }
-        if (!this.tips.fed && p.bloodState.fedCount >= 1) { this.tips.fed = true; this.showTip('Tip: while feeding, CLICK in the GOLD ring for a Perfect Gulp (bonus vitae + slow-mo). Press G to Embrace a thrall.'); }
+        if (!this.tips.fed && p.feeding) { this.tips.fed = true; this.showTip('Feeding! CLICK in the GOLD ring for a Perfect Gulp (bonus vitae + slow-mo). HOLD F to drain to death · RELEASE to spare (leaves a body). Press G to Embrace a thrall.'); }
         if (!this.tips.power && Object.values(p.powers || {}).length >= 1 && p.skillPoints > 0) { this.tips.power = true; this.showTip('Tip: press C -> Skills to spend points, then bind a power to a hotbar slot (1-8).'); }
         if (!this.tips.usedC && p.attrPoints > 0) { this.tips.usedC = true; this.showTip('Tip: you have Attribute points to spend — press C to open your character sheet.'); }
         if (!this.tips.body && this.npcs.some((n) => (n.downed || (n.dead && !n._disposed)) && !n.ally && U.dist(p.x, p.y, n.x, n.y) < 220)) { this.tips.body = true; this.showTip('Tip: a spared victim is left UNCONSCIOUS — a body. If a mortal finds one it raises the alarm. Press E to carry it to a dumpster/manhole (or drop it in shadow). Sneak with X; F behind an unaware foe is a silent takedown.'); }

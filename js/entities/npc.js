@@ -692,6 +692,11 @@
     else if (n.aggro && (n.state === 'chase' || n.state === 'attack')) floatIcon(ctx, n.x, my, '#f55', '▲');
     if (n.vip) floatIcon(ctx, n.x, my - 8, '#ffd24a', '★');
     if (game._feedTarget === n) { const pl = 0.6 + 0.4 * Math.sin(game.time * 6); ctx.globalAlpha = pl; floatIcon(ctx, n.x, my, '#ff6a8a', '♥'); ctx.globalAlpha = 1; }
+    // prey legible BEFORE contact: a faint heart over feedable civilians nearby (not just the 52px target)
+    else if ((n.faction === 'civ' || n.faction === 'animal') && !n.aggro && n.state !== 'flee' && (n.mesmerizedT || 0) <= 0 && game._pcx !== undefined && !(game.player && game.player.feeding)
+             && (Math.abs(n.x - game._pcx) + Math.abs(n.y - game._pcy)) < 180) {
+      ctx.globalAlpha = 0.26; floatIcon(ctx, n.x, my, '#ff6a8a', '♥'); ctx.globalAlpha = 1;
+    }
 
     // health bar when damaged (#13 — chunkier for elites/bosses, boss gets the top bar too)
     if (n.hp < n.maxHp && !n.dead) {

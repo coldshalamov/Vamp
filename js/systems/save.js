@@ -11,6 +11,14 @@
   const SET = 'vampcity_settings_v1';
   const VERSION = 3;
 
+  function obj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
+  function isLoadableSave(data) { return obj(data) && obj(data.player) && data.seed != null; }
+  function parseStoredSave(raw) {
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return isLoadableSave(data) ? data : null;
+  }
+
   function migrateLegacy() {
     try {
       const legacy = localStorage.getItem(KEY);
@@ -21,18 +29,18 @@
     } catch (e) {}
   }
 
-  function hasSaveSlot(i) { try { return !!localStorage.getItem(SLOT_KEYS[i]); } catch (e) { return false; } }
+  function hasSaveSlot(i) {
+    try { return !!parseStoredSave(localStorage.getItem(SLOT_KEYS[i])); } catch (e) { return false; }
+  }
   function hasSave() {
     if (hasSaveSlot(0) || hasSaveSlot(1) || hasSaveSlot(2)) return true;
-    try { return !!localStorage.getItem(KEY); } catch (e) { return false; }
+    try { return !!parseStoredSave(localStorage.getItem(KEY)); } catch (e) { return false; }
   }
 
   function getSlotSummary(i) {
     try {
-      const raw = localStorage.getItem(SLOT_KEYS[i]);
-      if (!raw) return null;
-      const d = JSON.parse(raw);
-      if (!d || !d.player) return null;
+      const d = parseStoredSave(localStorage.getItem(SLOT_KEYS[i]));
+      if (!d) return null;
       return {
         clan: d.player.clan || 'brujah',
         level: d.player.level || 1,
@@ -102,16 +110,14 @@
 
   function loadSlot(i) {
     try {
-      const raw = localStorage.getItem(SLOT_KEYS[i]);
-      if (!raw) return null;
-      return JSON.parse(raw);
+      return parseStoredSave(localStorage.getItem(SLOT_KEYS[i]));
     } catch (e) { return null; }
   }
 
   function load() {
     // First occupied slot (for backward-compat callers)
     for (let i = 0; i < SLOT_KEYS.length; i++) { const d = loadSlot(i); if (d) return d; }
-    try { const raw = localStorage.getItem(KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+    try { return parseStoredSave(localStorage.getItem(KEY)); } catch (e) { return null; }
   }
 
   function clearSlot(i) { try { localStorage.removeItem(SLOT_KEYS[i]); } catch (e) {} }
@@ -132,8 +138,6 @@
     if (max != null && n > max) n = max;
     return n;
   }
-
-  function obj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
 
   function boolMap(src) {
     const out = {};
@@ -379,7 +383,8 @@
     const districts = world && world.districts || [];
     for (const d of districts) {
       const sd = obj(dm[d.id]) ? dm[d.id] : {};
-      domains[d.id] = { owner: sd.owner === 'player' ? 'player' : null, contesting: sd.contesting === true };
+      // Baron fights are transient NPC encounters; bosses are not serialized.
+      domains[d.id] = { owner: sd.owner === 'player' ? 'player' : null, contesting: false };
       const st = obj(ds[d.id]) ? ds[d.id] : {};
       districtState[d.id] = { terror: num(st.terror, 0, 0, 1), prosperity: num(st.prosperity, 0, 0, 1) };
     }

@@ -446,8 +446,33 @@
         ctx.fillStyle = '#ffd24a'; ctx.textAlign = 'right'; ctx.fillText('' + rows[i][1], rx + colW - 8, ry + 15);
       }
       ctx.textAlign = 'left';
+      // faction standings
+      let statsBot = y + 10 + (((rows.length + 1) / 2) | 0) * 26 + 16;
+      if (VAMP.Reputation) {
+        ctx.fillStyle = '#d6953f'; ctx.font = 'bold 13px Verdana';
+        ctx.fillText('FACTION STANDING', x, statsBot);
+        const rep = VAMP.Reputation.ensure(game.player);
+        const colWF = (w / 5) | 0;
+        let fi = 0;
+        for (const [id, def] of Object.entries(VAMP.Reputation.FACTIONS)) {
+          const val = rep[id] || 0;
+          const fx = x + fi * (colWF + 4), fy = statsBot + 16;
+          const bw = colWF, bh = 18;
+          ctx.fillStyle = 'rgba(30,20,30,0.7)'; rr(ctx, fx, fy, bw, bh, 3); ctx.fill();
+          const frac = U.clamp((val + 100) / 200, 0, 1);
+          ctx.fillStyle = val >= 0 ? def.color : 'rgba(160,40,60,0.7)';
+          ctx.fillRect(fx, fy, Math.round(bw * frac), bh);
+          ctx.fillStyle = '#cdd'; ctx.font = '9px Verdana'; ctx.textAlign = 'left';
+          ctx.fillText(def.name.split(' ')[0], fx + 3, fy + 12);
+          ctx.fillStyle = '#ffd24a'; ctx.textAlign = 'right';
+          ctx.fillText((val > 0 ? '+' : '') + Math.round(val), fx + bw - 3, fy + 12);
+          fi++;
+        }
+        statsBot += 44;
+      }
+      ctx.textAlign = 'left';
       // achievements summary
-      const ay = y + 10 + (((rows.length + 1) / 2) | 0) * 26 + 16;
+      const ay = statsBot;
       ctx.fillStyle = '#cdb'; ctx.font = 'bold 13px Verdana'; ctx.fillText('ACHIEVEMENTS (' + (game.achievements ? game.achievements.count() : 0) + '/' + VAMP.Data.ACHIEVEMENTS.length + ')', x, ay);
       let axx = x, ayy = ay + 16; ctx.font = '10px Verdana';
       for (const a of VAMP.Data.ACHIEVEMENTS) {

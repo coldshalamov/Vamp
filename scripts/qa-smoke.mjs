@@ -10,7 +10,19 @@ const warnings = [];
 
 async function main() {
   const staticGuardReport = [];
-  const blockedPaths = ['/.git/config', '/.serena/project.yml', '/server.js', '/scripts/qa-smoke.mjs', '/Play.bat', '/js/../server.js', '/assets/../.git/config'];
+  const blockedPaths = [
+    '/.git/config',
+    '/.serena/project.yml',
+    '/server.js',
+    '/scripts/qa-smoke.mjs',
+    '/Play.bat',
+    '/js/../server.js',
+    '/assets/../.git/config',
+    '/%2e%2e/server.js',
+    '/js/%2e%2e/server.js',
+    '/assets/%2e%2e/.git/config',
+    '/js/%5c..%5cserver.js',
+  ];
   for (const path of blockedPaths) {
     const res = await fetch(new URL(path, BASE));
     staticGuardReport.push({ path, status: res.status });
@@ -70,6 +82,20 @@ async function main() {
     };
   });
 
+  const corruptSaveReport = await page.evaluate(() => {
+    const key = 'vampcity_save_v1_0';
+    const previous = localStorage.getItem(key);
+    localStorage.setItem(key, '{not-json');
+    const report = {
+      hasSaveSlot: VAMP.Save.hasSaveSlot(0),
+      loadSlotNull: VAMP.Save.loadSlot(0) === null,
+      summaryNull: VAMP.Save.getSlotSummary(0) === null,
+    };
+    if (previous == null) localStorage.removeItem(key);
+    else localStorage.setItem(key, previous);
+    return report;
+  });
+
   // Start game
   await page.evaluate(() => {
     VAMP.Game.newGame(42);
@@ -121,6 +147,20 @@ async function main() {
     };
   });
 
+  const canvasReport = await page.evaluate(() => {
+    VAMP.Game.render(1);
+    const canvas = document.getElementById('game');
+    const ctx = canvas && canvas.getContext('2d');
+    if (!canvas || !ctx || !canvas.width || !canvas.height) return { error: 'missing canvas backing store' };
+    const frame = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let nonBlank = false;
+    for (let i = 0; i < frame.length; i += 4) {
+      if (frame[i + 3] > 0 && (frame[i] || frame[i + 1] || frame[i + 2])) { nonBlank = true; break; }
+    }
+    const mid = ((Math.floor(canvas.height / 2) * canvas.width) + Math.floor(canvas.width / 2)) * 4;
+    return { width: canvas.width, height: canvas.height, centerPixel: Array.from(frame.slice(mid, mid + 4)), nonBlank };
+  });
+
   // Open menus via real API + render each
   const menuStates = [];
   for (const [key, tab] of [['pause', null], ['board', null], ['char', 'map'], ['char', 'skills']]) {
@@ -146,7 +186,7 @@ async function main() {
 
   await browser.close();
 
-  const report = { loadReport, gameReport, menuStates, staticGuardReport, failedAssets, errors, warnings };
+  const report = { loadReport, corruptSaveReport, gameReport, canvasReport, menuStates, staticGuardReport, failedAssets, errors, warnings };
   console.log(JSON.stringify(report, null, 2));
 
   let fail = false;
@@ -155,7 +195,9 @@ async function main() {
   const exposedInternal = staticGuardReport.filter((entry) => entry.status < 400);
   if (exposedInternal.length) { console.error('EXPOSED INTERNAL PATHS:', exposedInternal); fail = true; }
   if (loadReport.missingFx && loadReport.missingFx.length) { console.error('MISSING FX:', loadReport.missingFx); fail = true; }
+  if (corruptSaveReport.hasSaveSlot || !corruptSaveReport.loadSlotNull || !corruptSaveReport.summaryNull) { console.error('CORRUPT SAVE SLOT ACCEPTED:', corruptSaveReport); fail = true; }
   if (gameReport.error) { console.error('GAME ERROR:', gameReport.error); fail = true; }
+  if (canvasReport.error || !canvasReport.nonBlank) { console.error('CANVAS RENDER FAILED:', canvasReport); fail = true; }
   if (loadReport.powervfxHooks !== 35) { console.error('Expected 35 powervfx hooks, got', loadReport.powervfxHooks); fail = true; }
   const cp = loadReport.concretePixel.split(',').map(Number);
   if (cp[0] < 64) { console.error('ground_concrete too dark (wrong #222 fallback):', loadReport.concretePixel); fail = true; }

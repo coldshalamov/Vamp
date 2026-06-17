@@ -174,6 +174,7 @@
 
   function serializeMission(m) {
     if (!m || m.state !== 'active') return null;
+    const need = Math.floor(finiteNum(m.need, 1, 1, 1000));
     return {
       id: Math.floor(finiteNum(m.id, 0, 0, 1000000000)),
       type: m.type,
@@ -182,8 +183,8 @@
       color: m.color,
       desc: m.desc,
       level: Math.floor(finiteNum(m.level, 1, 1, 1000)),
-      need: Math.floor(finiteNum(m.need, 1, 1, 1000)),
-      progress: Math.floor(finiteNum(m.progress, 0, 0, 1000)),
+      need,
+      progress: Math.floor(finiteNum(m.progress, 0, 0, Math.max(0, need - 1))),
       state: 'active',
       reward: cleanReward(m.reward),
       targetName: m.targetName,
@@ -233,6 +234,7 @@
     const valid = VAMP.Data && VAMP.Data.MISSION_TYPES && VAMP.Data.MISSION_TYPES.some((t) => t.type === raw.type);
     if (!valid) return false;
     const savedData = cleanMissionData(raw.type, raw.data);
+    const need = Math.floor(finiteNum(raw.need, 1, 1, 1000));
     const m = {
       id: Math.floor(finiteNum(raw.id, MID, 1, 1000000000)),
       type: raw.type,
@@ -241,8 +243,8 @@
       color: typeof raw.color === 'string' ? raw.color : '#c79bff',
       desc: typeof raw.desc === 'string' ? raw.desc.slice(0, 300) : '',
       level: Math.floor(finiteNum(raw.level, game.player ? game.player.level : 1, 1, 1000)),
-      need: Math.floor(finiteNum(raw.need, 1, 1, 1000)),
-      progress: Math.floor(finiteNum(raw.progress, 0, 0, Math.max(0, (raw.need || 1) - 1))),
+      need,
+      progress: Math.floor(finiteNum(raw.progress, 0, 0, Math.max(0, need - 1))),
       state: 'active',
       reward: cleanReward(raw.reward),
       targetName: typeof raw.targetName === 'string' && raw.targetName ? raw.targetName.slice(0, 120) : 'Target',
@@ -551,6 +553,8 @@
     const bonusMsg = (bonusMult > 1) ? ('  [' + m.modifier.tag + ' +' + Math.round(m.modifier.bonus * 100) + '%]') : '';
     if (VAMP.UI) { VAMP.UI.banner('CONTRACT COMPLETE', m.name + '  —  +' + xpR + ' XP, +$' + moneyR + itemMsg + bonusMsg, m.color); }
     if (VAMP.Audio) VAMP.Audio.play('win');
+    // faction rep: chain missions earn more than radiant contracts
+    if (VAMP.Reputation) VAMP.Reputation.onMission(game.player, m.chain || 'anarch', m.chain ? 8 : 6);
     // CONTRACT-CHAIN advancement — the opt-in storyline spine that gives the mid-game a destination
     if (m.chain && CHAINS[m.chain]) {
       const cp = game.player.chainProgress || (game.player.chainProgress = {});

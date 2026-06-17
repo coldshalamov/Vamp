@@ -873,6 +873,12 @@
       if (this.player.bloodState.fedCount >= 1) this.tutorialGoal = null;
       VAMP.Missions.onEvent(this, 'feed', { lethal: info.lethal });
       if (info.ups && info.ups.length) for (const u of info.ups) this.onLevelUp(u);
+      // feeding on faction members frays those relationships (you're taking their people)
+      if (VAMP.Reputation && info.vt) {
+        const f = info.vt.faction;
+        if (f === 'police') VAMP.Reputation.change(this.player, 'police', -1);
+        else if (f === 'gang') VAMP.Reputation.change(this.player, 'gang', -0.5);
+      }
     },
     onLevelUp(u) {
       VAMP.UI.banner('LEVEL ' + u.level, '+' + u.attrPoints + ' attribute pts, +' + u.skillPoints + ' skill pt' + (u.skillPoints > 1 ? 's' : ''), '#b07bff');

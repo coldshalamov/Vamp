@@ -237,6 +237,14 @@
         if (k === 'mark') continue;                  // mark is offensive, not on player normally
         items.push({ name: k, color: ST[k] || '#ff5a5a', dur: st.t, max: st.max || st.t || 1, good: false, key: k });
       }
+      // Blood Rage indicator — Brujah keystone (pot_key): show RAGE while frenzied, cooldown arc after
+      if (p.treeNodes && p.treeNodes['pot_key']) {
+        if (p.bloodState && p.bloodState.frenzied) {
+          items.push({ name: 'RAGE', color: '#c01028', dur: Infinity, max: Infinity, good: true });
+        } else if ((p._bloodRageCD || 0) > 0) {
+          items.push({ name: 'Rage', color: '#e07020', dur: p._bloodRageCD, max: 3, good: false });
+        }
+      }
       if (!items.length) return;
       const x0 = 14, y0 = 110, sz = 26, gap = 5;
       for (let i = 0; i < items.length; i++) {

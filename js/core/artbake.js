@@ -10,7 +10,7 @@
   function removeChromaKey(img, keyHex, tolerance) {
     tolerance = tolerance == null ? 0.42 : tolerance;
     const c = VAMP.Assets.makeCanvas(img.width, img.height);
-    const g = c.getContext('2d');
+    const g = c.getContext('2d', { willReadFrequently: true });
     g.drawImage(img, 0, 0);
     const d = g.getImageData(0, 0, c.width, c.height);
     const data = d.data;
@@ -32,7 +32,7 @@
   // Kill pink/magenta halos on thin vertical props (lamps, poles).
   function despillMagenta(canvas, kr, kg, kb) {
     kr = kr == null ? 255 : kr; kg = kg == null ? 0 : kg; kb = kb == null ? 255 : kb;
-    const g = canvas.getContext('2d');
+    const g = canvas.getContext('2d', { willReadFrequently: true });
     const d = g.getImageData(0, 0, canvas.width, canvas.height);
     const data = d.data;
     for (let i = 0; i < data.length; i += 4) {
@@ -59,7 +59,7 @@
   function sharpen(canvas, amount) {
     amount = amount == null ? 0.35 : amount;
     const w = canvas.width, h = canvas.height;
-    const g = canvas.getContext('2d');
+    const g = canvas.getContext('2d', { willReadFrequently: true });
     const d = g.getImageData(0, 0, w, h);
     const src = new Uint8ClampedArray(d.data);
     const out = d.data;

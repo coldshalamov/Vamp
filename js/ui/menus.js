@@ -615,6 +615,10 @@
     // ----- HAVEN (services + base-building) -----
     renderHaven(ctx, game, w, h) {
       const p = game.player;
+      if (VAMP.ArtFlags && VAMP.ArtFlags.useHavenArt && VAMP.Assets.ready && VAMP.Assets.has('haven_bg')) {
+        ctx.drawImage(VAMP.Assets.get('haven_bg'), 0, 0, w, h);
+        ctx.fillStyle = 'rgba(5,6,12,0.55)'; ctx.fillRect(0, 0, w, h);
+      }
       const pw = Math.min(760, w - 80), ph = Math.min(520, h - 60), x = (w - pw) / 2, y = (h - ph) / 2;
       this.panel(ctx, x, y, pw, ph, this.poi ? this.poi.label : 'Your Haven');
       if (this.btn(ctx, x + pw - 92, y + 14, 78, 28, 'LEAVE [E]')) this.close();

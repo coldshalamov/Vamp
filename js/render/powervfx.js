@@ -17,14 +17,15 @@
   }
 
   register('potSlam', (p, game, def) => {
-    if (VAMP.Assets.has('rune_shockwave')) {
-      VAMP.Assets.drawKey(game.ctx || null, 'rune_shockwave', p.x, p.y, { w: (def.radius || 110) * 2, h: (def.radius || 110) * 2, ax: 0.5, ay: 0.5, alpha: 0.7 });
-    }
+    if (VAMP.FX) VAMP.FX.spriteRing(p.x, p.y, (def.radius || 110) * 2, 'rune_shockwave', 0.75);
     if (VAMP.Decals) for (let i = 0; i < 3; i++) VAMP.Decals.spawn(p.x + (Math.random() - 0.5) * 40, p.y + (Math.random() - 0.5) * 40, 'crack', 6);
   });
 
   register('potQuake', (p, game, def) => {
-    if (VAMP.FX) VAMP.FX.ring(p.x, p.y, def.radius || 180, '#e0b050');
+    if (VAMP.FX) {
+      VAMP.FX.spriteRing(p.x, p.y, (def.radius || 180) * 2.2, 'rune_shockwave', 0.85);
+      VAMP.FX.ring(p.x, p.y, def.radius || 180, '#e0b050');
+    }
     if (VAMP.Decals) for (let i = 0; i < 6; i++) VAMP.Decals.spawn(p.x + (Math.random() - 0.5) * (def.radius || 180), p.y + (Math.random() - 0.5) * (def.radius || 180), 'crack', 8);
   });
 

@@ -156,12 +156,22 @@
   // ---- perception ----
   function canSee(n, p, game) {
     const d = U.dist(n.x, n.y, p.x, p.y);
-    let range = 230;
-    if (n.faction === 'police' || n.faction === 'inquis') range = 320;
+    let range = (n.faction === 'police' || n.faction === 'inquis') ? 320 : 230;
+    // player EXPOSURE (light/shadow, sneaking, sprinting, frenzy) scales how far you read — the
+    // heart of the optional stealth game. Computed once per frame on the player (Stealth.exposure).
+    const exp = (p.exposure != null) ? p.exposure : 0.85;
+    range *= (0.45 + 0.65 * exp);
     if (p.cloaked) range *= 0.25;           // Obfuscate
     if (p.inVehicle) range *= 1.2;
     if (game.timeOfDay && game.timeOfDay.night) range *= 0.92;
-    return d < range;
+    if (d > range) return false;
+    // directional vision: an UNALERTED npc only notices you inside a frontal cone, so you can slip
+    // behind a mark for a silent takedown. Alerted/hunting npcs (and point-blank range) see all around.
+    if (!n.aggro && n.state !== 'chase' && n.state !== 'attack' && n.state !== 'investigate' && d > 58) {
+      const off = Math.abs(U.wrapAngle(U.angleTo(n.x, n.y, p.x, p.y) - n.angle));
+      if (off > 1.25) return false;
+    }
+    return true;
   }
 
   // ---- combat target resolution (player, enemy npc for thralls/berserkers) ----
@@ -216,6 +226,17 @@
 
     // being fed upon
     if (p.feeding && p.feeding.npc === n) { n.state = 'fed'; return; }
+
+    // UNCONSCIOUS (a non-lethal feed / soft KO): an inert body that can be found, dragged or
+    // fed on again. Wakes after a while, dazed, and stumbles off.
+    if (n.downed) {
+      if (game.time - (n.downT || 0) > (n.wakeDur || 38)) {
+        n.downed = false; n.discovered = false;
+        n.state = (n.faction === 'civ' || n.faction === 'animal') ? 'flee' : 'wander';
+        n.fleeT = 4; n.panicReported = false; n.mesmerizedT = 1;
+      }
+      return;
+    }
 
     // mesmerized / disabled
     if (n.mesmerizedT > 0) { n.mesmerizedT -= dt; return; }
@@ -402,6 +423,7 @@
   function render(n, ctx, game) {
     const cam = game.cam, r = n.r;
     if (n.dead) return renderCorpse(n, ctx, game);
+    if (n.downed) return renderDowned(n, ctx, game);
 
     const px = cam.zoom * r;
     const dToPlayer = game._pcx !== undefined ? Math.abs(n.x - game._pcx) + Math.abs(n.y - game._pcy) : 9999;
@@ -449,6 +471,19 @@
     if (stag > 0) ctx.translate(-Math.cos(n.staggerA - n.angle) * stag * 3, 0);   // lean away from blow
     else if (aiming) ctx.translate(r * 0.12, 0);
     const sp = spriteOf(n);
+    const useBmp = VAMP.ArtFlags && VAMP.ArtFlags.useBitmapNPCs && VAMP.Assets.ready && VAMP.Assets.has('npc_civilian')
+      && (n.type === 'ped' || n.faction === 'civ') && tier !== 'far';
+
+    if (useBmp) {
+      const bob = amp ? Math.sin(n.walkPhase) * 0.5 : 0;
+      const sz = r * 2.4;
+      if (n.hitFlashT > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.85; }
+      VAMP.Assets.drawKey(ctx, 'npc_civilian', 0, -bob, { w: sz, h: sz * 1.1, ax: 0.5, ay: 0.5, tint: n.shirt });
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      ctx.restore();
+      drawOverlays(n, ctx, game);
+      return;
+    }
 
     if (tier === 'near') {
       const bob = amp ? Math.sin(n.walkPhase) * 0.5 : 0;
@@ -499,6 +534,27 @@
     const sp = spriteOf(n);
     ctx.drawImage(sp.canvas, -sp.cx, -sp.cy);
     ctx.globalAlpha = 1; ctx.restore();
+  }
+
+  // unconscious body: slumped on the ground (alive — faint breathing, no blood pool). A "Z" tells
+  // it apart from a corpse, and a soft marker shows it's draggable.
+  function renderDowned(n, ctx, game) {
+    const breathe = 1 + Math.sin(game.time * 2 + n.id) * 0.03;
+    ctx.save(); ctx.translate(n.x, n.y);
+    ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(0, n.r * 0.4, n.r * 1.2, n.r * 0.5, 0, 0, U.TAU); ctx.fill();
+    ctx.rotate(n.angle);
+    ctx.globalAlpha = 0.92;
+    ctx.translate(0, n.r * 0.28);
+    ctx.transform(1, 0, 0.6, 0.5 * breathe, 0, 0);   // squashed flat = lying down
+    const sp = spriteOf(n);
+    ctx.drawImage(sp.canvas, -sp.cx, -sp.cy);
+    ctx.globalAlpha = 1; ctx.restore();
+    // "zzz" so it reads as out-cold, not dead
+    ctx.fillStyle = 'rgba(150,180,220,0.7)'; ctx.font = 'italic bold 9px Verdana'; ctx.textAlign = 'center';
+    ctx.fillText('z', n.x + n.r * 0.9, n.y - n.r - 2 + Math.sin(game.time * 3) * 1.5);
+    ctx.textAlign = 'left';
+    if (n.carried) return;
+    if (n.hidden) { ctx.fillStyle = 'rgba(120,200,150,0.5)'; ctx.font = '8px Verdana'; ctx.textAlign = 'center'; ctx.fillText('hidden', n.x, n.y + n.r + 8); ctx.textAlign = 'left'; }
   }
 
   // markers / telegraph / elite ring / healthbar — world-space, skipped at far tier

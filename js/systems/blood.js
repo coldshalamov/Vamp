@@ -188,12 +188,15 @@
       if (!vt.heat && !vt.animal) { b.innocentKills++; adjustHumanity(p, f.execution ? -0.5 : -0.4, 'killed an innocent'); }   // a brutal execution costs a little more
       if (game) game.onKill(npc, 'feed');
       if (VAMP.FX) VAMP.FX.blood(npc.x, npc.y, 14);
-      // killing in view raises masquerade
-      if (game) game.masquerade.witnessedAct(npc.x, npc.y, 'kill', 1.5);
+      // killing in view raises masquerade — but a silent behind-the-back takedown is witness-gated
+      // (no scream/struggle), so an unseen kill in a dark alley draws no Heat. The body still remains.
+      if (game) game.masquerade.witnessedAct(npc.x, npc.y, (f && f.stealth) ? 'feed' : 'kill', 1.5);
     } else {
-      // left alive: small mesmerize so they don't immediately panic
-      npc.mesmerizedT = Math.max(npc.mesmerizedT || 0, 2.5);
-      if (game) game.masquerade.witnessedAct(npc.x, npc.y, 'feed', 1);
+      // left alive: they collapse UNCONSCIOUS — an inert body that can be found, dragged off, dumped,
+      // or fed on again. (VtM: a spared vessel doesn't just wander off; they're out cold.)
+      if (VAMP.Stealth) VAMP.Stealth.knockOut(npc, game);
+      else npc.mesmerizedT = Math.max(npc.mesmerizedT || 0, 2.5);
+      if (game && !(f && f.stealth)) game.masquerade.witnessedAct(npc.x, npc.y, 'feed', 1);
       adjustHumanity(p, 0.03, ''); // mercy preserves your Humanity (silent positive)
     }
 

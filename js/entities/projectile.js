@@ -122,7 +122,32 @@
   }
 
   function render(pr, ctx) {
-    // trail
+    const useBmp = VAMP.ArtFlags && VAMP.ArtFlags.useBitmapFX && VAMP.Assets.ready && VAMP.Assets.has('projectile_blood')
+      && (pr.kind === 'bolt' || pr.glow);
+    const ang = Math.atan2(pr.vy, pr.vx);
+    if (useBmp) {
+      for (let i = 0; i < pr.trail.length; i++) {
+        const t = pr.trail[i];
+        const a = (i / pr.trail.length) * 0.45;
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.translate(t.x, t.y);
+        ctx.rotate(ang);
+        VAMP.Assets.drawKey(ctx, 'projectile_blood', 0, 0, { w: pr.r * 5, h: pr.r * 2.2, ax: 0.5, ay: 0.5, tint: pr.color });
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.translate(pr.x, pr.y);
+      ctx.rotate(ang);
+      if (pr.glow) {
+        ctx.globalAlpha = 0.35;
+        VAMP.Assets.drawKey(ctx, 'projectile_blood', 0, 0, { w: pr.r * 7, h: pr.r * 3.2, ax: 0.5, ay: 0.5, tint: pr.color });
+      }
+      ctx.globalAlpha = 1;
+      VAMP.Assets.drawKey(ctx, 'projectile_blood', 0, 0, { w: pr.r * 5.5, h: pr.r * 2.6, ax: 0.5, ay: 0.5, tint: pr.color });
+      ctx.restore();
+      return;
+    }
     for (let i = 0; i < pr.trail.length; i++) {
       const t = pr.trail[i];
       const a = (i / pr.trail.length) * 0.5;

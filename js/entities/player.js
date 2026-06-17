@@ -115,11 +115,17 @@
     // toggle persistent mouse-aim (for players who prefer twin-stick feel)
     if (input.wasPressed('keyv')) { p.aimMode = (p.aimMode === 'mouse') ? 'move' : 'mouse'; if (VAMP.UI) VAMP.UI.notify('Aim: ' + (p.aimMode === 'mouse' ? 'Mouse — cursor (free-aim)' : 'Movement — hold RMB to free-aim'), '#9bf'); }
 
+    // sneak (X toggle): a slow, quiet, low-exposure gait — the deliberate predator's approach
+    if (input.wasPressed('keyx')) { p.sneaking = !p.sneaking; if (VAMP.UI) VAMP.UI.notify(p.sneaking ? 'Sneaking — slow, quiet, hard to see' : 'No longer sneaking', '#9bf'); }
+    const carrying = !!p.carrying;
+
     // sprint (blood-fueled vampiric burst) — Shift
     p.sprinting = false;
     let speed = p.derived.moveSpeed * C().speedFactor(p);
     if (p.bloodState.frenzied) speed *= 1.25;
-    const wantSprint = (input.isDown('shiftleft') || input.isDown('shiftright')) && moving;
+    if (p.sneaking) speed *= 0.5;       // creep
+    if (carrying) speed *= 0.6;         // hauling dead weight
+    const wantSprint = !p.sneaking && !carrying && (input.isDown('shiftleft') || input.isDown('shiftright')) && moving;
     if (wantSprint && p.blood > 1) {
       p.sprinting = true; speed *= 1.7; p.blood = Math.max(0, p.blood - 6 * dt);
       if (VAMP.FX && Math.random() < 0.5) VAMP.FX.afterimage(p.x, p.y, p.facing);
@@ -153,9 +159,11 @@
       p.walkPhase = (p.walkPhase || 0) + speed * dt * 0.05;   // drives the walk cycle
     }
     p.moving = moving;
+    // how visible am I (light/shadow/sneak/sprint/frenzy) — drives every NPC's perception range
+    p.exposure = VAMP.Stealth ? VAMP.Stealth.exposure(p, game) : 0.85;
 
-    // ---- primary attack (Space — GTA-style — or LMB) ----
-    if (input.mouse.down || input.isDown('space') || input.isDown('keyj')) primaryAttack(p, game);
+    // ---- primary attack (Space — GTA-style — or LMB). hands are full while hauling a body. ----
+    if (!carrying && (input.mouse.down || input.isDown('space') || input.isDown('keyj'))) primaryAttack(p, game);
 
     // ---- abilities (1-8 / Q E R) ----
     const slotKeys = ['digit1', 'digit2', 'digit3', 'digit4', 'digit5', 'digit6', 'digit7', 'digit8'];
@@ -164,7 +172,7 @@
     if (input.wasPressed('keyr')) VAMP.Disc.castSlot(p, game, 2);  // R = slot 3 alt-bind
 
     // ---- shadow-pounce (Ctrl): leap onto distant prey (Space is now the attack button) ----
-    if ((input.wasPressed('controlleft') || input.wasPressed('controlright')) && p.pounceUnlocked) tryPounce(p, game);
+    if (!carrying && (input.wasPressed('controlleft') || input.wasPressed('controlright')) && p.pounceUnlocked) tryPounce(p, game);
 
     // ---- feeding start (F) ----
     if (input.wasPressed('keyf')) tryFeed(p, game);
@@ -291,7 +299,7 @@
       if (n.dead || n.ally) continue;
       const d = U.dist(p.x, p.y, n.x, n.y);
       if (d > bestD) continue;
-      const grabbable = n.mesmerizedT > 0 || C().isDisabled(n) || n.faction === 'civ' || n.faction === 'animal' || n.hp < n.maxHp * 0.4;
+      const grabbable = n.mesmerizedT > 0 || C().isDisabled(n) || n.downed || n.faction === 'civ' || n.faction === 'animal' || n.hp < n.maxHp * 0.4;
       if (!grabbable) continue;
       bestD = d; best = n;
     }
@@ -299,6 +307,17 @@
   }
 
   function tryFeed(p, game) {
+    // SILENT TAKEDOWN: if you're unseen behind ANY foe (even a healthy gangster/cop), grab them
+    // straight into a feed — no struggle, no alarm. The stealth lane's signature opener.
+    const st = VAMP.Stealth && VAMP.Stealth.findStealthTarget(p, game);
+    if (st) {
+      st.mesmerizedT = Math.max(st.mesmerizedT || 0, 1.5);
+      if (VAMP.Blood.startFeeding(p, st)) {
+        p.feeding.stealth = true; st.state = 'fed'; st.path = null;
+        if (VAMP.FX) VAMP.FX.number(p.x, p.y - 30, 'SILENT TAKEDOWN', '#9bd', { small: true });
+      }
+      return;
+    }
     // an execution-eligible foe (helpless or near-dead) → brutal finisher that flows into a feed
     const ex = findExecuteTarget(p, game);
     if (ex && p.finisherUnlocked && !game.reducedMotion) { startFinisher(p, game, ex); return; }
@@ -419,6 +438,8 @@
   function interact(p, game) {
     if (p.interactCD > 0) return;
     p.interactCD = 0.3;
+    // bodies first: grab / drop / dump (context-aware) takes priority over vehicles & POIs
+    if (VAMP.Stealth && VAMP.Stealth.handleBody(p, game)) return;
     // nearest vehicle
     let bestV = null, bvd = 46;
     for (const v of game.vehicles) {

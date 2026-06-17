@@ -74,6 +74,8 @@
     }
     ctx.setLineDash([]);
 
+    if (VAMP.ArtFlags && VAMP.ArtFlags.useAutotile) renderGroundEdges(ctx, world, c0, r0, c1, r1, TILE);
+
     const shimmer = (Math.sin(time * 0.001) + 1) * 0.5;   // 0..1 slow pulse, reused below
 
     // #18 — animated water: layered sine bands + moving glints give the sea
@@ -211,11 +213,14 @@
         ctx.restore();
       }
       if (detail && VAMP.ArtFlags && VAMP.ArtFlags.useBitmapBuildings && VAMP.Assets.has('windows_sheet') && b.w * b.h > 1200) {
+        const ws = VAMP.Assets.get('windows_sheet');
+        const fw = Math.max(1, Math.floor((ws.width || 126) / 3));
+        const fh = Math.max(1, Math.floor((ws.height || 80) / 2));
         const flick = (Math.sin(time * 0.002 + b.seed) + 1) * 0.5;
         ctx.save();
         ctx.globalAlpha = 0.55 + flick * 0.2;
         const wx = rx + 4, wy = ry + 4, ww = b.w - 8, wh = Math.min(b.h - 8, 48);
-        ctx.drawImage(VAMP.Assets.get('windows_sheet'), (b.seed % 3) * 42, (b.seed % 2) * 40, 42, 40, wx, wy, ww, wh);
+        ctx.drawImage(ws, (b.seed % 3) * fw, (b.seed % 2) * fh, fw, fh, wx, wy, ww, wh);
         ctx.restore();
       }
 
@@ -279,6 +284,45 @@
       } else {                                // stairwell / vent box with cast shadow
         ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(px + 2, py + 2, 8, 7);
         ctx.fillStyle = U.shade(b.color, 0.2); ctx.fillRect(px, py, 8, 7);
+      }
+    }
+  }
+
+  // Soft edge blends where ground types meet (cheap autotile read)
+  function renderGroundEdges(ctx, world, c0, r0, c1, r1, TILE) {
+    const edgeW = 5;
+    const blends = {
+      [T.ROAD + '-' + T.SIDEWALK]: 'rgba(40,38,48,0.35)',
+      [T.SIDEWALK + '-' + T.ROAD]: 'rgba(20,20,26,0.28)',
+      [T.ROAD + '-' + T.GRASS]: 'rgba(18,28,18,0.32)',
+      [T.GRASS + '-' + T.ROAD]: 'rgba(30,30,36,0.28)',
+      [T.SIDEWALK + '-' + T.GRASS]: 'rgba(22,32,22,0.25)',
+      [T.GRASS + '-' + T.SIDEWALK]: 'rgba(36,36,44,0.22)',
+      [T.ROAD + '-' + T.WATER]: 'rgba(12,28,48,0.38)',
+      [T.WATER + '-' + T.ROAD]: 'rgba(24,24,30,0.30)',
+    };
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const t = world.tile[world.idx(c, r)];
+        const x = c * TILE, y = r * TILE;
+        const n = [
+          [0, -1, x, y, x + TILE, y, x, y + edgeW, x + TILE, y + edgeW],
+          [0, 1, x, y + TILE - edgeW, x + TILE, y + TILE, x, y + TILE - edgeW, x + TILE, y + TILE],
+          [-1, 0, x, y, x + edgeW, y + TILE, x, y, x + edgeW, y],
+          [1, 0, x + TILE - edgeW, y, x + TILE, y + TILE, x + TILE - edgeW, y, x + TILE, y + TILE],
+        ];
+        for (const nb of n) {
+          const nc = c + nb[0], nr = r + nb[1];
+          if (nc < 0 || nr < 0 || nc >= world.cols || nr >= world.rows) continue;
+          const nt = world.tile[world.idx(nc, nr)];
+          if (nt === t) continue;
+          const col = blends[t + '-' + nt] || 'rgba(0,0,0,0.18)';
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.moveTo(nb[2], nb[3]); ctx.lineTo(nb[4], nb[5]);
+          ctx.lineTo(nb[7], nb[8]); ctx.lineTo(nb[6], nb[9]);
+          ctx.closePath(); ctx.fill();
+        }
       }
     }
   }

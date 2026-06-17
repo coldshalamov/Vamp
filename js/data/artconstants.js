@@ -16,8 +16,11 @@
     useBitmapBuildings: true,
     useBitmapFX: true,
     useBitmapUI: true,
+    useBitmapNPCs: true,
     useTitleArt: true,
+    useHavenArt: true,
     usePostFX: true,
+    useAutotile: true,
     vectorFallback: true,
     chromaKey: '#ff00ff',
   };
@@ -33,7 +36,25 @@
     windows_sheet: BASE + 'windows_sheet.jpg',
     title_bg: BASE + 'title_bg.jpg',
     icon_celerity: BASE + 'icon_celerity.jpg',
+    discipline_icons: BASE + 'discipline_icons.jpg',
+    haven_bg: BASE + 'haven_bg.jpg',
+    npc_civilian: BASE + 'npc_civilian.jpg',
+    projectile_blood: BASE + 'projectile_blood.jpg',
+    clan_emblems: BASE + 'clan_emblems.jpg',
   };
+
+  // Sliced from discipline_icons.jpg (horizontal strip, 10 frames)
+  VAMP.DisciplineIconKeys = [
+    'icon_disc_celerity', 'icon_disc_potence', 'icon_disc_fortitude',
+    'icon_disc_obfuscate', 'icon_disc_auspex', 'icon_disc_dominate',
+    'icon_disc_presence', 'icon_disc_protean', 'icon_disc_sorcery', 'icon_disc_dark',
+  ];
+
+  // Sliced from clan_emblems.jpg (7 frames)
+  VAMP.ClanEmblemKeys = [
+    'emblem_brujah', 'emblem_gangrel', 'emblem_tremere', 'emblem_ventrue',
+    'emblem_toreador', 'emblem_nosferatu', 'emblem_malkavian',
+  ];
 
   // District accent multiply grades (from world.js DISTRICTS)
   VAMP.DistrictGrade = {
@@ -46,7 +67,17 @@
     industrial: { color: '#d6953f', alpha: 0.08 },
   };
 
-  // Power id → optional bitmap icon (expand over time)
+  // Resolve power id → sliced discipline icon key (all 36 powers covered)
+  VAMP.powerIconKey = function (powerId) {
+    const def = VAMP.Data && VAMP.Data.POWERS && VAMP.Data.POWERS[powerId];
+    return def ? 'icon_disc_' + def.disc : null;
+  };
+
+  VAMP.clanEmblemKey = function (clan) {
+    return clan ? 'emblem_' + clan : null;
+  };
+
+  // Legacy explicit paths (celerity sheet kept for fallback)
   VAMP.PowerIconPaths = {
     cel_dash: BASE + 'icon_celerity.jpg',
     cel_haste: BASE + 'icon_celerity.jpg',

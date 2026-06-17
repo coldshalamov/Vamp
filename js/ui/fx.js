@@ -14,6 +14,7 @@
   const beams = [];
   const afters = [];
   const decals = [];
+  const spriteRings = [];
   const pools = [];                 // persistent blood POOLS (grow, stain, capped) — separate from transient decals
   const POOL_CAP = 120;
   let flash = null;
@@ -65,6 +66,9 @@
       this.blood(x, y, 8);   // a burst of arcing droplets to sell the spray
     },
     ring(x, y, r, color) { push(rings, { x, y, r: 4, maxR: r, life: 0.4, max: 0.4, color: color || '#fff', width: 4 }); },
+    spriteRing(x, y, maxR, key, alpha) {
+      if (spriteRings.length < 32) spriteRings.push({ x, y, maxR, key, life: 0.55, max: 0.55, alpha: alpha == null ? 0.75 : alpha });
+    },
     shock(x, y, r) { push(rings, { x, y, r: 4, maxR: r, life: 0.5, max: 0.5, color: 'rgba(255,255,255,0.5)', width: 6 }); },
     beam(x1, y1, x2, y2, color) { push(beams, { x1, y1, x2, y2, life: 0.18, max: 0.18, color: color || '#fff' }); },
     slash(x, y, angle, reach) {
@@ -94,6 +98,7 @@
       }
       for (let i = numbers.length - 1; i >= 0; i--) { const n = numbers[i]; n.life -= dt; n.y += n.vy * dt; n.vy *= 0.92; if (n.life <= 0) numbers.splice(i, 1); }
       for (let i = rings.length - 1; i >= 0; i--) { const r = rings[i]; r.life -= dt; r.r = U.lerp(r.maxR, r.r, 0); if (r.life <= 0) rings.splice(i, 1); }
+      for (let i = spriteRings.length - 1; i >= 0; i--) { spriteRings[i].life -= dt; if (spriteRings[i].life <= 0) spriteRings.splice(i, 1); }
       for (let i = beams.length - 1; i >= 0; i--) { beams[i].life -= dt; if (beams[i].life <= 0) beams.splice(i, 1); }
       for (let i = afters.length - 1; i >= 0; i--) { afters[i].life -= dt; if (afters[i].life <= 0) afters.splice(i, 1); }
       for (let i = decals.length - 1; i >= 0; i--) { decals[i].life -= dt; if (decals[i].life <= 0) decals.splice(i, 1); }
@@ -159,6 +164,19 @@
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+      // bitmap shockwave rings (discipline runes, etc.)
+      for (const sr of spriteRings) {
+        if (!VAMP.Assets || !VAMP.Assets.has(sr.key)) continue;
+        const t = sr.life / sr.max;
+        const size = sr.maxR * (1 - t * 0.15);
+        ctx.save();
+        ctx.globalAlpha = sr.alpha * t;
+        ctx.globalCompositeOperation = 'lighter';
+        VAMP.Assets.drawKey(ctx, sr.key, sr.x, sr.y, { w: size, h: size, ax: 0.5, ay: 0.5 });
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
       // beams
       for (const bm of beams) {
         ctx.globalAlpha = bm.life / bm.max;

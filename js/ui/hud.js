@@ -33,21 +33,31 @@
       const g = c.getContext('2d');
       const T = VAMP.World.T;
       g.fillStyle = '#0a0a10'; g.fillRect(0, 0, c.width, c.height);
-      // ground by tile (downsample: step a few tiles)
-      const step = 2;
+      const canvases = VAMP.Assets.patterns && VAMP.Assets.patterns._canvas;
+      const useArt = VAMP.ArtFlags && VAMP.ArtFlags.useBitmapGround && VAMP.Assets.ready && canvases;
+      const step = useArt ? 1 : 2;
       for (let r = 0; r < world.rows; r += step) {
         for (let cx = 0; cx < world.cols; cx += step) {
           const t = world.tile[world.idx(cx, r)];
-          let col = null;
-          if (t === T.ROAD) col = '#2a2a34';
-          else if (t === T.WATER) col = '#10283f';
-          else if (t === T.GRASS) col = '#16321f';
-          else col = '#1b1b22';
-          g.fillStyle = col;
-          g.fillRect(cx * world.TILE * scale, r * world.TILE * scale, world.TILE * scale * step + 1, world.TILE * scale * step + 1);
+          const px = cx * world.TILE * scale;
+          const py = r * world.TILE * scale;
+          const pw = world.TILE * scale * step + 1;
+          const ph = world.TILE * scale * step + 1;
+          if (useArt && (t === T.ROAD || t === T.SIDEWALK) && canvases[t === T.ROAD ? 'asphalt' : 'sidewalk']) {
+            const tile = canvases[t === T.ROAD ? 'asphalt' : 'sidewalk'];
+            g.drawImage(tile, 0, 0, tile.width, tile.height, px, py, pw, ph);
+          } else {
+            let col = null;
+            if (t === T.ROAD) col = '#2a2a34';
+            else if (t === T.SIDEWALK) col = '#34343f';
+            else if (t === T.WATER) col = '#10283f';
+            else if (t === T.GRASS) col = '#16321f';
+            else col = '#1b1b22';
+            g.fillStyle = col;
+            g.fillRect(px, py, pw, ph);
+          }
         }
       }
-      // buildings
       g.fillStyle = '#34343f';
       for (const b of world.buildings) g.fillRect(b.x * scale, b.y * scale, Math.max(1, b.w * scale), Math.max(1, b.h * scale));
       this.minimap = c;
@@ -277,8 +287,11 @@
         // key number
         ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillText('' + (i + 1), x + 4, y + 11);
         if (def) {
-          const iconPath = VAMP.PowerIconPaths && VAMP.PowerIconPaths[id];
-          const iconKey = iconPath && VAMP.ArtPaths && Object.keys(VAMP.ArtPaths).find((k) => VAMP.ArtPaths[k] === iconPath);
+          const iconKey = (VAMP.powerIconKey && VAMP.powerIconKey(id))
+            || (function () {
+              const iconPath = VAMP.PowerIconPaths && VAMP.PowerIconPaths[id];
+              return iconPath && VAMP.ArtPaths && Object.keys(VAMP.ArtPaths).find((k) => VAMP.ArtPaths[k] === iconPath);
+            })();
           if (VAMP.ArtFlags && VAMP.ArtFlags.useBitmapUI && iconKey && VAMP.Assets.ready && VAMP.Assets.has(iconKey)) {
             VAMP.Assets.drawKey(ctx, iconKey, x + sw / 2, y + sw / 2, { w: 30, h: 30, ax: 0.5, ay: 0.5 });
           } else {
@@ -316,7 +329,7 @@
       }
       // controls hint
       ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '10px Verdana'; ctx.textAlign = 'center';
-      ctx.fillText('SPACE attack · hold RMB free-aim · F feed · E interact · Shift sprint · Ctrl pounce · 1-8 powers · C character · M map · ESC pause', w / 2, h - 4);
+      ctx.fillText('SPACE attack · RMB free-aim · F feed/takedown · E interact/carry · Shift sprint · X sneak · Ctrl pounce · 1-8 powers · C character · M map', w / 2, h - 4);
       ctx.textAlign = 'left';
     },
 
@@ -511,13 +524,22 @@
     computePrompt(ctx, game, p, w, h) {
       let prompt = '';
       if (p.feeding) { prompt = 'Hold F drain · release to spare · CLICK the gold zone for a Perfect Gulp'; if (VAMP.Coterie && VAMP.Coterie.canEmbrace(game, p.feeding.npc)) prompt += ' · [G] Embrace'; }
+      else if (p.carrying) {
+        const dump = VAMP.Stealth ? VAMP.Stealth.nearestDumpSpot(game.world, p.x, p.y, 52) : null;
+        prompt = dump ? ('E: Dump body in the ' + dump.kind) : 'E: Drop body  (in shadow to hide it)';
+      }
       else if (!p.inVehicle) {
+        // a body to drag off, or a behind-the-back silent takedown — these read first
+        const body = VAMP.Stealth ? VAMP.Stealth.nearestBody(game, p.x, p.y, 42) : null;
+        const st = VAMP.Stealth ? VAMP.Stealth.findStealthTarget(p, game) : null;
         // nearest interactable
         const poi = game.nearestPOI ? game.nearestPOI(p.x, p.y, 60) : null;
         let v = null, vd = 46;
         for (const veh of game.vehicles) { if (veh.dead || veh.burning) continue; const d = U.dist(p.x, p.y, veh.x, veh.y); if (d < vd) { vd = d; v = veh; } }
-        if (poi && (!v || U.dist(p.x, p.y, poi.x, poi.y) < vd)) prompt = 'E: ' + poi.label;
+        if (body) prompt = 'E: Carry the body away';
+        else if (poi && (!v || U.dist(p.x, p.y, poi.x, poi.y) < vd)) prompt = 'E: ' + poi.label;
         else if (v) prompt = 'E: ' + (v.driver && v.driver !== 'player' ? 'Hijack ' : 'Enter ') + v.type;
+        else if (st) prompt = 'F: ☠ SILENT TAKEDOWN  (' + (VAMP.Blood.VICTIM_TYPES[st.victimType] ? VAMP.Blood.VICTIM_TYPES[st.victimType].name : 'foe') + ')';
         else {
           // execution-eligible target reads as a red skull; else the normal feed prompt
           const ex = (p.finisherUnlocked && VAMP.Player.findExecuteTarget) ? VAMP.Player.findExecuteTarget(p, game) : null;

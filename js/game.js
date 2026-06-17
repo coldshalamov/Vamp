@@ -52,12 +52,29 @@
           }
         }).then(() => {
           if (this.ctx) VAMP.Assets.rebuildPatterns(this.ctx);
+          if (this.world && VAMP.UI && VAMP.UI.buildMinimap) VAMP.UI.buildMinimap(this.world);
           const splash = document.getElementById('splash');
           if (splash && this.mode === 'title') splash.style.display = 'none';
         }).catch(() => {});
       }
       const s = VAMP.Save.loadSettings();
       if (s) { this.vol = Object.assign({ master: 0.8, music: 0.5, sfx: 0.9, amb: 0.6 }, s); }   // default amb for old settings
+      this.applyQualityTier();
+    },
+    applyQualityTier() {
+      if (!VAMP.ArtFlags) return;
+      const low = this.quality === 'low';
+      const med = this.quality === 'medium';
+      VAMP.ArtFlags.useBitmapNPCs = !low;
+      VAMP.ArtFlags.useAutotile = !low;
+      VAMP.ArtFlags.usePostFX = !low;
+      if (low) {
+        VAMP.ArtFlags.useBitmapBuildings = false;
+        VAMP.ArtFlags.useBitmapFX = false;
+      } else if (med) {
+        VAMP.ArtFlags.useBitmapBuildings = true;
+        VAMP.ArtFlags.useBitmapFX = true;
+      }
     },
     resize() {
       // DPR (#1): the loop owns the backing-store size + ctx scale; here we
@@ -82,7 +99,7 @@
       VAMP.UI.banner('VAMPIRE CITY', 'Feed. Grow. Rule the night.', '#c0303a');
       this.tutorialStage = 'move';
       this.tutorialGoal = 'MOVE: WASD / arrow keys. You face the way you move — SPACE attacks that way. Hold RIGHT-MOUSE to free-aim. Explore — the night is yours.';
-      this.tips = { moved: false, fed: false, power: false, usedC: false };  // #15
+      this.tips = { moved: false, fed: false, power: false, usedC: false, body: false };  // #15
       this.night = { kills: 0, feeds: 0, money: 0 };                         // #25
       // board blip is revealed by VAMP.Progress when 'missions' unlocks (not at start)
       const hv = this.world.pois.find((p) => p.type === 'haven'); if (hv) this.addBlip({ x: hv.x, y: hv.y, color: '#5a9cff', kind: 'guide' });
@@ -236,6 +253,7 @@
       for (let i = this.projectiles.length - 1; i >= 0; i--) { const pr = this.projectiles[i]; VAMP.Projectile.update(pr, pr.owner === 'player' ? dt : edt, this); if (pr.dead) this.projectiles.splice(i, 1); }
       this.updatePickups(dt);
       this.masquerade.update(dt, this);
+      if (VAMP.Stealth) VAMP.Stealth.update(dt, this);
       this.quests.update(dt);
       if (this.events) this.events.update(dt, this);   // #23
       if (this.achievements) this.achievements.update(dt);
@@ -252,6 +270,7 @@
         if (!this.tips.fed && p.bloodState.fedCount >= 1) { this.tips.fed = true; this.showTip('Tip: while feeding, CLICK in the GOLD ring for a Perfect Gulp (bonus vitae + slow-mo). Press G to Embrace a thrall.'); }
         if (!this.tips.power && Object.values(p.powers || {}).length >= 1 && p.skillPoints > 0) { this.tips.power = true; this.showTip('Tip: press C -> Skills to spend points, then bind a power to a hotbar slot (1-8).'); }
         if (!this.tips.usedC && p.attrPoints > 0) { this.tips.usedC = true; this.showTip('Tip: you have Attribute points to spend — press C to open your character sheet.'); }
+        if (!this.tips.body && this.npcs.some((n) => (n.downed || (n.dead && !n._disposed)) && !n.ally && U.dist(p.x, p.y, n.x, n.y) < 220)) { this.tips.body = true; this.showTip('Tip: a spared victim is left UNCONSCIOUS — a body. If a mortal finds one it raises the alarm. Press E to carry it to a dumpster/manhole (or drop it in shadow). Sneak with X; F behind an unaware foe is a silent takedown.'); }
       }
       if (this._tipT > 0) this._tipT -= dt;
       if (this._recapT > 0) this._recapT -= dt;
@@ -370,8 +389,10 @@
       const px = p.inVehicle ? p.inVehicle.x : p.x, py = p.inVehicle ? p.inVehicle.y : p.y;
       for (let i = this.npcs.length - 1; i >= 0; i--) {
         const n = this.npcs[i];
-        if (n.dead && this.time - (n.deathT || 0) > 12) { this.npcs.splice(i, 1); continue; }
-        if (!n.dead && !n.responder && !n.mission && !n.ally && !n.bloodDoll && !n.bounty && !n.baronOf && !n.boss && !n.nemesis && U.dist(px, py, n.x, n.y) > 2200) this.npcs.splice(i, 1);
+        // keep a corpse around a little longer (and never cull one you're carrying) so there's time
+        // to drag & dump it — the stealth/disposal loop needs the body to persist.
+        if (n.dead && n !== p.carrying && this.time - (n.deathT || 0) > 18) { this.npcs.splice(i, 1); continue; }
+        if (!n.dead && n !== p.carrying && !n.downed && !n.responder && !n.mission && !n.ally && !n.bloodDoll && !n.bounty && !n.baronOf && !n.boss && !n.nemesis && U.dist(px, py, n.x, n.y) > 2200) this.npcs.splice(i, 1);
       }
       for (let i = this.vehicles.length - 1; i >= 0; i--) {
         const v = this.vehicles[i];
@@ -475,6 +496,7 @@
       }
       for (const pr of this.projectiles) if (this.cam.inView(pr.x, pr.y, 30)) VAMP.Projectile.render(pr, ctx);
       VAMP.FX.renderWorld(ctx, this.cam);
+      if (VAMP.Stealth) VAMP.Stealth.render(ctx, this);   // crime-scene / investigation rings (world-space)
       this.renderWorldMarkers(ctx);
       this.cam.restore(ctx);
       this.renderLighting(ctx, w, h);
@@ -848,6 +870,10 @@
         const bx = w / 2 - (cols * (bw + gap) - gap) / 2 + col * (bw + gap);
         const by = startY + row * (bh + gap);
         const sel = this._clan === clans[i][0];
+        const emblemKey = VAMP.clanEmblemKey && VAMP.clanEmblemKey(clans[i][0]);
+        if (emblemKey && VAMP.Assets.ready && VAMP.Assets.has(emblemKey)) {
+          VAMP.Assets.drawKey(ctx, emblemKey, bx + 22, by + bh / 2, { w: 28, h: 28, ax: 0.5, ay: 0.5, alpha: sel ? 1 : 0.65 });
+        }
         if (VAMP.Menus.btn(ctx, bx, by, bw, bh, clans[i][1], { color: sel ? 'rgba(150,40,70,0.95)' : 'rgba(30,18,28,0.9)', accent: sel ? '#ff7a9a' : null })) this._clan = clans[i][0];
         if (sel) { ctx.fillStyle = '#9a8'; ctx.font = '10px Verdana'; ctx.textAlign = 'center'; ctx.fillText(clans[i][2], bx + bw / 2, by + bh - 5); }
       }
@@ -856,7 +882,7 @@
       const canContinue = VAMP.Save.hasSave();
       if (VAMP.Menus.btn(ctx, w / 2 + 10, byy, 150, 46, 'CONTINUE', { disabled: !canContinue, font: 'bold 16px' })) { const d = VAMP.Save.load(); if (d) this.loadGame(d); }
       ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '11px Verdana';
-      ctx.fillText('WASD / arrows move (you face where you move) · SPACE attack · hold RMB free-aim · F feed · E interact · Shift sprint · Ctrl pounce · 1-8 powers · C character · M map · ESC pause', w / 2, h - 24);
+      ctx.fillText('WASD / arrows move (you face where you move) · SPACE attack · RMB free-aim · F feed/takedown · E interact/carry · Shift sprint · X sneak · Ctrl pounce · 1-8 powers · C character · M map', w / 2, h - 24);
       ctx.fillText('A Vampire: The Masquerade-inspired open-world RPG', w / 2, h - 8);
       ctx.textAlign = 'left';
       if (VAMP.Input.mouse.pressed) VAMP.Audio.resume();

@@ -103,10 +103,26 @@
     bitmaps.rune_shockwave = c;
   }
 
+  function sliceHorizontalSheet(src, count, keys) {
+    const fw = Math.max(1, Math.floor(src.width / count));
+    const fh = src.height;
+    for (let i = 0; i < count && i < keys.length; i++) {
+      const c = makeCanvas(fw, fh);
+      const g = c.getContext('2d');
+      g.drawImage(src, i * fw, 0, fw, fh, 0, 0, fw, fh);
+      bitmaps[keys[i]] = c;
+    }
+  }
+
   function processLoaded(key, img, opts) {
     opts = opts || {};
     let canvas = img;
     if (opts.chroma && Bake()) canvas = Bake().removeChromaKey(img, opts.chroma);
+    if (opts.sheet) {
+      sliceHorizontalSheet(canvas, opts.sheetCount, opts.sheetKeys || []);
+      bitmaps[key] = canvas;
+      return canvas;
+    }
     if (opts.tile) {
       const t = Bake().resizeTile(canvas, opts.tileSize || 128);
       if (Bake()) Bake().enhanceTile(t, null, key.length * 31);
@@ -126,8 +142,19 @@
     const jobs = entries.map((key) => {
       const opts = { chroma: null, tile: false };
       if (key === 'asphalt_wet' || key === 'sidewalk') { opts.tile = true; opts.tileSize = 128; }
-      if (key === 'player_vampire' || key === 'prop_lamp' || key === 'prop_tree' || key === 'vehicle_sedan') {
+      if (key === 'player_vampire' || key === 'prop_lamp' || key === 'prop_tree' || key === 'vehicle_sedan'
+        || key === 'npc_civilian' || key === 'projectile_blood' || key === 'discipline_icons' || key === 'clan_emblems') {
         opts.chroma = (VAMP.ArtFlags && VAMP.ArtFlags.chromaKey) || '#ff00ff';
+      }
+      if (key === 'discipline_icons') {
+        opts.sheet = true;
+        opts.sheetCount = (VAMP.DisciplineIconKeys && VAMP.DisciplineIconKeys.length) || 10;
+        opts.sheetKeys = VAMP.DisciplineIconKeys;
+      }
+      if (key === 'clan_emblems') {
+        opts.sheet = true;
+        opts.sheetCount = (VAMP.ClanEmblemKeys && VAMP.ClanEmblemKeys.length) || 7;
+        opts.sheetKeys = VAMP.ClanEmblemKeys;
       }
       return loadImage(paths[key]).then((img) => {
         processLoaded(key, img, opts);

@@ -26,7 +26,7 @@
           if (U.dist(x, y, n.x, n.y) < 260 && !game.player.cloaked) w++;
         }
         // some acts always generate heat (gunfire, explosions); feeding only if witnessed
-        const always = type === 'kill' || type === 'explosion';
+        const always = type === 'kill' || type === 'explosion' || type === 'body';
         if (w <= 0 && !always) return;
         // gentle escalation: a single crime in a crowd tops out around ~1.5 heat (2 stars), not 5
         let gain = Math.min(1.5, amount * (0.3 + Math.min(0.7, w * 0.12)));

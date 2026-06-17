@@ -26,13 +26,21 @@
 | **Ruiner / Katana ZERO** | Rain, scanlines, grain | Film grain, puddles, weather (extended) |
 | **Vampire: The Masquerade — Bloodlines** | Gothic noir palette | `theme.js` + district tints |
 
-## Five NEW image-gen asset categories (added in v4)
+## Five NEW image-gen asset categories (v4)
 
 1. **District mood panorama strips** — future: menu/map tint per district (paths stubbed in `DistrictGrade`)
 2. **Window emissive sheets** — `windows_sheet.jpg` on building roofs ✓
 3. **Neon tube sign strips** — `neon_sign.jpg` tinted per emitter ✓
-4. **Feeding vignette frame** — procedural `PostFX.feedingFrame` (code; portrait gen optional)
+4. **Feeding vignette frame** — procedural `PostFX.feedingFrame` ✓
 5. **Discipline ground runes** — procedural `rune_shockwave` + Potence slam hook ✓
+
+## Six additional image-gen categories (v4.1)
+
+1. **Discipline icon sprite sheet** — `discipline_icons.jpg` → 10 sliced HUD icons ✓
+2. **Haven interior backdrop** — `haven_bg.jpg` on haven menu ✓
+3. **Civilian NPC sprite** — `npc_civilian.jpg` with shirt tint ✓
+4. **Blood projectile streak** — `projectile_blood.jpg` for spell bolts ✓
+5. **Clan emblem row** — `clan_emblems.jpg` → 7 emblems on title screen ✓
 
 ## Generated assets installed
 
@@ -47,7 +55,12 @@
 | `assets/images/neon_sign.jpg` | Building neon |
 | `assets/images/windows_sheet.jpg` | Roof windows |
 | `assets/images/title_bg.jpg` | Title screen |
-| `assets/images/icon_celerity.jpg` | Celerity power icons |
+| `assets/images/icon_celerity.jpg` | Celerity power icons (legacy) |
+| `assets/images/discipline_icons.jpg` | All 10 discipline HUD icons (sliced) |
+| `assets/images/haven_bg.jpg` | Haven menu backdrop |
+| `assets/images/npc_civilian.jpg` | Civilian NPC sprite |
+| `assets/images/projectile_blood.jpg` | Blood bolt projectile streak |
+| `assets/images/clan_emblems.jpg` | Title screen clan emblems (sliced) |
 
 ---
 
@@ -55,7 +68,7 @@
 
 - [x] `js/data/artconstants.js` — flags, paths, district grades, power icons
 - [x] `js/core/artbake.js` — chroma key, tile resize, enhance
-- [x] `js/core/assets.js` — bitmap loader, `drawKey`, pattern rebuild
+- [x] `js/core/assets.js` — bitmap loader, `drawKey`, pattern rebuild, sheet slicing
 - [x] `index.html` script order updated
 - [x] Async load with splash progress (`game.js` + `main.js`)
 
@@ -65,52 +78,54 @@
 - [x] `js/world/decals.js` — rain puddles, cracks, manholes
 - [x] `js/world/props.js` — lamp + tree bitmaps
 - [x] `js/world/render.js` — neon signs + window sheets on buildings
-- [ ] Autotile road/sidewalk transitions (future)
-- [ ] Minimap resample from authored tiles (future)
+- [x] Autotile road/sidewalk edge blends (`renderGroundEdges`)
+- [x] Minimap resample from authored tiles (`hud.js buildMinimap`)
 
 ## Phase 2 — Player & vehicles
 
 - [x] Player bitmap render with clan tint + vector claws/cape
 - [x] Movement acceleration smoothing (`player.js`)
 - [x] Vehicle sedan bitmap with color tint
+- [x] Civilian NPC bitmap sprites (`npc.js`)
 - [ ] Full 8-dir player animation sheet (future)
-- [ ] NPC painted sprites from silhouette export (future)
+- [ ] NPC faction sprite sheets (gang/cop/hunter) (future)
 
 ## Phase 3 — FX & powers
 
 - [x] Improved blood splat decals (`fx.js`)
 - [x] `js/render/powervfx.js` — Potence/Celerity hooks
-- [x] Procedural shockwave rune for slams
-- [ ] Per-discipline icons for all 40 powers (future)
-- [ ] Projectile streak sprites (future)
+- [x] Procedural shockwave rune for slams (via `FX.spriteRing`)
+- [x] Per-discipline icons for all 36 powers (`powerIconKey` → sliced sheet)
+- [x] Projectile streak sprites (`projectile_blood.jpg`)
 
 ## Phase 4 — Post-processing & UI
 
 - [x] `js/render/postfx.js` — district grade, grain, heat pulse, feeding frame
-- [x] Title screen background art
-- [x] HUD hotbar bitmap icons (Celerity family)
-- [ ] Haven menu backdrop image (future)
-- [ ] Clan emblem set (future)
+- [x] Title screen background art + clan emblems
+- [x] HUD hotbar bitmap icons (all disciplines)
+- [x] Haven menu backdrop image
+- [x] Clan emblem set (title screen)
 
 ## Phase 5 — Polish & QA
 
 - [x] Vector fallback when assets missing (`ArtFlags.vectorFallback`)
+- [x] Mobile quality tier atlas gating (`Game.applyQualityTier`)
 - [ ] Screenshot regression suite (future)
-- [ ] Mobile quality tier atlas (future)
 
 ---
 
 ## Architecture
 
 ```
-artconstants.js → ArtPaths, ArtFlags
+artconstants.js → ArtPaths, ArtFlags, powerIconKey, clanEmblemKey
 artbake.js      → chroma key, tile bake
-assets.js       → loadAll(), drawKey(), patterns
-render.js       → ground, buildings (windows/neon)
+assets.js       → loadAll(), drawKey(), patterns, sheet slicing
+render.js       → ground, autotile edges, buildings (windows/neon)
 props.js        → standing props
 decals.js       → ground decals
 postfx.js       → screen passes after lighting
 powervfx.js     → discipline visual hooks
+fx.js           → spriteRing for rune shockwaves
 ```
 
 ## Running
@@ -125,8 +140,8 @@ Then visit `http://localhost:3000` (or the port shown).
 
 ## Remaining high-ROI work
 
-1. Generate + wire remaining power icons (40)
-2. NPC faction sprite sheets via silhouette img2img
-3. Building roof module atlas per district
-4. Autotiling at terrain borders
-5. Haven interior menu background
+1. NPC faction sprite sheets (gang, cop, hunter) via img2img
+2. Building roof module atlas per district
+3. Full 8-dir player walk animation sheet
+4. District mood panorama strips for map/menu
+5. Screenshot regression suite for visual QA

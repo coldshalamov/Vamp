@@ -1,0 +1,8 @@
+---
+pid: 30136
+cwd: "C:\Users\93rob\Documents\GitHub\Vamp"
+command: "cd \"C:\\Users\\93rob\\Documents\\GitHub\\Vamp\" && npx --yes serve . -l 3456"
+started_at: 2026-06-17T02:33:48.042Z
+running_for_ms: 15008    
+---
+ INFO  Accepting connections at http://localhost:3456

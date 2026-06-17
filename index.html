@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Vampire City — a top-down vampire RPG</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="splash">
+    <div class="splash-inner">
+      <h1>VAMPIRE CITY</h1>
+      <p>summoning the night…</p>
+    </div>
+  </div>
+
+  <!-- classic scripts, strict dependency order (no build step; runs over file://) -->
+  <!-- core -->
+  <script src="js/core/util.js"></script>
+  <script src="js/core/theme.js"></script>
+  <script src="js/core/loop.js"></script>
+  <script src="js/core/input.js"></script>
+  <script src="js/core/camera.js"></script>
+  <script src="js/core/audio.js"></script>
+  <script src="js/data/artconstants.js"></script>
+  <script src="js/core/artbake.js"></script>
+  <script src="js/core/assets.js"></script>
+  <!-- world -->
+  <script src="js/world/world.js"></script>
+  <script src="js/world/props.js"></script>
+  <script src="js/world/decals.js"></script>
+  <script src="js/world/pathfinding.js"></script>
+  <script src="js/world/render.js"></script>
+  <script src="js/render/postfx.js"></script>
+  <script src="js/render/powervfx.js"></script>
+  <!-- data (before systems that reference VAMP.Data) -->
+  <script src="js/data/gamedata.js"></script>
+  <!-- systems -->
+  <script src="js/systems/stats.js"></script>
+  <script src="js/systems/blood.js"></script>
+  <script src="js/systems/combat.js"></script>
+  <script src="js/systems/skilltree.js"></script>
+  <script src="js/systems/disciplines.js"></script>
+  <script src="js/systems/powers.js"></script>
+  <script src="js/systems/inventory.js"></script>
+  <script src="js/systems/economy.js"></script>
+  <script src="js/systems/haven.js"></script>
+  <script src="js/systems/mastery.js"></script>
+  <script src="js/systems/codex.js"></script>
+  <script src="js/systems/reputation.js"></script>
+  <script src="js/systems/legend.js"></script>
+  <script src="js/systems/progress.js"></script>
+  <script src="js/systems/domains.js"></script>
+  <script src="js/systems/businesses.js"></script>
+  <script src="js/systems/coterie.js"></script>
+  <script src="js/systems/trophies.js"></script>
+  <script src="js/systems/nemesis.js"></script>
+  <script src="js/systems/legacy.js"></script>
+  <script src="js/systems/masquerade.js"></script>
+  <script src="js/systems/missions.js"></script>
+  <script src="js/systems/events.js"></script>
+  <script src="js/systems/quests.js"></script>
+  <script src="js/systems/achievements.js"></script>
+  <script src="js/systems/save.js"></script>
+  <!-- entities -->
+  <script src="js/entities/sprites.js"></script>
+  <script src="js/entities/projectile.js"></script>
+  <script src="js/entities/vehicle.js"></script>
+  <script src="js/entities/npc.js"></script>
+  <script src="js/entities/player.js"></script>
+  <!-- ui -->
+  <script src="js/ui/fx.js"></script>
+  <script src="js/ui/hud.js"></script>
+  <script src="js/ui/menus.js"></script>
+  <!-- game + bootstrap -->
+  <script src="js/game.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

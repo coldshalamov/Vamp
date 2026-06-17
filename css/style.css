@@ -1,0 +1,65 @@
+/* =========================================================================
+ * VAMPIRE CITY — global stylesheet
+ * The canvas is the whole game; CSS here only styles the page shell + splash.
+ * HUD/menu typography lives in canvas (see VAMP.Theme), so the page font is a
+ * refined system stack that mirrors it. No external assets — keeps file://.
+ * ========================================================================= */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: #05060a; color: #e8e0e8;
+  /* refined system-font stack (mirrors VAMP.Theme.FONT.ui) */
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Verdana, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-user-select: none; user-select: none;
+  cursor: crosshair;
+}
+
+/* canvas: crisp, never stretched. DPR scaling is handled in code (loop.js). */
+#game {
+  display: block;
+  width: 100vw; height: 100vh;
+  image-rendering: auto;          /* was optimizeSpeed — let it sample cleanly on HiDPI */
+  image-rendering: -webkit-optimize-contrast;
+}
+
+/* ---- loading splash (#6, #88) ---- */
+#splash {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 38%, #1a0812 0%, #0a060c 55%, #05060a 100%);
+  z-index: 10;
+  animation: splash-in 0.6s ease-out;
+}
+@keyframes splash-in { from { opacity: 0; } to { opacity: 1; } }
+
+.splash-inner { text-align: center; }
+.splash-inner h1 {
+  /* thematic serif display (mirrors VAMP.Theme.FONT.display) */
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Constantia, Georgia, serif;
+  font-size: clamp(40px, 8vw, 64px);
+  color: #c0303a; letter-spacing: 6px; font-weight: 700;
+  text-shadow: 0 0 30px rgba(192, 48, 58, 0.65), 0 0 6px rgba(0,0,0,0.8);
+  margin-bottom: 14px;
+  animation: title-glow 3.5s ease-in-out infinite;
+}
+@keyframes title-glow {
+  0%, 100% { text-shadow: 0 0 24px rgba(192,48,58,0.55), 0 0 6px rgba(0,0,0,0.8); }
+  50%      { text-shadow: 0 0 40px rgba(192,48,58,0.85), 0 0 10px rgba(255,80,100,0.5); }
+}
+.splash-inner p {
+  color: #7a6a78; font-style: italic; letter-spacing: 3px;
+  font-size: clamp(11px, 1.6vw, 14px);
+}
+.splash-inner p::after {
+  content: '';
+  display: inline-block; width: 1ch; text-align: left;
+  animation: ellipsis 1.4s steps(4) infinite;
+}
+@keyframes ellipsis {
+  0%   { content: ''; }
+  25%  { content: '.'; }
+  50%  { content: '..'; }
+  75%, 100% { content: '...'; }
+}

@@ -1,0 +1,13 @@
+# agent / machine-specific config (preview launch config, session data)
+.claude/
+
+# unrelated MCP tooling scraps
+mcps/
+
+# agent terminal logs
+terminals/
+
+# misc
+node_modules/
+*.log
+.DS_Store

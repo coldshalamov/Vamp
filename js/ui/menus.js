@@ -566,7 +566,7 @@
     // ----- PAUSE -----
     renderPause(ctx, game, w, h) {
       const canTorpor = VAMP.Legacy && VAMP.Legacy.canTorpor(game.player) && (!VAMP.Progress || VAMP.Progress.isRevealed(game.player, 'prestige'));
-      const pw = 320, ph = canTorpor ? 452 : 400, x = (w - pw) / 2, y = (h - ph) / 2;
+      const pw = 320, ph = canTorpor ? 496 : 444, x = (w - pw) / 2, y = (h - ph) / 2;
       this.panel(ctx, x, y, pw, ph, 'PAUSED');
       let by = y + 50;
       if (this.btn(ctx, x + 30, by, pw - 60, 36, 'Resume')) this.close(); by += 44;
@@ -582,6 +582,11 @@
       by += 40;
       if (this.btn(ctx, x + 30, by, (pw - 70) / 2, 32, 'Ambience -')) VAMP.Audio.setVolume('amb', Math.max(0, (game.vol.amb = (game.vol.amb || 0.6) - 0.1)));
       if (this.btn(ctx, x + 40 + (pw - 70) / 2, by, (pw - 70) / 2, 32, 'Ambience +')) VAMP.Audio.setVolume('amb', Math.min(1, (game.vol.amb = (game.vol.amb || 0.6) + 0.1)));
+      by += 40;
+      // brightness (gamma): a night game must let each player tune to their own monitor
+      const gm = (game.vol.gamma == null ? 1 : game.vol.gamma);
+      if (this.btn(ctx, x + 30, by, (pw - 70) / 2, 32, 'Brightness -')) { game.vol.gamma = Math.max(0.6, +(gm - 0.1).toFixed(2)); VAMP.Save.saveSettings(game.vol); }
+      if (this.btn(ctx, x + 40 + (pw - 70) / 2, by, (pw - 70) / 2, 32, 'Brightness + (' + Math.round(gm * 100) + '%)')) { game.vol.gamma = Math.min(1.6, +(gm + 0.1).toFixed(2)); VAMP.Save.saveSettings(game.vol); }
       by += 44;
       if (this.btn(ctx, x + 30, by, pw - 60, 36, 'Quit to Title (saves)', { color: 'rgba(80,20,30,0.9)' })) { VAMP.Save.save(game); game.toTitle(); }
       by += 44;

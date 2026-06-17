@@ -62,7 +62,8 @@
         }).catch(() => {});
       }
       const s = VAMP.Save.loadSettings();
-      if (s) { this.vol = Object.assign({ master: 0.8, music: 0.5, sfx: 0.9, amb: 0.6 }, s); }   // default amb for old settings
+      if (s) { this.vol = Object.assign({ master: 0.8, music: 0.5, sfx: 0.9, amb: 0.6, gamma: 1 }, s); }   // default amb/gamma for old settings
+      if (this.vol && this.vol.gamma == null) this.vol.gamma = 1;
       this.applyQualityTier();
     },
     applyQualityTier() {
@@ -590,7 +591,10 @@
       const glow = VAMP.Assets.glow();
       lc.setTransform(1, 0, 0, 1, 0, 0);
       lc.clearRect(0, 0, w, h);
-      lc.fillStyle = 'rgba(7,9,22,' + (0.76 * dk) + ')';
+      // player brightness (pause menu): scales the darkness mask so the night reads on any monitor.
+      const gm = (this.vol && this.vol.gamma) || 1;
+      const darkMul = U.clamp(2 - gm, 0.4, 1.5);   // gamma 1 = unchanged; >1 lifts the mask, <1 deepens it
+      lc.fillStyle = 'rgba(7,9,22,' + (0.76 * dk * darkMul) + ')';
       lc.fillRect(0, 0, w, h);
       // carve darkness holes with the baked glow sprite (no per-frame gradients)
       lc.globalCompositeOperation = 'destination-out';

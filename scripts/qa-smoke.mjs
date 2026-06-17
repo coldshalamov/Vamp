@@ -59,6 +59,10 @@ async function main() {
     const powers = VAMP.Data && VAMP.Data.POWERS ? Object.values(VAMP.Data.POWERS) : [];
     const fxNames = powers.map((p) => p.fx).filter(Boolean);
     const missingFx = fxNames.filter((fx) => !PV || !PV.hooks[fx]);
+    const manifestImageKeys = M && M.ENTRIES
+      ? Object.keys(M.ENTRIES).filter((key) => M.ENTRIES[key].path && !M.ENTRIES[key].deprecated)
+      : [];
+    const missingManifestImages = manifestImageKeys.filter((key) => !A.has(key));
     const concrete = A.get('ground_concrete');
     const plaza = A.get('ground_plaza');
     let concreteBase = null;
@@ -69,6 +73,9 @@ async function main() {
     return {
       ready: A.ready,
       bitmapCount: Object.keys(A.bitmaps || {}).length,
+      manifestImages: manifestImageKeys.length,
+      loadedManifestImages: manifestImageKeys.length - missingManifestImages.length,
+      missingManifestImages,
       spriterSheets: Spr ? Object.keys(Spr.sheets || {}).length : 0,
       autotile: !!A.get('autotile_16'),
       groundConcrete: !!concrete,
@@ -85,12 +92,27 @@ async function main() {
   const corruptSaveReport = await page.evaluate(() => {
     const key = 'vampcity_save_v1_0';
     const previous = localStorage.getItem(key);
+    const previousMode = VAMP.Game && VAMP.Game.mode;
     localStorage.setItem(key, '{not-json');
     const report = {
       hasSaveSlot: VAMP.Save.hasSaveSlot(0),
       loadSlotNull: VAMP.Save.loadSlot(0) === null,
       summaryNull: VAMP.Save.getSlotSummary(0) === null,
     };
+    localStorage.setItem(key, JSON.stringify({
+      seed: 1,
+      day: 'bad-day',
+      player: { clan: { bad: true }, level: 'bad', bloodState: { humanity: 'bad' } },
+    }));
+    report.malformedSummary = VAMP.Save.getSlotSummary(0);
+    report.malformedRenderError = null;
+    try {
+      VAMP.Game.mode = 'title';
+      VAMP.Game.render(1);
+    } catch (e) {
+      report.malformedRenderError = e.message;
+    }
+    if (previousMode) VAMP.Game.mode = previousMode;
     if (previous == null) localStorage.removeItem(key);
     else localStorage.setItem(key, previous);
     return report;
@@ -194,8 +216,14 @@ async function main() {
   if (failedAssets.length) { console.error('FAILED ASSETS:', failedAssets); fail = true; }
   const exposedInternal = staticGuardReport.filter((entry) => entry.status < 400);
   if (exposedInternal.length) { console.error('EXPOSED INTERNAL PATHS:', exposedInternal); fail = true; }
+  if (loadReport.missingManifestImages && loadReport.missingManifestImages.length) { console.error('MISSING MANIFEST IMAGES:', loadReport.missingManifestImages); fail = true; }
   if (loadReport.missingFx && loadReport.missingFx.length) { console.error('MISSING FX:', loadReport.missingFx); fail = true; }
   if (corruptSaveReport.hasSaveSlot || !corruptSaveReport.loadSlotNull || !corruptSaveReport.summaryNull) { console.error('CORRUPT SAVE SLOT ACCEPTED:', corruptSaveReport); fail = true; }
+  if (corruptSaveReport.malformedRenderError) { console.error('MALFORMED SAVE BROKE TITLE RENDER:', corruptSaveReport); fail = true; }
+  if (!corruptSaveReport.malformedSummary || corruptSaveReport.malformedSummary.clan !== 'brujah' || corruptSaveReport.malformedSummary.level !== 1 || corruptSaveReport.malformedSummary.day !== 1 || corruptSaveReport.malformedSummary.humanity !== 5) {
+    console.error('MALFORMED SAVE SUMMARY NOT SANITIZED:', corruptSaveReport);
+    fail = true;
+  }
   if (gameReport.error) { console.error('GAME ERROR:', gameReport.error); fail = true; }
   if (canvasReport.error || !canvasReport.nonBlank) { console.error('CANVAS RENDER FAILED:', canvasReport); fail = true; }
   if (loadReport.powervfxHooks !== 35) { console.error('Expected 35 powervfx hooks, got', loadReport.powervfxHooks); fail = true; }

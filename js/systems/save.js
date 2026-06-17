@@ -10,6 +10,7 @@
   const SLOT_KEYS = ['vampcity_save_v1_0', 'vampcity_save_v1_1', 'vampcity_save_v1_2'];
   const SET = 'vampcity_settings_v1';
   const VERSION = 3;
+  const CLANS = { brujah: 1, gangrel: 1, tremere: 1, ventrue: 1, toreador: 1, nosferatu: 1, malkavian: 1 };
 
   function obj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
   function isLoadableSave(data) { return obj(data) && obj(data.player) && data.seed != null; }
@@ -17,6 +18,10 @@
     if (!raw) return null;
     const data = JSON.parse(raw);
     return isLoadableSave(data) ? data : null;
+  }
+  function cleanClan(v) {
+    const clan = typeof v === 'string' ? v.toLowerCase() : '';
+    return CLANS[clan] ? clan : 'brujah';
   }
 
   function migrateLegacy() {
@@ -41,11 +46,13 @@
     try {
       const d = parseStoredSave(localStorage.getItem(SLOT_KEYS[i]));
       if (!d) return null;
+      const p = obj(d.player) ? d.player : {};
+      const blood = obj(p.bloodState) ? p.bloodState : {};
       return {
-        clan: d.player.clan || 'brujah',
-        level: d.player.level || 1,
-        day: d.day || 1,
-        humanity: (d.player.bloodState && d.player.bloodState.humanity != null) ? d.player.bloodState.humanity : 5,
+        clan: cleanClan(p.clan),
+        level: Math.floor(num(p.level, 1, 1, VAMP.Stats && VAMP.Stats.MAX_LEVEL || 60)),
+        day: Math.floor(num(d.day, 1, 1, 1000000)),
+        humanity: num(blood.humanity, 5, 0, 10),
       };
     } catch (e) { return null; }
   }

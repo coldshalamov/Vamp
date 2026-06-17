@@ -10,19 +10,85 @@
   const U = VAMP.Util;
   let MID = 1;
 
+  // ---- AUTHORED CONTRACT CHAINS (the mid-game spine: opt-in storylines that escalate to a climax) ----
+  // Each step reuses an existing mission TYPE but with authored framing, gating, and escalating reward.
+  // They appear on Boards alongside radiant contracts — the player CHOOSES to pursue them, so a passive
+  // player keeps a calm world (the chaos is opt-in). Completing a chain grants a title + a Legend surge.
+  const CHAINS = {
+    anarch: {
+      name: 'The Anarch Uprising', color: '#e0457b', icon: '⚑',
+      steps: [
+        { name: 'First Blood', type: 'assassinate', gate: 1, desc: 'Put down {name}, a rival lieutenant — announce yourself to the streets.' },
+        { name: 'Clear the Den', type: 'cleanse', gate: 3, desc: 'Wipe out the rival crew holed up in the block. Leave no one standing.' },
+        { name: 'Bleed the Bank', type: 'heist', gate: 6, desc: 'Crack a blood bank — the Uprising runs on vitae.' },
+        { name: 'Hold the Line', type: 'survive', gate: 9, desc: 'They want you dead. Survive the retaliation and break them.' },
+        { name: 'Crown of the Streets', type: 'assassinate', gate: 12, climax: true, desc: 'End {name}, Baron of the gangs. Take the crown of the streets.' },
+      ],
+      title: 'Anarch Warlord',
+    },
+    camarilla: {
+      name: 'The Camarilla Ladder', color: '#6c7bd6', icon: '♛',
+      steps: [
+        { name: 'A Discreet Favor', type: 'courier', gate: 2, desc: 'Carry a sealed writ to an Elder — quietly, on time.' },
+        { name: 'Silence a Witness', type: 'assassinate', gate: 5, desc: 'A mortal saw too much. {name} must not speak.' },
+        { name: 'Reclaim the Regalia', type: 'collect', gate: 8, desc: 'Recover the Camarilla relics scattered across the city.' },
+        { name: 'Defend the Elysium', type: 'survive', gate: 11, desc: 'Anarchs strike the Elysium. Hold it, and prove your worth.' },
+        { name: 'The Prince’s Seat', type: 'assassinate', gate: 14, climax: true, desc: 'Unseat {name} and claim Princedom of the city.' },
+      ],
+      title: 'Prince of the City',
+    },
+    inquis: {
+      name: 'The Crucible', color: '#ffcf6a', icon: '✝',
+      steps: [
+        { name: 'Whispers of the Hunt', type: 'cleanse', gate: 4, desc: 'Hunters scout the district. Snuff out their forward cell.' },
+        { name: 'Burn the Safehouse', type: 'heist', gate: 8, desc: 'Raid the hunter chapter-house and seize their ledger.' },
+        { name: 'The Witch-Hunter', type: 'assassinate', gate: 12, desc: 'Their best blade, {name}, hunts YOU. Hunt them first.' },
+        { name: 'The Final Siege', type: 'survive', gate: 15, climax: true, desc: 'The Inquisition moves against you in force. Survive the purge.' },
+      ],
+      title: 'Scourge of the Inquisition',
+    },
+  };
+
+  function nextChainStep(game, cid) {
+    const cp = game.player.chainProgress || (game.player.chainProgress = {});
+    const step = cp[cid] || 0;
+    const ch = CHAINS[cid];
+    return step < ch.steps.length ? step : -1;
+  }
+
   function offers(game) {
     const D = VAMP.Data;
     const lvl = game.player.level;
     const list = [];
-    const types = D.MISSION_TYPES.slice();
-    U.makeRNG;
-    // pick 3 distinct
-    const pool = types.slice();
-    for (let i = 0; i < 3 && pool.length; i++) {
+    // STORY chain steps first — the available next beat of each chain whose level gate is met
+    for (const cid in CHAINS) {
+      const step = nextChainStep(game, cid);
+      if (step < 0) continue;                          // chain finished
+      if (lvl < CHAINS[cid].steps[step].gate) continue; // not yet earned
+      list.push(buildChain(game, cid, step, lvl));
+      if (list.length >= 2) break;                     // at most 2 story offers on a board
+    }
+    // fill the rest with radiant contracts
+    const pool = D.MISSION_TYPES.slice();
+    while (list.length < 4 && pool.length) {
       const t = pool.splice((Math.random() * pool.length) | 0, 1)[0];
       list.push(build(game, t, lvl));
     }
     return list;
+  }
+
+  function buildChain(game, cid, stepIdx, lvl) {
+    const ch = CHAINS[cid], s = ch.steps[stepIdx];
+    const tdef = VAMP.Data.MISSION_TYPES.find((t) => t.type === s.type) || VAMP.Data.MISSION_TYPES[0];
+    const m = build(game, tdef, lvl);
+    m.chain = cid; m.chainStep = stepIdx; m.isStory = true; m.climax = !!s.climax;
+    m.name = s.name; m.color = ch.color; m.icon = ch.icon;
+    m.desc = s.desc.replace('{name}', m.targetName);
+    m.modifier = { id: 'none', bonus: 0 };             // story beats stand on their own, no extra constraint
+    m.reward.xp = Math.round(m.reward.xp * (1.6 + stepIdx * 0.35));
+    m.reward.money = Math.round(m.reward.money * (1.6 + stepIdx * 0.35));
+    if (s.climax) m.bossMission = true;                // setup() beefs the target into a real boss
+    return m;
   }
 
   function build(game, t, lvl) {
@@ -85,6 +151,7 @@
         const pos = spot(game, 360, 800);
         const tgt = VAMP.Npc.create(game.world, 'gunner', pos.x, pos.y, { hp: 120 + lvl * 8, vip: true, name: m.targetName });
         tgt.type = 'gunner'; tgt.weapon = 'pistol'; tgt.faction = 'gang'; tgt.mission = m.id; tgt.vip = true; tgt.aggro = false;
+        if (m.bossMission) { tgt.maxHp = tgt.hp = Math.round((120 + lvl * 8) * 3.4); tgt.boss = true; tgt.wardedMind = true; tgt.r = Math.round(tgt.r * 1.4); tgt.dmgMul = 1.7; tgt.armor = 0.28; tgt.weapon = 'rifle'; }
         game.addNPC(tgt); m.spawned.push(tgt); m.data.target = tgt;
         // guards
         for (let i = 0; i < 2 + (lvl / 10 | 0); i++) { const gp = { x: pos.x + (Math.random() - 0.5) * 80, y: pos.y + (Math.random() - 0.5) * 80 }; const g = VAMP.Npc.create(game.world, 'gunner', gp.x, gp.y, { hp: 60 + lvl * 4 }); g.faction = 'gang'; g.mission = m.id; game.addNPC(g); m.spawned.push(g); }
@@ -297,6 +364,23 @@
     const bonusMsg = (bonusMult > 1) ? ('  [' + m.modifier.tag + ' +' + Math.round(m.modifier.bonus * 100) + '%]') : '';
     if (VAMP.UI) { VAMP.UI.banner('CONTRACT COMPLETE', m.name + '  —  +' + xpR + ' XP, +$' + moneyR + itemMsg + bonusMsg, m.color); }
     if (VAMP.Audio) VAMP.Audio.play('win');
+    // CONTRACT-CHAIN advancement — the opt-in storyline spine that gives the mid-game a destination
+    if (m.chain && CHAINS[m.chain]) {
+      const cp = game.player.chainProgress || (game.player.chainProgress = {});
+      cp[m.chain] = Math.max(cp[m.chain] || 0, m.chainStep + 1);
+      const ch = CHAINS[m.chain];
+      if (cp[m.chain] >= ch.steps.length) {
+        // chain COMPLETE — a felt climax: a title, a Legend surge, and a fat purse
+        game.player.chainTitles = game.player.chainTitles || {};
+        game.player.chainTitles[m.chain] = ch.title;
+        if (VAMP.Legend && VAMP.Legend.add) VAMP.Legend.add(game, 50);
+        if (game.addMoney) game.addMoney(Math.round(1500 * (1 + game.player.level * 0.2)), game.player.x, game.player.y);
+        if (VAMP.UI) VAMP.UI.banner(ch.title.toUpperCase(), 'You completed ' + ch.name + '. The night remembers your name.', ch.color);
+      } else {
+        const ns = ch.steps[cp[m.chain]];
+        if (VAMP.UI) VAMP.UI.notify(ch.icon + ' ' + ch.name + ' — next: "' + ns.name + '"' + (game.player.level < ns.gate ? ' (reach level ' + ns.gate + ')' : ' — take it from a Board'), ch.color);
+      }
+    }
     VAMP.bus && VAMP.bus.emit('missionDone', m);
   }
 
@@ -336,5 +420,5 @@
     game.pickups = game.pickups.filter((pk) => pk.mission !== m.id);
   }
 
-  VAMP.Missions = { offers, accept, abandon, update, onEvent };
+  VAMP.Missions = { offers, accept, abandon, update, onEvent, CHAINS };
 })();

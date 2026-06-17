@@ -45,6 +45,7 @@
         factionRank: p.factionRank, relations: p.relations, nemeses: p.nemeses,
         trophies: p.trophies, blessings: p.blessings, businesses: p.businesses,
         reagents: p.reagents, blessingMods: p.blessingMods, childeCount: p.childeCount || 0,
+        chainProgress: p.chainProgress || {}, chainTitles: p.chainTitles || {},   // contract-chain storyline progress
         // progression-reveal ledger + signature-verb unlocks
         progress: VAMP.Progress ? VAMP.Progress.serialize(p) : null,
         finisherUnlocked: p.finisherUnlocked || false,
@@ -92,6 +93,7 @@
     p.factionRank = sp.factionRank || null; p.relations = sp.relations || null; p.nemeses = sp.nemeses || [];
     p.trophies = sp.trophies || []; p.blessings = sp.blessings || {}; p.businesses = sp.businesses || null;
     p.reagents = sp.reagents || null; p.blessingMods = sp.blessingMods || null; p.childeCount = sp.childeCount || 0;
+    p.chainProgress = sp.chainProgress || {}; p.chainTitles = sp.chainTitles || {};   // contract-chain storyline progress
     // signature-verb unlocks (grandfather older saves that already passed the level gate)
     p.finisherUnlocked = sp.finisherUnlocked || (sp.level >= 3) || false;
     p.pounceUnlocked = sp.pounceUnlocked || (sp.level >= 2) || false;

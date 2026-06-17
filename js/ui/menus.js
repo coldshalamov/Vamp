@@ -658,8 +658,15 @@
         ctx.fillStyle = 'rgba(24,18,26,0.85)'; rr(ctx, x + 16, cy, pw - 32, 84, 5); ctx.fill();
         ctx.fillStyle = m.color; ctx.fillRect(x + 16, cy, 5, 84);
         ctx.fillStyle = m.color; ctx.font = 'bold 15px Verdana'; ctx.fillText(m.icon + '  ' + m.name, x + 30, cy + 22);
+        let _descY = cy + 40;
+        if (m.isStory && VAMP.Missions.CHAINS && VAMP.Missions.CHAINS[m.chain]) {
+          const _ch = VAMP.Missions.CHAINS[m.chain];
+          ctx.fillStyle = m.climax ? '#ffd24a' : '#caa6e0'; ctx.font = 'bold 9px Verdana';
+          ctx.fillText((m.climax ? '★ CLIMAX' : '★ STORYLINE') + ' · ' + _ch.name + ' · step ' + (m.chainStep + 1) + '/' + _ch.steps.length, x + 30, cy + 36);
+          _descY = cy + 50;
+        }
         ctx.fillStyle = '#cdd'; ctx.font = '11px Verdana';
-        wrap(ctx, m.desc, x + 30, cy + 40, pw - 200, 14);
+        wrap(ctx, m.desc, x + 30, _descY, pw - 200, 14);
         ctx.fillStyle = '#ffd24a'; ctx.font = 'bold 11px Verdana';
         ctx.fillText('Reward: ' + m.reward.xp + ' XP, $' + m.reward.money + (m.reward.itemChance ? ' + loot' : ''), x + 30, cy + 74);
         if (this.btn(ctx, x + pw - 150, cy + 28, 120, 32, 'ACCEPT', { disabled: !!game.activeMission })) { if (VAMP.Missions.accept(game, m)) this.close(); }

@@ -151,7 +151,10 @@
     // AoE damage — only the PLAYER's own car blast is attributed to the player.
     // Ambient/AI/parked car explosions must not credit the player (lifesteal/crit)
     // nor charge them humanity/XP for bystanders caught in the blast.
-    const byPlayer = v.driver === 'player' || v.lastDriver === 'player';
+    // a blast is the player's fault only while driving, or within a few seconds of bailing out (you
+    // ditched a burning car). A long-abandoned car that later blows up is NOT on you — otherwise the
+    // city would turn hostile for a death you had nothing to do with (a calm-world violation).
+    const byPlayer = v.driver === 'player' || (v.lastDriver === 'player' && (game.time - (v.lastDriveT || -1e9)) < 6);
     for (const n of game.npcs) {
       if (n.dead || U.dist(v.x, v.y, n.x, n.y) >= 90) continue;
       const ang = U.angleTo(v.x, v.y, n.x, n.y);
@@ -179,7 +182,7 @@
   function exit(p, game, ejected) {
     const v = p.inVehicle;
     if (!v) return;
-    v.driver = null; v.speed *= 0.3;
+    v.driver = null; v.lastDriveT = game.time; v.speed *= 0.3;   // stamp the bail-out time for blast attribution
     p.inVehicle = null;
     // place beside car
     const a = v.angle + Math.PI / 2;

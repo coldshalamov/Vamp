@@ -81,7 +81,7 @@
         const pos = this.spot(game, 300, 700); if (!pos) return;
         const n = VAMP.Npc.create(game.world, 'gunner', pos.x, pos.y, { hp: 90 + game.player.level * 6 });
         n.faction = 'gang'; n.vip = true; n.bounty = 150 + game.player.level * 25;
-        n.weapon = 'magnum' in {} ? 'pistol' : 'pistol';
+        n.weapon = 'pistol';
         game.addNPC(n);
         this.active.push({ type: 'bounty', ref: n, t: game.time });
         if (VAMP.UI) VAMP.UI.notify('Bounty: a marked killer roams — $' + n.bounty, '#ffd24a');

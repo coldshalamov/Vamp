@@ -130,6 +130,7 @@
     const b = p.carrying; if (!b) return;
     b.carried = false; b.x = p.x; b.y = p.y; b.discovered = false;
     b.hidden = !isLit(game, p.x, p.y);   // shadow stash = much harder to find
+    if (b.dead) b.deathT = game.time;    // refresh so a stashed corpse isn't instantly culled (cull = deathT+18s)
     p.carrying = null;
     if (VAMP.UI) VAMP.UI.notify(b.hidden ? 'Body stashed in shadow — far harder to spot' : 'Body dropped in the open — exposed', b.hidden ? '#7c9' : '#c96');
   }
@@ -159,7 +160,9 @@
     // advance investigations every frame (cheap, few of them)
     for (let i = game.investigations.length - 1; i >= 0; i--) {
       const inv = game.investigations[i]; inv.t += dt;
-      if (inv.t >= inv.ttl) { game.investigations.splice(i, 1); continue; }
+      if (inv.born === undefined) inv.born = game.time;
+      // hard lifetime cap so a 'hot' scene can't pin open forever (e.g. player stuck on geometry in-ring)
+      if (inv.t >= inv.ttl || game.time - inv.born > inv.ttl * 3) { game.investigations.splice(i, 1); continue; }
       // caught at the scene: if you linger visibly inside the zone, the law converges on YOU
       if (!p.cloaked && U.dist(p.x, p.y, inv.x, inv.y) < inv.r && exposure(p, game) > 0.3) {
         inv.hot = true; inv.t = Math.min(inv.t, inv.ttl - 4);   // keep it alive while you're present
@@ -209,7 +212,7 @@
     // a fleeing witness who survives the countdown raises the alarm (a heat spike)
     for (const n of game.npcs) {
       if (n.dead || !n.witness) continue;
-      if (game.time >= n.witnessT) { n.witness = false; game.masquerade.add(1.0); if (VAMP.UI) VAMP.UI.notify('The witness reached the law — heat rises!', '#ff5a5a'); }
+      if (game.time >= n.witnessT) { n.witness = false; let g2 = 1.0; if (VAMP.Domains && VAMP.Domains.heatMult) g2 *= VAMP.Domains.heatMult(game, n.x, n.y); game.masquerade.add(g2); if (VAMP.UI) VAMP.UI.notify('The witness reached the law — heat rises!', '#ff5a5a'); }
     }
 
     // carrying a body past mortal eyes is its own crime

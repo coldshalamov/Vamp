@@ -145,7 +145,8 @@
     }
     // FORTIFIED / HIGH-PROFILE: reinforce the objective with extra guards. They start NEUTRAL, so a
     // stealth player can still slip past or pick them off quietly — only a loud approach must fight them.
-    if (m.modifier && (m.modifier.harder || m.modifier.hot)) {
+    // (Skip 'survive' — its own wave gate counts mission-tagged npcs, and static guards would stall it.)
+    if (m.modifier && (m.modifier.harder || m.modifier.hot) && m.type !== 'survive') {
       const anchor = m.data.center || m.data.target || (m.markers[0] && m.markers[0].x != null ? m.markers[0] : null) || spot(game, 320, 720);
       const extra = 2 + (lvl / 12 | 0);
       for (let i = 0; i < extra; i++) {

@@ -244,6 +244,7 @@
     // UNCONSCIOUS (a non-lethal feed / soft KO): an inert body that can be found, dragged or
     // fed on again. Wakes after a while, dazed, and stumbles off.
     if (n.downed) {
+      if (n.carried) return;   // a body slung over your shoulder can't wake up & wander off mid-carry
       if (game.time - (n.downT || 0) > (n.wakeDur || 38)) {
         n.downed = false; n.discovered = false;
         n.state = (n.faction === 'civ' || n.faction === 'animal') ? 'flee' : 'wander';
@@ -300,9 +301,11 @@
       if (n.faction === 'police' && (game.masquerade.stars >= 1 || playerThreat)) { n.state = 'chase'; n.aggro = true; n.hostileToPlayer = true; return; }
       if (n.faction === 'inquis') { n.state = 'chase'; n.aggro = true; n.hostileToPlayer = true; return; }
       const gangFriendly = VAMP.Reputation && VAMP.Reputation.gangFriendly(p);
-      // gangs stay NEUTRAL until you provoke them (n.aggro set when you hit one) — the calm
-      // sandbox baseline. Only a full city alert (4+ stars) makes loiterers join the hunt.
-      if (n.faction === 'gang' && !(gangFriendly && !n.aggro) && (n.aggro || (game.masquerade.stars >= 4 && U.dist(n.x, n.y, p.x, p.y) < 200))) { n.state = 'chase'; n.hostileToPlayer = true; return; }
+      // gangs stay NEUTRAL until YOU provoke them — the calm sandbox baseline. Key off
+      // hostileToPlayer, NOT raw n.aggro: a gang-war loser shot by its RIVAL has n.aggro=true
+      // (damageNpcByNpc) but you didn't touch it — keying off aggro made those survivors turn on an
+      // idle bystander (the intermittent unprovoked-attack bug). Only a 4+ star alert recruits loiterers.
+      if (n.faction === 'gang' && !(gangFriendly && !n.hostileToPlayer) && (n.hostileToPlayer || (game.masquerade.stars >= 4 && U.dist(n.x, n.y, p.x, p.y) < 200))) { n.state = 'chase'; n.hostileToPlayer = true; return; }
       if ((n.faction === 'civ' || n.faction === 'animal') && (p.bloodState.frenzied && U.dist(n.x, n.y, p.x, p.y) < 140)) { n.state = 'flee'; n.fleeT = 5; reportPanic(n, game); return; }
     }
     // idle pause — loiterers linger on the corner; gives the street a varied, unhurried pulse
@@ -355,7 +358,7 @@
     const d = U.dist(n.x, n.y, tgt.x, tgt.y);
     const atkRange = n.sniper ? 470 : n.weapon === 'pistol' ? 230 : n.weapon === 'rifle' ? 320 : 26;
     if (d < atkRange) { n.state = 'attack'; return; }
-    if (tgt.isPlayer && !n.ally && n.berserkT <= 0 && !n.retaliateAgainst && !canSee(n, p, game) && d > 360) {
+    if (tgt.isPlayer && !n.ally && (n.berserkT || 0) <= 0 && !n.retaliateAgainst && !canSee(n, p, game) && d > 360) {
       n.investigateX = tgt.x; n.investigateY = tgt.y; n.investigateT = 4; n.state = 'investigate'; return;
     }
     // FLANK: melee attackers fan out around the target and converge from different angles instead of

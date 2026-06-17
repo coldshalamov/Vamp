@@ -255,7 +255,7 @@
       ctx.font = 'bold 11px Verdana'; ctx.fillText(um.toFixed(1), hx + 200, hy + 8);
 
       // money (#2 — animated roll-up via the global tweener)
-      if (this.displayMoney === undefined) this.displayMoney = p.money;
+      if (this.displayMoney == null || this._moneySeeded !== p) { this.displayMoney = p.money; this._moneySeeded = p; }  // seed to real value (no roll-up-from-0 on load)
       if (Math.abs(this.displayMoney - p.money) > 0.5) this.tweens.to(this, 'displayMoney', p.money, 0.4, U.ease.outCubic);
       ctx.font = 'bold 14px Verdana'; ctx.fillStyle = '#ffd24a';
       ctx.fillText('$ ' + U.fmt(Math.round(this.displayMoney)), x + 6, hy + 30);

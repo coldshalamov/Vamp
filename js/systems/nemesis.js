@@ -33,7 +33,8 @@
     const p = game.player; if (!p.nemeses || !p.nemeses.length) return false;
     const rec = p.nemeses[(Math.random() * p.nemeses.length) | 0];
     let pos = null;
-    for (let i = 0; i < 30; i++) { const a = Math.random() * 6.28, d = 380 + Math.random() * 300; const x = (p.x) + Math.cos(a) * d, y = (p.y) + Math.sin(a) * d; if (game.world.isWalkable(x, y)) { pos = { x, y }; break; } }
+    const ox = p.inVehicle ? p.inVehicle.x : p.x, oy = p.inVehicle ? p.inVehicle.y : p.y;
+    for (let i = 0; i < 30; i++) { const a = Math.random() * VAMP.Util.TAU, d = 380 + Math.random() * 300; const x = ox + Math.cos(a) * d, y = oy + Math.sin(a) * d; if (game.world.isWalkable(x, y)) { pos = { x, y }; break; } }
     if (!pos) return false;
     const n = VAMP.Npc.create(game.world, 'hunter', pos.x, pos.y, { hp: 220 + rec.rank * 60 + p.level * 8, name: rec.name });
     n.nemesis = true; n.nemesisName = rec.name; n.aggro = true; n.state = 'chase'; n.vip = true; n.hostileToPlayer = true;

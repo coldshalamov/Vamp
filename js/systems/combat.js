@@ -88,6 +88,13 @@
     let armor = npc.armor || 0;
     if (hasStatus(npc, 'weaken')) armor = Math.max(0, armor - (npc.status.weaken.amount || 0.2));
     dmg *= (1 - armor);
+    // FRONT-ARMOR (riot shields): blocks most damage from the front — the answer is to flank or DASH
+    // behind them for full damage. Makes shielded foes a "get around them" puzzle, not a damage sponge.
+    if (npc.frontArmor && opts.angle != null && !opts.dot) {
+      let da = (opts.angle + Math.PI - (npc.angle || 0)) % (Math.PI * 2);
+      if (da > Math.PI) da -= Math.PI * 2; else if (da < -Math.PI) da += Math.PI * 2;
+      if (Math.abs(da) < 1.15) { dmg *= (1 - npc.frontArmor); if (VAMP.FX) VAMP.FX.spark(npc.x, npc.y, '#9ad0ff', 3); }
+    }
     // damage-TYPE resistance (phys / blood / shadow): a nemesis adapts to the method you lean on,
     // so a one-note build gets countered while a varied one keeps landing.
     if (npc.resist && opts.dmgType && npc.resist[opts.dmgType]) dmg *= (1 - npc.resist[opts.dmgType]);

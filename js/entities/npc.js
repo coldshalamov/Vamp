@@ -12,9 +12,9 @@
   const PRESETS = {
     ped:    { hp: 28, speed: 78,  r: 9,  innocent: true,  faction: 'civ',   weapon: null,    armor: 0,    threat: 0 },
     thug:   { hp: 60, speed: 96,  r: 10, innocent: false, faction: 'gang',  weapon: 'bat',   armor: 0.05, threat: 1, hostileOnSight: false },
-    gunner: { hp: 55, speed: 92,  r: 10, innocent: false, faction: 'gang',  weapon: 'pistol',armor: 0.05, threat: 1.2 },
+    gunner: { hp: 55, speed: 92,  r: 10, innocent: false, faction: 'gang',  weapon: 'pistol',armor: 0.05, threat: 1.2, burst: true },
     cop:    { hp: 85, speed: 122, r: 10, innocent: false, faction: 'police',weapon: 'pistol',armor: 0.1,  threat: 1.5 },
-    swat:   { hp: 150,speed: 120, r: 11, innocent: false, faction: 'police',weapon: 'rifle', armor: 0.25, threat: 2.4 },
+    swat:   { hp: 150,speed: 120, r: 11, innocent: false, faction: 'police',weapon: 'rifle', armor: 0.25, threat: 2.4, frontArmor: 0.72 },
     hunter: { hp: 180,speed: 132, r: 11, innocent: false, faction: 'inquis',weapon: 'rifle', armor: 0.3,  threat: 3.2, potent: true },
     elder:  { hp: 420,speed: 120, r: 13, innocent: false, faction: 'inquis',weapon: 'rifle', armor: 0.4,  threat: 5, boss: true, potent: true },
     thrall: { hp: 70, speed: 118, r: 9,  innocent: false, faction: 'player',weapon: 'pistol',armor: 0.1,  threat: 1, ally: true },
@@ -442,7 +442,12 @@
         color: n.elite ? n.elite.color : (n.faction === 'inquis' ? '#ffcf6a' : '#ffe'), life: 1.1, kind: 'bullet',
         status: n.eliteVenom ? { kind: 'poison', dur: 4, dps: 4 } : null,
       });
-      n.attackCD = n.weapon === 'rifle' ? 0.9 : 0.7;
+      // burst-fire signature: 3 rapid shots then a long reload — a readable "incoming burst, dodge!" rhythm
+      if (n.burst) {
+        n.burstN = (n.burstN || 0) + 1;
+        if (n.burstN < 3) n.attackCD = 0.13;
+        else { n.burstN = 0; n.attackCD = 1.5; }
+      } else n.attackCD = n.weapon === 'rifle' ? 0.9 : 0.7;
       if (VAMP.Audio) VAMP.Audio.play('gun');
       if (game.masquerade) game.masquerade.gunfire(n.x, n.y);
     } else {

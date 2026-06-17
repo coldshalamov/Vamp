@@ -874,8 +874,8 @@
       VAMP.Missions.onEvent(this, 'feed', { lethal: info.lethal });
       if (info.ups && info.ups.length) for (const u of info.ups) this.onLevelUp(u);
       // feeding on faction members frays those relationships (you're taking their people)
-      if (VAMP.Reputation && info.vt) {
-        const f = info.vt.faction;
+      if (VAMP.Reputation && info.npc) {
+        const f = info.npc.faction;
         if (f === 'police') VAMP.Reputation.change(this.player, 'police', -1);
         else if (f === 'gang') VAMP.Reputation.change(this.player, 'gang', -0.5);
       }

@@ -246,7 +246,7 @@
     }
     if (lethal && game && game.cam) game.cam.shake(3, 0.2);
 
-    if (game) game.feedEvent({ vt, lethal, xp, ups: res.ups });
+    if (game) game.feedEvent({ vt, lethal, xp, ups: res.ups, npc });
     p.feeding = null;
     return res;
   }

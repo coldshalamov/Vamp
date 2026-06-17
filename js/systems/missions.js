@@ -554,7 +554,7 @@
     if (VAMP.UI) { VAMP.UI.banner('CONTRACT COMPLETE', m.name + '  —  +' + xpR + ' XP, +$' + moneyR + itemMsg + bonusMsg, m.color); }
     if (VAMP.Audio) VAMP.Audio.play('win');
     // faction rep: chain missions earn more than radiant contracts
-    if (VAMP.Reputation) VAMP.Reputation.onMission(game.player, m.chain || 'anarch', m.chain ? 8 : 6);
+    if (VAMP.Reputation && m.chain) VAMP.Reputation.onMission(game.player, m.chain, 8);
     // CONTRACT-CHAIN advancement — the opt-in storyline spine that gives the mid-game a destination
     if (m.chain && CHAINS[m.chain]) {
       const cp = game.player.chainProgress || (game.player.chainProgress = {});

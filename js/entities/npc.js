@@ -185,6 +185,9 @@
       const off = Math.abs(U.wrapAngle(U.angleTo(n.x, n.y, p.x, p.y) - n.angle));
       if (off > 1.25) return false;
     }
+    // occlusion: a building between us blocks the view — duck behind cover to break a pursuer's sight
+    // (point-blank is always "sensed"). This is what lets you lose the law GTA-style.
+    if (d > 40 && !game.world.sightClear(n.x, n.y, p.x, p.y)) return false;
     return true;
   }
 
@@ -356,11 +359,15 @@
       if (allies < 2) { n.state = 'flee'; n.fleeT = 5; n.hostileToPlayer = false; n.aggro = false; return; }
     }
     const d = U.dist(n.x, n.y, tgt.x, tgt.y);
-    const atkRange = n.sniper ? 470 : n.weapon === 'pistol' ? 230 : n.weapon === 'rifle' ? 320 : 26;
-    if (d < atkRange) { n.state = 'attack'; return; }
-    if (tgt.isPlayer && !n.ally && (n.berserkT || 0) <= 0 && !n.retaliateAgainst && !canSee(n, p, game) && d > 360) {
-      n.investigateX = tgt.x; n.investigateY = tgt.y; n.investigateT = 4; n.state = 'investigate'; return;
+    // track line of sight: remember WHERE we last saw the player so losing them means searching that
+    // spot, not psychically tracking their live position. This is what makes breaking LOS / fleeing work.
+    const sees = tgt.isPlayer ? canSee(n, p, game) : true;
+    if (sees && tgt.isPlayer) { n.seePlayerT = game.time; n.lastSeenX = tgt.x; n.lastSeenY = tgt.y; }
+    if (tgt.isPlayer && !n.ally && (n.berserkT || 0) <= 0 && !n.retaliateAgainst && !sees && n.lastSeenX !== undefined && (game.time - (n.seePlayerT || 0)) > 2.0) {
+      n.investigateX = n.lastSeenX; n.investigateY = n.lastSeenY; n.investigateT = 6; n.state = 'investigate'; return;
     }
+    const atkRange = n.sniper ? 470 : n.weapon === 'pistol' ? 230 : n.weapon === 'rifle' ? 320 : 26;
+    if (d < atkRange && (sees || d < 34)) { n.state = 'attack'; return; }
     // FLANK: melee attackers fan out around the target and converge from different angles instead of
     // conga-lining into one spot — groups feel coordinated.
     let aimX = tgt.x, aimY = tgt.y;

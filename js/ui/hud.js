@@ -414,15 +414,24 @@
     },
 
     drawTopRight(ctx, game, w) {
-      // heat stars
-      const s = game.masquerade.stars;
-      const sx = w - 14, sy = 28;
+      const M = game.masquerade;
+      const s = M.stars;
+      const sx = w - 14;
+      let sy = 28;
       ctx.textAlign = 'right';
       ctx.font = 'bold 15px Verdana';
       let str = '';
       for (let i = 0; i < 6; i++) str += i < s ? '★' : '☆';
       ctx.fillStyle = s > 0 ? '#ff4040' : 'rgba(255,255,255,0.3)';
       ctx.fillText(str, sx, sy);
+      // WANTED / EVADING — GTA-style escape feedback so it's clear HOW to get back to peace
+      if (s > 0) {
+        sy += 15;
+        const pulse = 0.55 + 0.45 * Math.abs(Math.sin(game.time * 5));
+        ctx.font = 'bold 10px Verdana';
+        if (M.evading) { ctx.fillStyle = 'rgba(120,230,150,' + pulse + ')'; ctx.fillText('▼ EVADING — stay out of sight', sx, sy); }
+        else { ctx.fillStyle = 'rgba(255,90,90,' + pulse + ')'; ctx.fillText('● WANTED — break their line of sight', sx, sy); }
+      }
       // clock + district
       const t = game.clock;
       const hh = Math.floor(t) % 24, mm = Math.floor((t % 1) * 60);
@@ -433,7 +442,7 @@
         const owned = VAMP.Domains && VAMP.Domains.isOwned(game, dist.id);
         ctx.fillStyle = dist.accent; ctx.font = 'bold 12px Verdana'; ctx.fillText((owned ? '✦ ' : '') + dist.name, sx, sy + 34);
       }
-      if (VAMP.Legend && (!VAMP.Progress || VAMP.Progress.hudFeature(game, 'legend'))) { const t = VAMP.Legend.title(game.player); ctx.fillStyle = '#c79bff'; ctx.font = '11px Verdana'; ctx.fillText(t.name + (VAMP.Domains ? '  ·  ' + VAMP.Domains.ownedCount(game) + ' domains' : ''), sx, sy + 50); }
+      if (VAMP.Legend && (!VAMP.Progress || VAMP.Progress.hudFeature(game, 'legend'))) { const lt = VAMP.Legend.title(game.player); ctx.fillStyle = '#c79bff'; ctx.font = '11px Verdana'; ctx.fillText(lt.name + (VAMP.Domains ? '  ·  ' + VAMP.Domains.ownedCount(game) + ' domains' : ''), sx, sy + 50); }
       ctx.textAlign = 'left';
     },
 

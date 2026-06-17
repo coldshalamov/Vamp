@@ -17,7 +17,7 @@
     { id: 'might', name: 'Might', desc: 'Melee damage & knockback' },
     { id: 'finesse', name: 'Finesse', desc: 'Move & attack speed, dodge' },
     { id: 'vitality', name: 'Vitality', desc: 'Max health & regeneration' },
-    { id: 'bloodcraft', name: 'Bloodcraft', desc: 'Max vitae & discipline potency' },
+    { id: 'bloodcraft', name: 'Bloodcraft', desc: 'Max vitae, vitae regen & discipline potency' },
     { id: 'wits', name: 'Wits', desc: 'Cooldown reduction & critical chance' },
     { id: 'presence', name: 'Presence', desc: 'Feeding, influence, prices, XP gain' },
   ];
@@ -65,7 +65,7 @@
 
     // Max HP / Vitae
     d.maxHP = Math.round((100 + (a.vitality - 1) * 9 + (p.level - 1) * 4 + get('maxHP')) * mul('maxHP'));
-    d.maxBlood = Math.round((100 + (a.bloodcraft - 1) * 6 + bp * 12 + get('maxBlood')) * mul('maxBlood'));
+    d.maxBlood = Math.round((100 + (a.bloodcraft - 1) * 6 + bp * 12 + (p.level - 1) * 3 + get('maxBlood')) * mul('maxBlood'));
     if (!isFinite(d.maxHP) || d.maxHP < 1) d.maxHP = 100;     // never let a bad input brick survival
     if (!isFinite(d.maxBlood) || d.maxBlood < 1) d.maxBlood = 100;
 
@@ -93,7 +93,7 @@
 
     // regen
     d.hpRegen = (0.4 + (a.vitality - 1) * 0.18 + get('hpRegen')) * mul('hpRegen'); // hp/sec
-    d.bloodRegen = (0.5 + (a.bloodcraft - 1) * 0.05 + get('bloodRegen')) * mul('bloodRegen'); // vitae/sec (resting only)
+    d.bloodRegen = (0.55 + (a.bloodcraft - 1) * 0.12 + get('bloodRegen')) * mul('bloodRegen'); // vitae/sec — trainable via Bloodcraft / nodes
 
     // economy / social
     d.xpMult = (1 + (a.presence - 1) * 0.012 + (m.pct.xpMult || 0)) * (1 + get('xpMult') * 0.01);

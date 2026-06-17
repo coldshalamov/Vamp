@@ -51,9 +51,10 @@
     else target = 5;
     b.hunger = U.approach(b.hunger, target, dt * 0.8);
 
-    // passive blood drain over time (unlife is hungry) — gentle, so a well-fed resting vampire recovers
-    p.blood = Math.max(0, p.blood - dt * 0.22);
-    // small passive blood regen only while well-fed and resting handled elsewhere
+    // gentle Hunger drain over time (unlife is hungry) — outpaced by vitae regen when idle, so a
+    // resting vampire recovers, but active play (sprint/pounce/spells) still depletes you toward a feed.
+    p.blood = Math.max(0, p.blood - dt * 0.12);
+    // (vitae REGEN is in passiveRegen — always-on now, so spells are never permanently dead)
 
     // frenzy risk when hunger maxed
     if (b.frenzyCooldown > 0) b.frenzyCooldown -= dt;
@@ -242,8 +243,11 @@
     // HP regen always slow; faster when not in combat
     const mult = resting ? 2.2 : 1;
     if (p.hp < d.maxHP) p.hp = Math.min(d.maxHP, p.hp + d.hpRegen * dt * mult);
-    // blood regen only when well above hunger 0 and resting (vampires mostly gain blood by feeding)
-    if (resting && p.blood < d.maxBlood) p.blood = Math.min(d.maxBlood, p.blood + d.bloodRegen * dt);
+    // VITAE regenerates over time like mana, so a cast spell is never permanently dead — the meter
+    // trickles back (faster when resting / out of combat). Feeding is still the FAST refill and the
+    // only thing that relieves Hunger + grants XP, so it stays central. Speed scales with Bloodcraft
+    // / bloodRegen (trainable); max scales with level (see Stats.recompute).
+    if (p.blood < d.maxBlood) p.blood = Math.min(d.maxBlood, p.blood + d.bloodRegen * dt * (resting ? 2.2 : 0.9));
   }
 
   VAMP.Blood = {

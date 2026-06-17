@@ -276,6 +276,21 @@
         if (c < 0 || r < 0 || c >= cols || r >= rows) return false;
         return pass[idx(c, r)] === 1;
       },
+      // line-of-sight: false if a BUILDING blocks the segment (water/open ground don't block sight).
+      // Lets you break a pursuer's view by ducking behind a building — the core of the escape loop.
+      sightClear(x1, y1, x2, y2) {
+        const dx = x2 - x1, dy = y2 - y1;
+        const dist = Math.hypot(dx, dy);
+        const steps = Math.min(22, Math.ceil(dist / 26));
+        for (let i = 1; i < steps; i++) {
+          const t = i / steps;
+          const c = Math.floor((x1 + dx * t) / TILE), r = Math.floor((y1 + dy * t) / TILE);
+          if (c < 0 || r < 0 || c >= cols || r >= rows) continue;
+          const ti = idx(c, r);
+          if (pass[ti] !== 1 && tile[ti] !== T.WATER) return false;   // a solid (building) tile blocks the view
+        }
+        return true;
+      },
       // buildings near a point (for collision)
       buildingsNear(wx, wy, rad) {
         const c0 = Math.floor((wx - rad) / HASH), c1 = Math.floor((wx + rad) / HASH);

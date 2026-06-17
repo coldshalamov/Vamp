@@ -292,7 +292,7 @@
     }
     if (VAMP.Audio) VAMP.Audio.play('gun');
     if (game.cam) { const heavy = (w.pellets || 1) > 1; game.cam.shake(heavy ? 4 : 2.2, heavy ? 0.13 : 0.10, p.facing + Math.PI); if (heavy) game.cam.punch(0.05); }   // kick BACK from the muzzle
-    if (game.masquerade) game.masquerade.gunfire(p.x, p.y);
+    if (game.masquerade) game.masquerade.gunfire(p.x, p.y, true);   // YOUR gunshots draw heat
   }
 
   // shared by tryFeed and the HUD prompt so they never disagree

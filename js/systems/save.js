@@ -89,6 +89,257 @@
     return n;
   }
 
+  function obj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
+
+  function boolMap(src) {
+    const out = {};
+    if (!obj(src)) return out;
+    for (const k in src) if (src[k]) out[k] = true;
+    return out;
+  }
+
+  function modMap(src, min, max) {
+    const out = {};
+    if (!obj(src)) return out;
+    for (const k in src) {
+      const v = num(src[k], 0, min, max);
+      if (v) out[k] = v;
+    }
+    return out;
+  }
+
+  function cleanModBag(src) {
+    if (!obj(src)) return null;
+    const add = modMap(src.add, -100000, 100000);
+    const pct = modMap(src.pct, -0.95, 10);
+    return (Object.keys(add).length || Object.keys(pct).length) ? { add, pct } : null;
+  }
+
+  function cleanTreeNodes(src) {
+    const out = {};
+    const idx = VAMP.Data && VAMP.Data.TREE_INDEX;
+    if (!obj(src) || !idx) return out;
+    for (const id in src) {
+      const node = idx[id];
+      if (!node) continue;
+      const rank = Math.floor(num(src[id], 0, 0, node.maxRank || 1));
+      if (rank > 0) out[id] = rank;
+    }
+    return out;
+  }
+
+  function cleanPowers(src) {
+    const out = {};
+    const defs = VAMP.Data && VAMP.Data.POWERS;
+    if (!obj(src)) return out;
+    for (const id in src) if (src[id] && (!defs || defs[id])) out[id] = true;
+    return out;
+  }
+
+  function cleanSlots(src, powers) {
+    const out = [null, null, null, null, null, null, null, null];
+    if (!Array.isArray(src)) return out;
+    for (let i = 0; i < out.length; i++) {
+      const id = typeof src[i] === 'string' ? src[i] : null;
+      out[i] = id && powers[id] ? id : null;
+    }
+    return out;
+  }
+
+  function cleanBloodState(src) {
+    const b = VAMP.Blood.newBloodState();
+    if (!obj(src)) return b;
+    b.hunger = num(src.hunger, b.hunger, 0, 5);
+    b.humanity = num(src.humanity, b.humanity, 0, 10);
+    b.stains = Math.floor(num(src.stains, b.stains, 0, 999));
+    b.frenzy = num(src.frenzy, b.frenzy, 0, 1);
+    b.frenzied = src.frenzied === true;
+    b.frenzyCooldown = num(src.frenzyCooldown, b.frenzyCooldown, 0, 9999);
+    b.kills = Math.floor(num(src.kills, b.kills, 0, 1000000000));
+    b.innocentKills = Math.floor(num(src.innocentKills, b.innocentKills, 0, 1000000000));
+    b.fedCount = Math.floor(num(src.fedCount, b.fedCount, 0, 1000000000));
+    b.elderVitae = Math.floor(num(src.elderVitae, b.elderVitae, 0, 1000000));
+    b.elderProgress = num(src.elderProgress, b.elderProgress, 0, VAMP.Stats.ELDER_XP || 2000);
+    b.dawnStreak = Math.floor(num(src.dawnStreak, b.dawnStreak, 0, 1000000));
+    b.elderSpent = {};
+    const elderKeys = VAMP.Stats.ELDER_KEYS || {};
+    if (obj(src.elderSpent)) {
+      for (const k in src.elderSpent) {
+        if (!elderKeys[k]) continue;
+        const spent = Math.floor(num(src.elderSpent[k], 0, 0, 1000000));
+        if (spent) b.elderSpent[k] = spent;
+      }
+    }
+    return b;
+  }
+
+  function cleanStats(src, fallback) {
+    const out = Object.assign({}, fallback || {});
+    if (!obj(src)) return out;
+    for (const k in src) out[k] = num(src[k], out[k] || 0, 0, 1000000000);
+    return out;
+  }
+
+  function cleanHaven(src) {
+    if (!obj(src)) return null;
+    const out = { rooms: {}, cellarVitae: num(src.cellarVitae, 0, 0, 1000000000) };
+    const rooms = (VAMP.Data && VAMP.Data.HAVEN_ROOMS) || [];
+    for (const r of rooms) out.rooms[r.id] = Math.floor(num(src.rooms && src.rooms[r.id], 0, 0, r.max || 99));
+    return out;
+  }
+
+  function cleanMastery(src) {
+    if (!obj(src) || !VAMP.Mastery) return null;
+    const out = {};
+    for (const k in VAMP.Mastery.TRACKS) {
+      const tr = obj(src[k]) ? src[k] : {};
+      const xp = num(tr.xp, 0, 0, 1000000000);
+      out[k] = { xp, rank: VAMP.Mastery.rankFor ? VAMP.Mastery.rankFor(xp) : Math.floor(num(tr.rank, 0, 0, VAMP.Mastery.CAP || 12)) };
+    }
+    return out;
+  }
+
+  function cleanReputation(src) {
+    if (!obj(src)) return null;
+    const out = {};
+    const factions = (VAMP.Reputation && VAMP.Reputation.FACTIONS) || { camarilla: 1, anarch: 1, inquis: 1, gang: 1, police: 1 };
+    for (const k in factions) out[k] = num(src[k], 0, -100, 100);
+    return out;
+  }
+
+  function cleanBusinesses(src) {
+    if (!obj(src)) return null;
+    const out = {};
+    const defs = VAMP.Data && VAMP.Data.BUSINESSES || [];
+    for (const d of defs) {
+      const b = obj(src[d.id]) ? src[d.id] : null;
+      if (!b || !b.owned) continue;
+      out[d.id] = { owned: true, tier: Math.floor(num(b.tier, 0, 0, VAMP.Business ? VAMP.Business.MAXTIER : 4)) };
+    }
+    return out;
+  }
+
+  function cleanCoterie(src) {
+    if (!Array.isArray(src)) return [];
+    const jobs = VAMP.Coterie && VAMP.Coterie.JOBS || { none: 1 };
+    return src.slice(0, 12).filter(obj).map((m) => {
+      const assignment = jobs[m.assignment] ? m.assignment : 'none';
+      return {
+        id: Math.floor(num(m.id, 0, 0, 1000000000)),
+        name: typeof m.name === 'string' && m.name ? m.name.slice(0, 80) : 'Thrall',
+        archetype: typeof m.archetype === 'string' ? m.archetype.slice(0, 40) : 'thrall',
+        level: Math.floor(num(m.level, 1, 1, 1000)),
+        xp: num(m.xp, 0, 0, 1000000000),
+        loyalty: num(m.loyalty, 50, 0, 100),
+        assignment,
+        isChilde: m.isChilde === true,
+      };
+    });
+  }
+
+  function cleanTrophies(src) {
+    if (!Array.isArray(src)) return [];
+    const defs = VAMP.Trophies && VAMP.Trophies.DEFS || {};
+    const seen = {};
+    const out = [];
+    for (const t of src) {
+      if (!obj(t) || typeof t.id !== 'string' || !defs[t.id] || seen[t.id]) continue;
+      seen[t.id] = true;
+      out.push({ id: t.id, name: typeof t.name === 'string' ? t.name : defs[t.id].name, desc: typeof t.desc === 'string' ? t.desc : defs[t.id].desc });
+    }
+    return out;
+  }
+
+  function cleanItem(item) {
+    if (!obj(item)) return null;
+    const slot = item.slot === 'weapon' || item.slot === 'attire' || item.slot === 'charm' ? item.slot : 'charm';
+    const out = {
+      id: Math.floor(num(item.id, 0, 0, 1000000000)),
+      slot,
+      rarity: typeof item.rarity === 'string' ? item.rarity : 'common',
+      level: Math.floor(num(item.level, 1, 1, 1000)),
+      name: typeof item.name === 'string' && item.name ? item.name.slice(0, 120) : 'Item',
+      baseName: typeof item.baseName === 'string' && item.baseName ? item.baseName.slice(0, 120) : 'Item',
+      glyph: typeof item.glyph === 'string' && item.glyph ? item.glyph.slice(0, 4) : '?',
+      color: typeof item.color === 'string' && item.color ? item.color : '#cdd',
+      mods: cleanModBag(item.mods) || { add: {}, pct: {} },
+      affixes: Array.isArray(item.affixes) ? item.affixes.filter((x) => typeof x === 'string').slice(0, 8) : [],
+    };
+    if (item.relic) out.relic = true;
+    if (obj(item.weaponStats)) {
+      out.weaponStats = {
+        kind: typeof item.weaponStats.kind === 'string' ? item.weaponStats.kind : 'pistol',
+        name: typeof item.weaponStats.name === 'string' ? item.weaponStats.name : out.name,
+        dmg: num(item.weaponStats.dmg, 10, 0, 10000),
+        fireRate: num(item.weaponStats.fireRate, 0.35, 0.02, 10),
+        spread: num(item.weaponStats.spread, 0.04, 0, 10),
+        speed: num(item.weaponStats.speed, 620, 1, 5000),
+        pellets: Math.floor(num(item.weaponStats.pellets, 1, 1, 100)),
+        pierce: Math.floor(num(item.weaponStats.pierce, 0, 0, 100)),
+        dmgMult: num(item.weaponStats.dmgMult, 1, 0, 100),
+        rangeBonus: num(item.weaponStats.rangeBonus, 0, 0, 1000),
+      };
+    }
+    return out;
+  }
+
+  function cleanInventory(src) {
+    if (!Array.isArray(src)) return [];
+    return src.map(cleanItem).filter(Boolean).slice(0, 40);
+  }
+
+  function cleanEquip(src) {
+    src = obj(src) ? src : {};
+    return {
+      attire: cleanItem(src.attire),
+      charm1: cleanItem(src.charm1),
+      charm2: cleanItem(src.charm2),
+      weaponItem: cleanItem(src.weaponItem),
+    };
+  }
+
+  function cleanChainProgress(src) {
+    const out = {};
+    const chains = VAMP.Missions && VAMP.Missions.CHAINS || {};
+    if (!obj(src)) return out;
+    for (const k in chains) out[k] = Math.floor(num(src[k], 0, 0, chains[k].steps.length));
+    return out;
+  }
+
+  function cleanChainTitles(src) {
+    const out = {};
+    const chains = VAMP.Missions && VAMP.Missions.CHAINS || {};
+    if (!obj(src)) return out;
+    for (const k in chains) if (src[k] && typeof src[k] === 'string') out[k] = src[k].slice(0, 80);
+    return out;
+  }
+
+  function sanitizeRun(data) {
+    if (!obj(data)) return data;
+    return Object.assign({}, data, {
+      seed: Math.floor(num(data.seed, 12345, 1, 0xffffffff)),
+      time: num(data.time, 0, 0, 1000000000),
+      clock: num(data.clock, 21, 0, 24),
+      day: Math.floor(num(data.day, 1, 1, 1000000)),
+      missionsDone: Math.floor(num(data.missionsDone, 0, 0, 1000000000)),
+      heat: num(data.heat, 0, 0, 100),
+    });
+  }
+
+  function sanitizeWorldState(data, world) {
+    const domains = {}, districtState = {};
+    const ds = obj(data && data.districtState) ? data.districtState : {};
+    const dm = obj(data && data.domains) ? data.domains : {};
+    const districts = world && world.districts || [];
+    for (const d of districts) {
+      const sd = obj(dm[d.id]) ? dm[d.id] : {};
+      domains[d.id] = { owner: sd.owner === 'player' ? 'player' : null, contesting: sd.contesting === true };
+      const st = obj(ds[d.id]) ? ds[d.id] : {};
+      districtState[d.id] = { terror: num(st.terror, 0, 0, 1), prosperity: num(st.prosperity, 0, 0, 1) };
+    }
+    return { domains, districtState };
+  }
+
   // apply a loaded data blob onto a freshly-created player
   function applyToPlayer(p, sp) {
     p.level = Math.floor(num(sp.level, 1, 1, VAMP.Stats.MAX_LEVEL || 60));
@@ -99,23 +350,23 @@
     for (const k in p.attributes) { const v = +p.attributes[k]; p.attributes[k] = isFinite(v) && v >= 1 ? v : 1; }
     p.attrPoints = Math.floor(num(sp.attrPoints, 0, 0));
     p.skillPoints = Math.floor(num(sp.skillPoints, 0, 0));
-    p.treeNodes = sp.treeNodes || {}; p.powers = sp.powers || {}; p.slots = sp.slots || [null, null, null, null, null, null, null, null];
+    p.treeNodes = cleanTreeNodes(sp.treeNodes); p.powers = cleanPowers(sp.powers); p.slots = cleanSlots(sp.slots, p.powers);
     p.money = Math.floor(num(sp.money, 0, 0));
     p.respecs = Math.floor(num(sp.respecs, 0, 0));
     p.aimMode = sp.aimMode || 'move';
-    p.inventory = sp.inventory || [];
-    p.bloodState = Object.assign(VAMP.Blood.newBloodState(), sp.bloodState || {});
-    p.stats = sp.stats || p.stats;
+    p.inventory = cleanInventory(sp.inventory);
+    p.bloodState = cleanBloodState(sp.bloodState);
+    p.stats = cleanStats(sp.stats, p.stats);
     p.toggles = {}; p.cloaked = false; p.buffs = [];
     const pos = safeLoadedPosition(p, sp);
     p.x = pos.x; p.y = pos.y; p.clan = sp.clan || 'brujah';
     // continuing-value persistent blocks (all default-safe for old saves)
-    p.haven = sp.haven || null; p.mastery = sp.mastery || null; p.codex = sp.codex || null;
-    p.reputation = sp.reputation || null; p.coterie = sp.coterie || []; p.legend = sp.legend || 0;
+    p.haven = cleanHaven(sp.haven); p.mastery = cleanMastery(sp.mastery); p.codex = sp.codex || null;
+    p.reputation = cleanReputation(sp.reputation); p.coterie = cleanCoterie(sp.coterie); p.legend = num(sp.legend, 0, 0, 1000000000);
     p.factionRank = sp.factionRank || null; p.relations = sp.relations || null; p.nemeses = sp.nemeses || [];
-    p.trophies = sp.trophies || []; p.blessings = sp.blessings || {}; p.businesses = sp.businesses || null;
-    p.reagents = sp.reagents || null; p.blessingMods = sp.blessingMods || null; p.childeCount = Math.floor(num(sp.childeCount, 0, 0));
-    p.chainProgress = sp.chainProgress || {}; p.chainTitles = sp.chainTitles || {};   // contract-chain storyline progress
+    p.trophies = cleanTrophies(sp.trophies); p.blessings = boolMap(sp.blessings); p.businesses = cleanBusinesses(sp.businesses);
+    p.reagents = sp.reagents || null; p.blessingMods = cleanModBag(sp.blessingMods); p.childeCount = Math.floor(num(sp.childeCount, 0, 0));
+    p.chainProgress = cleanChainProgress(sp.chainProgress); p.chainTitles = cleanChainTitles(sp.chainTitles);   // contract-chain storyline progress
     // signature-verb unlocks (grandfather older saves that already passed the level gate)
     p.finisherUnlocked = sp.finisherUnlocked || (p.level >= 3) || false;
     p.pounceUnlocked = sp.pounceUnlocked || (p.level >= 2) || false;
@@ -125,13 +376,14 @@
     if (VAMP.Codex) VAMP.Codex.ensure(p);
     if (VAMP.Reputation && VAMP.Reputation.ensure) VAMP.Reputation.ensure(p);
     // equipment
-    p.equipment.attire = sp.equip ? sp.equip.attire : null;
-    p.equipment.charm1 = sp.equip ? sp.equip.charm1 : null;
-    p.equipment.charm2 = sp.equip ? sp.equip.charm2 : null;
+    const equip = cleanEquip(sp.equip);
+    p.equipment.attire = equip.attire;
+    p.equipment.charm1 = equip.charm1;
+    p.equipment.charm2 = equip.charm2;
     VAMP.Stats.recompute(p);
-    if (sp.equip && sp.equip.weaponItem) {
-      p.inventory.push(sp.equip.weaponItem);
-      VAMP.Inventory.equip(p, sp.equip.weaponItem);
+    if (equip.weaponItem) {
+      p.inventory.push(equip.weaponItem);
+      VAMP.Inventory.equip(p, equip.weaponItem);
     }
     VAMP.Stats.recompute(p);
     p.hp = num(sp.hp, p.derived.maxHP, 0, p.derived.maxHP);          // NaN/garbage → full, never brick survival
@@ -142,5 +394,5 @@
   function saveSettings(s) { try { localStorage.setItem(SET, JSON.stringify(s)); } catch (e) {} }
   function loadSettings() { try { const r = localStorage.getItem(SET); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
 
-  VAMP.Save = { hasSave, save, load, clear, applyToPlayer, serialize, saveSettings, loadSettings, VERSION };
+  VAMP.Save = { hasSave, save, load, clear, applyToPlayer, serialize, sanitizeRun, sanitizeWorldState, saveSettings, loadSettings, VERSION };
 })();

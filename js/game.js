@@ -140,18 +140,20 @@
         VAMP.UI.notify('Save was corrupt — starting fresh.', '#a66');
         this.mode = 'title'; return;
       }
-      this.buildWorld(data.seed);
-      this.player = VAMP.Player.newPlayer(this.world, { x: data.player.x, y: data.player.y });
-      VAMP.Save.applyToPlayer(this.player, data.player);
-      this.applyClan(this.player.clan || data.player.clan || 'brujah', true);
-      this.domains = data.domains || {}; this.districtState = data.districtState || {};
-      this.clock = data.clock != null ? data.clock : 21; this.day = data.day || 1; this.time = data.time || 0;
-      this.missionsDone = data.missionsDone || 0;
+      const run = VAMP.Save.sanitizeRun ? VAMP.Save.sanitizeRun(data) : data;
+      this.buildWorld(run.seed);
+      this.player = VAMP.Player.newPlayer(this.world, { x: run.player.x, y: run.player.y });
+      VAMP.Save.applyToPlayer(this.player, run.player);
+      this.applyClan(this.player.clan || run.player.clan || 'brujah', true);
+      const worldState = VAMP.Save.sanitizeWorldState ? VAMP.Save.sanitizeWorldState(run, this.world) : { domains: run.domains || {}, districtState: run.districtState || {} };
+      this.domains = worldState.domains; this.districtState = worldState.districtState;
+      this.clock = run.clock; this.day = run.day; this.time = run.time;
+      this.missionsDone = run.missionsDone;
       this.night = { kills: 0, feeds: 0, money: 0 };
       this.afterPlayer();
       if (VAMP.Legacy) VAMP.Legacy.applyNewGame(this);
-      this.masquerade.heat = data.heat || 0;
-      this.achievements = VAMP.Achievements.create(this, data.achievements || {});
+      this.masquerade.heat = run.heat;
+      this.achievements = VAMP.Achievements.create(this, run.achievements || {});
       VAMP.UI.notify('Welcome back to the long night.', '#e0a0b8');
       this.mode = 'play';
     },

@@ -274,6 +274,17 @@
     return out;
   }
 
+  function cleanReagents(src) {
+    if (!obj(src)) return null;
+    const out = {};
+    for (const k in src) {
+      const key = String(k).slice(0, 40);
+      const count = Math.floor(num(src[k], 0, 0, 1000000000));
+      if (key && count > 0) out[key] = (out[key] || 0) + count;
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
   function cleanCoterie(src) {
     if (!Array.isArray(src)) return [];
     const jobs = VAMP.Coterie && VAMP.Coterie.JOBS || { none: 1 };
@@ -436,7 +447,7 @@
     p.reputation = cleanReputation(sp.reputation); p.coterie = cleanCoterie(sp.coterie); p.legend = num(sp.legend, 0, 0, 1000000000);
     p.factionRank = sp.factionRank || null; p.relations = sp.relations || null; p.nemeses = cleanNemeses(sp.nemeses);
     p.trophies = cleanTrophies(sp.trophies); p.blessings = boolMap(sp.blessings); p.businesses = cleanBusinesses(sp.businesses);
-    p.reagents = sp.reagents || null; p.blessingMods = cleanModBag(sp.blessingMods); p.childeCount = Math.floor(num(sp.childeCount, 0, 0));
+    p.reagents = cleanReagents(sp.reagents); p.blessingMods = cleanModBag(sp.blessingMods); p.childeCount = Math.floor(num(sp.childeCount, 0, 0));
     p.chainProgress = cleanChainProgress(sp.chainProgress); p.chainTitles = cleanChainTitles(sp.chainTitles);   // contract-chain storyline progress
     // signature-verb unlocks (grandfather older saves that already passed the level gate)
     p.finisherUnlocked = sp.finisherUnlocked || (p.level >= 3) || false;

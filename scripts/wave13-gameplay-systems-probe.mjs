@@ -52,6 +52,17 @@ async function main() {
       lastDmgType: p._lastDmgType || null,
     };
 
+    g.newGame(13002, 'brujah', 0, 'normal');
+    const badReagentSave = VAMP.Save.serialize(g);
+    badReagentSave.player.reagents = 'not-a-reagent-map';
+    badReagentSave.player.progress = { revealed: { feed: 1, havenUpgrade: 1 }, seen: {}, objIdx: 0 };
+    g.loadGame(badReagentSave, 0);
+    VAMP.Progress.check(g);
+    out.reagentSaveSanitation = {
+      reagents: g.player.reagents,
+      alchemyRevealed: !!(g.player.progress && g.player.progress.revealed && g.player.progress.revealed.alchemy),
+    };
+
     return out;
   });
 
@@ -62,6 +73,8 @@ async function main() {
   assert(report.bloodPowerResistance.lastDmgType === 'blood', 'Blood power did not record damage type', report.bloodPowerResistance);
   assert(Math.abs(report.bloodDotResistance.damage - 10) < 0.001, 'Blood DoT ignored blood resistance', report.bloodDotResistance);
   assert(report.bloodDotResistance.lastDmgType === 'blood', 'Blood DoT did not record damage type', report.bloodDotResistance);
+  assert(report.reagentSaveSanitation.reagents === null, 'Malformed reagent save data was not sanitized', report.reagentSaveSanitation);
+  assert(report.reagentSaveSanitation.alchemyRevealed === false, 'Malformed reagent save data falsely unlocked alchemy', report.reagentSaveSanitation);
 
   console.log(JSON.stringify(report, null, 2));
 }

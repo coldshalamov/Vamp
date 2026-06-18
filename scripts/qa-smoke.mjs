@@ -131,6 +131,30 @@ async function main() {
     } catch (e) {
       report.malformedLoad = { error: e.message };
     }
+    report.malformedCodexLoad = null;
+    try {
+      VAMP.Game.loadGame({
+        seed: 2,
+        day: 1,
+        player: { clan: 'brujah', codex: 'bad' },
+      }, 0);
+      report.malformedCodexLoad = {
+        mode: VAMP.Game.mode,
+        codexType: typeof (VAMP.Game.player && VAMP.Game.player.codex),
+        codexCompleteType: typeof (VAMP.Game.player && VAMP.Game.player.codex && VAMP.Game.player.codex.complete),
+        renderError: null,
+      };
+      try {
+        VAMP.Menus.openScreen('char', { tab: 'codex' });
+        VAMP.Game.render(1);
+      } catch (e) {
+        report.malformedCodexLoad.renderError = e.message;
+      } finally {
+        VAMP.Menus.close();
+      }
+    } catch (e) {
+      report.malformedCodexLoad = { error: e.message };
+    }
     if (previousMode) VAMP.Game.mode = previousMode;
     if (previous == null) localStorage.removeItem(key);
     else localStorage.setItem(key, previous);
@@ -245,6 +269,10 @@ async function main() {
   }
   if (!corruptSaveReport.malformedLoad || corruptSaveReport.malformedLoad.error || corruptSaveReport.malformedLoad.renderError || corruptSaveReport.malformedLoad.mode !== 'play' || corruptSaveReport.malformedLoad.clan !== 'brujah' || corruptSaveReport.malformedLoad.clanType !== 'string') {
     console.error('MALFORMED SAVE LOAD NOT SANITIZED:', corruptSaveReport);
+    fail = true;
+  }
+  if (!corruptSaveReport.malformedCodexLoad || corruptSaveReport.malformedCodexLoad.error || corruptSaveReport.malformedCodexLoad.renderError || corruptSaveReport.malformedCodexLoad.mode !== 'play' || corruptSaveReport.malformedCodexLoad.codexType !== 'object' || corruptSaveReport.malformedCodexLoad.codexCompleteType !== 'object') {
+    console.error('MALFORMED CODEX SAVE LOAD NOT SANITIZED:', corruptSaveReport);
     fail = true;
   }
   if (gameReport.error) { console.error('GAME ERROR:', gameReport.error); fail = true; }

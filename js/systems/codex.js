@@ -19,9 +19,11 @@
     };
   }
 
+  function obj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
+
   function ensure(p) {
-    p.codex = p.codex || {};
-    for (const k of ['fedTypes', 'killedKinds', 'relicsSeen', 'districts', 'complete']) if (!p.codex[k]) p.codex[k] = {};
+    if (!obj(p.codex)) p.codex = {};
+    for (const k of ['fedTypes', 'killedKinds', 'relicsSeen', 'districts', 'complete']) if (!obj(p.codex[k])) p.codex[k] = {};
     return p.codex;
   }
   function countOf(p, cat) { return p.codex && p.codex[cat] ? Object.keys(p.codex[cat]).length : 0; }

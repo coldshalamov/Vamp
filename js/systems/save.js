@@ -181,6 +181,13 @@
       const rank = Math.floor(num(src[id], 0, 0, node.maxRank || 1));
       if (rank > 0) out[id] = rank;
     }
+    // strip conflicting keystones — impossible in new saves (allocate() blocks them),
+    // but defensive for saves created before mutual exclusion was introduced.
+    for (const id in out) {
+      const node = idx[id];
+      if (!node || !node.conflicts) continue;
+      for (const cid of node.conflicts) { if (out[cid]) delete out[cid]; }
+    }
     return out;
   }
 

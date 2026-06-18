@@ -99,7 +99,7 @@
   function branch(id, name, color) { return { id, name, color, nodes: [] }; }
   function PW(b, id, name, power, tier, desc) { b.nodes.push({ id, branch: b.id, type: 'power', name, power, tier, desc, cost: 1, maxRank: 1, glyph: POWERS[power] && POWERS[power].glyph }); }
   function PS(b, id, name, tier, mods, desc, maxRank) { b.nodes.push({ id, branch: b.id, type: 'passive', name, tier, mods, desc, cost: 1, maxRank: maxRank || 1 }); }
-  function KEY(b, id, name, tier, mods, desc) { b.nodes.push({ id, branch: b.id, type: 'keystone', name, tier, mods, desc, cost: 1, maxRank: 1 }); }
+  function KEY(b, id, name, tier, mods, desc, conflicts) { b.nodes.push({ id, branch: b.id, type: 'keystone', name, tier, mods, desc, cost: 1, maxRank: 1, conflicts: conflicts || null }); }
 
   const TREE = [];
 
@@ -112,7 +112,7 @@
   PS(b, 'cel_p2', 'Wind Step', 2, { pct: { moveSpeed: 0.07, cdr: 0.03 } }, '+7% speed, +3% cooldown reduction', 3);
   PW(b, 'cel_n3', 'Blood Flurry', 'cel_flurry', 3, 'Unlock Blood Flurry.');
   PW(b, 'cel_n4', 'Quicksilver', 'cel_bullet', 4, 'Bend time itself.');
-  KEY(b, 'cel_key', 'Perfect Predator', 4, {}, 'Keystone [Toreador]: Sparing a target (release during feed) instantly resets ALL power cooldowns. Mercy is mechanically optimal.');
+  KEY(b, 'cel_key', 'Perfect Predator', 4, {}, 'Keystone [Toreador]: Sparing a target (release during feed) instantly resets ALL power cooldowns. Mercy is mechanically optimal.', ['pot_key']);
 
   // -- Potence
   b = branch('potence', 'Potence', '#e0b050'); TREE.push(b);
@@ -122,7 +122,7 @@
   PW(b, 'pot_n2', 'Earthshock', 'pot_slam', 2, 'Unlock the ground slam.');
   PS(b, 'pot_p2', 'Crushing Blows', 2, { pct: { meleeDmg: 0.09 }, add: { critChance: 3 } }, '+9% melee, +3% crit', 3);
   PW(b, 'pot_n3', 'Cataclysm', 'pot_quake', 3, 'Unlock the cataclysm.');
-  KEY(b, 'pot_key', 'Blood Rage', 4, {}, 'Keystone [Brujah]: Frenzy becomes an opt-in toggle (hold F+G). Frenzied: +40% damage, CC-immune, Disciplines blocked. Choose when to unleash the Beast.');
+  KEY(b, 'pot_key', 'Blood Rage', 4, {}, 'Keystone [Brujah]: Frenzy becomes an opt-in toggle (hold F+G). Frenzied: +40% damage, CC-immune, Disciplines blocked. Choose when to unleash the Beast.', ['cel_key']);
 
   // -- Fortitude
   b = branch('fortitude', 'Fortitude', '#9aa0a8'); TREE.push(b);
@@ -132,7 +132,7 @@
   PW(b, 'for_n2', 'Stone Skin', 'for_stone', 2, 'Unlock Stone Skin.');
   PS(b, 'for_p2', 'Cold Blood', 2, { pct: { frenzyResist: 0.1, sunResist: 0.08 } }, '+10% frenzy resist, +8% sun resist', 3);
   PW(b, 'for_n3', 'Unkillable', 'for_unkill', 3, 'Unlock invulnerability.');
-  KEY(b, 'for_key', 'Undying', 4, { pct: { armor: 0.15, maxHP: 0.15 } }, 'Keystone: +15% armor, +15% HP.');
+  KEY(b, 'for_key', 'Undying', 4, { pct: { armor: 0.15, maxHP: 0.15 } }, 'Keystone: +15% armor, +15% HP.', ['bs_key']);
 
   // -- Obfuscate
   b = branch('obfuscate', 'Obfuscate', '#8a8fb0'); TREE.push(b);
@@ -142,7 +142,7 @@
   PW(b, 'obf_n2', 'Vanish', 'obf_vanish', 2, 'Unlock combat escape.');
   PS(b, 'obf_p2', 'Night Cloak', 2, { pct: { bloodEff: 0.05 } }, '-5% vitae cost', 3);
   PW(b, 'obf_n3', 'Mask of Faces', 'obf_mask', 3, 'Unlock Heat clearing.');
-  KEY(b, 'obf_key', 'One With Shadow', 4, {}, 'Keystone [Nosferatu]: Killing from stealth does not break cloak for 2s. Silent kills can chain indefinitely — become the dark itself.');
+  KEY(b, 'obf_key', 'One With Shadow', 4, {}, 'Keystone [Nosferatu]: Killing from stealth does not break cloak for 2s. Silent kills can chain indefinitely — become the dark itself.', ['prd_key']);
 
   // -- Auspex
   b = branch('auspex', 'Auspex', '#aef0ff'); TREE.push(b);
@@ -152,7 +152,7 @@
   PW(b, 'aus_n2', 'Heightened Senses', 'aus_senses', 2, 'Unlock sensory toggle.');
   PS(b, 'aus_p2', 'Killing Eye', 2, { pct: { critMult: 0.1 } }, '+0.1 crit multiplier', 3);
   PW(b, 'aus_n3', 'Premonition', 'aus_premon', 3, 'Unlock Premonition.');
-  KEY(b, 'aus_key', 'The Voices Know', 4, {}, 'Keystone [Malkavian]: Each power cast has a 20% chance to trigger a free random power simultaneously. Manage the chaos.');
+  KEY(b, 'aus_key', 'The Voices Know', 4, {}, 'Keystone [Malkavian]: Each power cast has a 20% chance to trigger a free random power simultaneously. Manage the chaos.', ['dom_key']);
 
   // -- Dominate
   b = branch('dominate', 'Dominate', '#b98cff'); TREE.push(b);
@@ -162,7 +162,7 @@
   PW(b, 'dom_n2', 'Command: Flee', 'dom_command', 2, 'Unlock the command.');
   PW(b, 'dom_n3', 'Forgetful Mind', 'dom_forget', 3, 'Erase witnesses.');
   PW(b, 'dom_n4', 'Bind Thrall', 'dom_thrall', 4, 'Recruit a thrall.');
-  KEY(b, 'dom_key', 'Iron Will', 4, {}, 'Keystone [Ventrue]: Dominated thralls are permanent (up to Influence÷5). Mesmerize becomes a bind — your will is law.');
+  KEY(b, 'dom_key', 'Iron Will', 4, {}, 'Keystone [Ventrue]: Dominated thralls are permanent (up to Influence÷5). Mesmerize becomes a bind — your will is law.', ['aus_key']);
 
   // -- Presence
   b = branch('presence', 'Presence', '#ff9ecf'); TREE.push(b);
@@ -171,7 +171,7 @@
   PS(b, 'pre_p1', 'Allure', 1, { pct: { feedSpeed: 0.08, xpMult: 0.03 } }, '+8% feed speed, +3% XP', 3);
   PW(b, 'pre_n2', 'Entrancement', 'pre_entr', 2, 'Charm willing prey.');
   PW(b, 'pre_n3', 'Majesty', 'pre_majesty', 3, 'Become untouchable.');
-  KEY(b, 'pre_key', 'Star of the Damned', 4, { pct: { xpMult: 0.1, discount: 0.1, feedYield: 0.1 } }, 'Keystone: +10% XP, prices, & feed.');
+  KEY(b, 'pre_key', 'Star of the Damned', 4, { pct: { xpMult: 0.1, discount: 0.1, feedYield: 0.1 } }, 'Keystone: +10% XP, prices, & feed.', ['pro_key']);
 
   // -- Protean
   b = branch('protean', 'Protean', '#c1722a'); TREE.push(b);
@@ -180,7 +180,7 @@
   PS(b, 'pro_p1', 'Thick Pelt', 1, { pct: { armor: 0.05, maxHP: 0.05 } }, '+5% armor, +5% HP', 3);
   PW(b, 'pro_n2', 'Mist Form', 'pro_mist', 2, 'Become intangible.');
   PW(b, 'pro_n3', 'Beast Form', 'pro_beast', 3, 'Unleash the beast.');
-  KEY(b, 'pro_key', 'The Wild Hunt', 4, {}, 'Keystone [Gangrel]: Moving without stopping builds Hunt Stacks (max 5). Each stack: +8% damage, +6% speed. Any stop or hit resets all stacks.');
+  KEY(b, 'pro_key', 'The Wild Hunt', 4, {}, 'Keystone [Gangrel]: Moving without stopping builds Hunt Stacks (max 5). Each stack: +8% damage, +6% speed. Any stop or hit resets all stacks.', ['pre_key']);
 
   // -- Blood Sorcery
   b = branch('sorcery', 'Blood Sorcery', '#e0203f'); TREE.push(b);
@@ -191,7 +191,7 @@
   PW(b, 'bs_n3', 'Cauldron of Blood', 'bs_cauldron', 2, 'Boil their blood.');
   PW(b, 'bs_n4', 'Blood Ward', 'bs_ward', 3, 'Shield of vitae.');
   PW(b, 'bs_n5', 'Blood Storm', 'bs_storm', 4, 'Radial bolt storm.');
-  KEY(b, 'bs_key', 'Vitae Alchemy', 4, {}, 'Keystone [Tremere]: Discipline blood costs halved. The other half drains from HP instead. Glass cannon blood mage — power from your own flesh.');
+  KEY(b, 'bs_key', 'Vitae Alchemy', 4, {}, 'Keystone [Tremere]: Discipline blood costs halved. The other half drains from HP instead. Glass cannon blood mage — power from your own flesh.', ['for_key']);
 
   // -- Dark Arts
   b = branch('dark', 'Dark Arts', '#8a4bd0'); TREE.push(b);
@@ -211,7 +211,7 @@
   PS(b, 'prd_p3', 'Vampiric Vigor', 2, { pct: { lifesteal: 0.04, hpRegen: 0.2 } }, '+4% lifesteal, +20% regen', 3);
   PS(b, 'prd_p4', 'Hardened Soul', 2, { pct: { frenzyResist: 0.12 } }, '+12% frenzy resistance', 3);
   PS(b, 'prd_p5', 'Glutton', 3, { pct: { xpMult: 0.06, maxBlood: 0.08 } }, '+6% XP, +8% vitae', 3);
-  KEY(b, 'prd_key', 'Diablerie', 4, { pct: { lifesteal: 0.1, meleeDmg: 0.12, spellPower: 0.12 } }, 'Keystone: +10% lifesteal, +12% all damage.');
+  KEY(b, 'prd_key', 'Diablerie', 4, { pct: { lifesteal: 0.1, meleeDmg: 0.12, spellPower: 0.12 } }, 'Keystone: +10% lifesteal, +12% all damage.', ['obf_key']);
 
   // build flat index
   const TREE_INDEX = {};

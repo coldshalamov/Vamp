@@ -36,6 +36,15 @@
     if (branchPoints(p, n.branch) < need) return { ok: false, why: `needs ${need} pts in ${n.branch}` };
     // explicit prereqs
     if (n.needs) for (const pre of n.needs) if (!rank(p, pre)) return { ok: false, why: 'locked' };
+    // keystone conflicts — build identity gating (mutual exclusion)
+    if (n.conflicts) {
+      for (const cid of n.conflicts) {
+        if (rank(p, cid)) {
+          const cn = nodeById(cid);
+          return { ok: false, why: 'Conflicts: ' + (cn ? cn.name : cid) };
+        }
+      }
+    }
     return { ok: true };
   }
 
@@ -68,6 +77,9 @@
 
   // full respec (used by haven service) — refund all points
   function respec(p) {
+    // Blood Rage (pot_key) frenzy must end before wiping the keystone — without the node,
+    // the B-key toggle gate never fires and the player would have no way to end it manually.
+    if (p.bloodState && p.bloodState.frenzied && VAMP.Blood) VAMP.Blood.endFrenzy(p);
     let refund = 0;
     for (const id in p.treeNodes) refund += p.treeNodes[id];
     p.treeNodes = {};

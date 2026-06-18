@@ -9,16 +9,27 @@
   const U = VAMP.Util;
 
   // Victim archetypes: different blood quality / yield / XP / risk
+  // resonance: VtM5 humour type — grants a temporary power buff on feed (see RESONANCE_BUFFS).
   const VICTIM_TYPES = {
-    civilian: { name: 'Civilian', yield: 22, xp: 14, quality: 1.0, color: '#c98', resist: 0 },
-    junkie:   { name: 'Junkie',   yield: 18, xp: 10, quality: 0.7, color: '#9a7', resist: 0, tainted: true },
-    addict:   { name: 'Reveler',  yield: 24, xp: 12, quality: 1.1, color: '#b9c', resist: 0 },
-    athlete:  { name: 'Athlete',  yield: 30, xp: 20, quality: 1.4, color: '#caa', resist: 0.1 },
-    noble:    { name: 'Aristocrat', yield: 34, xp: 28, quality: 1.7, color: '#cc9', resist: 0.05, rich: true },
-    thug:     { name: 'Gangster', yield: 26, xp: 22, quality: 1.2, color: '#a88', resist: 0.25 },
-    cop:      { name: 'Officer',  yield: 28, xp: 30, quality: 1.3, color: '#88a', resist: 0.4, heat: true },
-    hunter:   { name: 'Hunter',   yield: 32, xp: 45, quality: 1.6, color: '#c66', resist: 0.6, heat: true, potent: true },
-    rat:      { name: 'Rat',      yield: 8,  xp: 3,  quality: 0.4, color: '#765', resist: 0, animal: true },
+    civilian: { name: 'Civilian',   yield: 22, xp: 14, quality: 1.0, color: '#c98', resist: 0,    resonance: 'phlegmatic' },
+    junkie:   { name: 'Junkie',     yield: 18, xp: 10, quality: 0.7, color: '#9a7', resist: 0,    resonance: 'melancholic', tainted: true },
+    addict:   { name: 'Reveler',    yield: 24, xp: 12, quality: 1.1, color: '#b9c', resist: 0,    resonance: 'sanguine' },
+    athlete:  { name: 'Athlete',    yield: 30, xp: 20, quality: 1.4, color: '#caa', resist: 0.1,  resonance: 'choleric' },
+    noble:    { name: 'Aristocrat', yield: 34, xp: 28, quality: 1.7, color: '#cc9', resist: 0.05, resonance: 'sanguine', rich: true },
+    thug:     { name: 'Gangster',   yield: 26, xp: 22, quality: 1.2, color: '#a88', resist: 0.25, resonance: 'choleric' },
+    cop:      { name: 'Officer',    yield: 28, xp: 30, quality: 1.3, color: '#88a', resist: 0.4,  resonance: 'choleric', heat: true },
+    hunter:   { name: 'Hunter',     yield: 32, xp: 45, quality: 1.6, color: '#c66', resist: 0.6,  resonance: 'dyscrasia', heat: true, potent: true },
+    rat:      { name: 'Rat',        yield: 8,  xp: 3,  quality: 0.4, color: '#765', resist: 0,    animal: true },
+  };
+
+  // Resonance buffs: VtM5 four humours + Dyscrasia (hunter/exceptional blood).
+  // Duration in seconds; mods.pct keys must match Stats.recompute pct branches.
+  const RESONANCE_BUFFS = {
+    phlegmatic:  { name: 'Phlegmatic Resonance', dur: 30, color: '#8cc784', mods: { pct: { bloodEff: 0.15, xpMult: 0.10 } } },
+    melancholic: { name: 'Melancholic Resonance', dur: 25, color: '#5b7fa6', mods: { pct: { cdr: 0.18 } } },
+    sanguine:    { name: 'Sanguine Resonance',    dur: 30, color: '#e05cb5', mods: { pct: { xpMult: 0.20, critChance: 0.08 } } },
+    choleric:    { name: 'Choleric Resonance',    dur: 25, color: '#ff6b35', mods: { pct: { meleeDmg: 0.20, critChance: 0.10 } } },
+    dyscrasia:   { name: 'Dyscrasia',             dur: 35, color: '#d4af37', mods: { pct: { meleeDmg: 0.25, spellPower: 0.25, critChance: 0.12 } } },
   };
 
   function newBloodState() {
@@ -212,6 +223,14 @@
     if (vt.potent) {
       p.addBuff && p.addBuff({ id: 'potent', name: 'Potent Vitae', dur: 20, mods: { pct: { spellPower: 0.2, meleeDmg: 0.15 } }, color: '#c33' });
     }
+    if (vt.resonance && RESONANCE_BUFFS[vt.resonance] && p.addBuff) {
+      const rb = RESONANCE_BUFFS[vt.resonance];
+      p.addBuff({ id: 'res_' + vt.resonance, name: rb.name, dur: rb.dur, color: rb.color, mods: rb.mods });
+      if (VAMP.FX) {
+        VAMP.FX.number(npc.x, npc.y - 54, rb.name, rb.color, { small: true });
+        VAMP.FX.flash(rb.color, 0.10);
+      }
+    }
     if (vt.rich && game) { const cash = 40 + Math.floor(Math.random() * 80); game.addMoney(cash, npc.x, npc.y); }
 
     if (lethal) {
@@ -288,7 +307,7 @@
   }
 
   VAMP.Blood = {
-    VICTIM_TYPES, newBloodState, updateHunger, adjustHumanity,
+    VICTIM_TYPES, RESONANCE_BUFFS, newBloodState, updateHunger, adjustHumanity,
     startFeeding, tickFeeding, finishFeeding, stopFeeding, passiveRegen,
     startFrenzy, endFrenzy, gulpHit,
   };

@@ -85,7 +85,7 @@
         if (n.dead || n.ally) continue;
         if (U.dist2(v.x, v.y, n.x, n.y) < (v.r + n.r) * (v.r + n.r)) {
           const wasDead = n.dead;
-          VAMP.Combat.damageNPC(game, n, Math.abs(v.speed) * 0.12, { knockback: Math.abs(v.speed) * 0.5, angle: v.angle, color: '#a00', cause: 'vehicle' });
+          VAMP.Combat.damageNPC(game, n, Math.abs(v.speed) * 0.12, { knockback: Math.abs(v.speed) * 0.5, angle: v.angle, color: '#a00', cause: 'vehicle', dmgType: 'phys' });
           if (!wasDead && n.dead && n.innocent && game.masquerade) game.masquerade.witnessedAct(n.x, n.y, 'kill', 2);
         }
       }

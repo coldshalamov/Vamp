@@ -112,7 +112,7 @@
         if (!n || n.dead) continue;
         if (U.dist2(pr.x, pr.y, n.x, n.y) < pr.aoe * pr.aoe) {
           if (pr.owner === 'player') {
-            C().damageNPC(game, n, pr.aoeDmg || pr.dmg * 0.6, { knockback: pr.knockback, color: pr.color });
+            C().damageNPC(game, n, pr.aoeDmg || pr.dmg * 0.6, { knockback: pr.knockback, color: pr.color, type: pr.kind, dmgType: pr.dmgType });
             if (pr.status) C().applyStatus(n, pr.status.kind, pr.status);
           } else {
             C().damagePlayer(game, pr.aoeDmg || pr.dmg * 0.6, {});

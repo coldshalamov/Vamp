@@ -152,6 +152,7 @@
     for (const k in src) if (src[k]) out[k] = true;
     return out;
   }
+  function savedTrue(v) { return v === true || v === 1; }
 
   function modMap(src, min, max) {
     const out = {};
@@ -450,8 +451,8 @@
     p.reagents = cleanReagents(sp.reagents); p.blessingMods = cleanModBag(sp.blessingMods); p.childeCount = Math.floor(num(sp.childeCount, 0, 0));
     p.chainProgress = cleanChainProgress(sp.chainProgress); p.chainTitles = cleanChainTitles(sp.chainTitles);   // contract-chain storyline progress
     // signature-verb unlocks (grandfather older saves that already passed the level gate)
-    p.finisherUnlocked = sp.finisherUnlocked || (p.level >= 3) || false;
-    p.pounceUnlocked = sp.pounceUnlocked || (p.level >= 2) || false;
+    p.finisherUnlocked = savedTrue(sp.finisherUnlocked) || p.level >= 3;
+    p.pounceUnlocked = savedTrue(sp.pounceUnlocked) || p.level >= 2;
     if (VAMP.Progress) VAMP.Progress.restore(p, sp.progress);   // ensure + backfill (default-safe when undefined)
     if (VAMP.Haven) VAMP.Haven.ensure(p);
     if (VAMP.Mastery) VAMP.Mastery.ensure(p);

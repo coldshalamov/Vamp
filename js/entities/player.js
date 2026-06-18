@@ -190,6 +190,17 @@
         if (p.huntStacks > 0) p.huntStacks = 0, p._huntT = 0;
       }
     } else { p.huntStacks = 0; }
+
+    // frenzy trail positions — ring buffer of last 6 world positions
+    const frenzy = p.bloodState.frenzied || p.bloodState.hunger >= 4;
+    if (frenzy) {
+      if (!p._trail) p._trail = [];
+      p._trail.push({ x: p.x, y: p.y, t: game.time });
+      if (p._trail.length > 6) p._trail.shift();
+    } else if (p._trail && p._trail.length) {
+      p._trail = [];
+    }
+
     p.moving = moving;
     // how visible am I (light/shadow/sneak/sprint/frenzy) — drives every NPC's perception range
     p.exposure = VAMP.Stealth ? VAMP.Stealth.exposure(p, game) : 0.85;
@@ -586,10 +597,25 @@
     const frenzy = p.bloodState.frenzied || p.bloodState.hunger >= 4;
     const w = p.equipment.weapon;
 
+    // frenzy trail — drawn in world space before the player transform
+    if (p._trail && p._trail.length && frenzy) {
+      for (let ti = 0; ti < p._trail.length; ti++) {
+        const pt = p._trail[ti];
+        const alpha = (ti / p._trail.length) * 0.35;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#ff1020';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, p.r * 0.7, 0, U.TAU);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
     ctx.save();
     ctx.translate(p.x, p.y);
-    // shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    // shadow — pulses blood-red during frenzy (ground-plane read of beast state)
+    const shadowPulse = frenzy ? 0.45 + Math.sin(t * 6) * 0.08 : 0.4;
+    ctx.fillStyle = frenzy ? 'rgba(70,0,10,' + shadowPulse + ')' : 'rgba(0,0,0,0.4)';
     ctx.beginPath(); ctx.ellipse(0, r * 0.55, r * 1.25, r * 0.6, 0, 0, U.TAU); ctx.fill();
 
     ctx.globalAlpha = (p.cloaked || p.mistForm) ? 0.4 : 1;
@@ -630,18 +656,78 @@
       const tint = frenzy ? '#8a2030' : (cc.cape || '#36223e');
       VAMP.Assets.drawKey(ctx, 'player_vampire', r * 0.05, bob, { w: sz, h: sz * 1.05, ax: 0.42, ay: 0.55, tint: tint, alpha: (p.cloaked || p.mistForm) ? 0.4 : 1, smooth: false });
     } else {
-      // legs / feet (stepping)
-      ctx.fillStyle = '#140f1a';
-      ctx.beginPath(); ctx.ellipse(stepA, -r * 0.42, r * 0.34, r * 0.22, 0, 0, U.TAU); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(stepB, r * 0.42, r * 0.34, r * 0.22, 0, 0, U.TAU); ctx.fill();
-      ctx.strokeStyle = '#221330'; ctx.lineWidth = r * 0.4; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(0, -r * 0.5); ctx.lineTo(r * 0.45 + armSwing * 5, -r * 0.78); ctx.stroke();
-      const grd = ctx.createLinearGradient(0, -r, 0, r);
-      grd.addColorStop(0, '#36223e'); grd.addColorStop(1, '#1b1022');
+      // --- gothic fallback: angular predator silhouette ---
+
+      // boot tips: narrow rectangles stepping fore/aft (in facing-axis coords: x=fore, y=right)
+      ctx.fillStyle = '#0e0910';
+      // boot A: right side of body
+      ctx.beginPath();
+      ctx.moveTo(stepA + r * 0.35, -r * 0.60);
+      ctx.lineTo(stepA + r * 0.35, -r * 0.32);
+      ctx.lineTo(stepA - r * 0.20, -r * 0.32);
+      ctx.lineTo(stepA - r * 0.20, -r * 0.60);
+      ctx.closePath(); ctx.fill();
+      // boot B: left side
+      ctx.beginPath();
+      ctx.moveTo(stepB + r * 0.35,  r * 0.32);
+      ctx.lineTo(stepB + r * 0.35,  r * 0.60);
+      ctx.lineTo(stepB - r * 0.20,  r * 0.60);
+      ctx.lineTo(stepB - r * 0.20,  r * 0.32);
+      ctx.closePath(); ctx.fill();
+
+      // torso: angular V-shape — wide at shoulders, pinched at waist
+      // in rotated frame: shoulders are at ±y (left/right), waist narrows, front tapers to a point
+      const grd = ctx.createLinearGradient(r * 0.6, 0, -r * 0.5, 0);
+      grd.addColorStop(0, '#2e1a38');
+      grd.addColorStop(0.5, '#1c1024');
+      grd.addColorStop(1, '#110b18');
       ctx.fillStyle = grd;
-      ctx.beginPath(); ctx.ellipse(0, 0, r * 0.95, r * 0.82, 0, 0, U.TAU); ctx.fill();
+      ctx.beginPath();
+      // rear shoulder corners (wide at back)
+      ctx.moveTo(-r * 0.55, -r * 0.78);   // rear-right shoulder
+      ctx.lineTo( r * 0.05, -r * 0.52);   // front-right armpit
+      ctx.lineTo( r * 0.30, -r * 0.20);   // front-right waist pinch
+      ctx.lineTo( r * 0.40,  0);           // chest front point (facing direction)
+      ctx.lineTo( r * 0.30,  r * 0.20);   // front-left waist pinch
+      ctx.lineTo( r * 0.05,  r * 0.52);   // front-left armpit
+      ctx.lineTo(-r * 0.55,  r * 0.78);   // rear-left shoulder
+      ctx.lineTo(-r * 0.20,  r * 0.30);   // rear waist
+      ctx.lineTo(-r * 0.20, -r * 0.30);   // rear waist other side
+      ctx.closePath(); ctx.fill();
+
+      // shoulder mass — angular blocks on each side
+      ctx.fillStyle = '#251530';
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.55, -r * 0.78);
+      ctx.lineTo(-r * 0.10, -r * 0.72);
+      ctx.lineTo( r * 0.05, -r * 0.52);
+      ctx.lineTo(-r * 0.20, -r * 0.30);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.55,  r * 0.78);
+      ctx.lineTo(-r * 0.10,  r * 0.72);
+      ctx.lineTo( r * 0.05,  r * 0.52);
+      ctx.lineTo(-r * 0.20,  r * 0.30);
+      ctx.closePath(); ctx.fill();
+
+      // collar / cravat: angular V pointing forward
       ctx.fillStyle = frenzy ? '#c01028' : (cc.collar || '#7a1530');
-      ctx.beginPath(); ctx.moveTo(r * 0.1, -r * 0.5); ctx.lineTo(r * 0.55, -r * 0.12); ctx.lineTo(r * 0.55, r * 0.12); ctx.lineTo(r * 0.1, r * 0.5); ctx.lineTo(0, 0); ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.10, -r * 0.28);   // base right
+      ctx.lineTo( r * 0.38,  0);           // front tip
+      ctx.lineTo(-r * 0.10,  r * 0.28);   // base left
+      ctx.lineTo( r * 0.08,  0);           // inner indent
+      ctx.closePath(); ctx.fill();
+      // blood-soaked chest glow during feeding or frenzy
+      if (feeding || frenzy) {
+        const chestGrd = ctx.createRadialGradient(r * 0.40, 0, 0, r * 0.40, 0, r * 0.9);
+        chestGrd.addColorStop(0, 'rgba(160,0,20,' + (0.3 + Math.sin(t * 8) * 0.15) + ')');
+        chestGrd.addColorStop(1, 'rgba(120,0,15,0)');
+        ctx.fillStyle = chestGrd;
+        ctx.beginPath();
+        ctx.ellipse(r * 0.25, 0, r * 0.80, r * 0.70, 0, 0, U.TAU);
+        ctx.fill();
+      }
     }
 
     // front arm + claw / weapon (swings on attack)
@@ -662,13 +748,104 @@
     if (!useBmp) {
       const headX = feeding ? r * 0.7 : r * 0.46;
       const headY = feeding ? Math.sin(t * 16) * 1.4 : 0;
-      ctx.fillStyle = '#ece2ea';
-      ctx.beginPath(); ctx.arc(headX, headY, r * 0.5, 0, U.TAU); ctx.fill();
-      ctx.fillStyle = '#0e0810';
-      ctx.beginPath(); ctx.arc(headX - r * 0.16, headY, r * 0.5, -2.1, 2.1); ctx.fill();
-      ctx.fillStyle = frenzy ? '#ff2030' : (cc.eye || '#d83040');
-      ctx.beginPath(); ctx.arc(headX + r * 0.2, headY - r * 0.16, 1.7, 0, U.TAU); ctx.arc(headX + r * 0.2, headY + r * 0.16, 1.7, 0, U.TAU); ctx.fill();
-      if (feeding || frenzy) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(headX + r * 0.42, headY - r * 0.12); ctx.lineTo(headX + r * 0.54, headY); ctx.lineTo(headX + r * 0.42, headY + r * 0.02); ctx.closePath(); ctx.fill(); }
+      // subtle eye-track offset — idle sway when standing still, suppressed while moving/feeding
+      const idleLook = !moving && !feeding ? Math.sin(t * 0.8) * r * 0.03 : 0;
+
+      // neck: thin rectangle bridging torso to head
+      ctx.fillStyle = '#c8bec6';
+      ctx.beginPath();
+      ctx.moveTo(headX - r * 0.32, headY - r * 0.10);
+      ctx.lineTo(headX - r * 0.06, headY - r * 0.10);
+      ctx.lineTo(headX - r * 0.06, headY + r * 0.10);
+      ctx.lineTo(headX - r * 0.32, headY + r * 0.10);
+      ctx.closePath(); ctx.fill();
+
+      // skull: narrow almond — taller (y-axis = width in rotated frame) than it is deep
+      ctx.fillStyle = '#d8cdd6';
+      ctx.beginPath();
+      ctx.ellipse(headX, headY, r * 0.32, r * 0.46, 0, 0, U.TAU);
+      ctx.fill();
+
+      // gaunt shadow — dark wash from rear half to hollow the cheeks
+      const faceShd = ctx.createLinearGradient(headX - r * 0.32, headY, headX + r * 0.32, headY);
+      faceShd.addColorStop(0, 'rgba(10,5,14,0.72)');
+      faceShd.addColorStop(0.45, 'rgba(10,5,14,0.18)');
+      faceShd.addColorStop(1, 'rgba(10,5,14,0)');
+      ctx.fillStyle = faceShd;
+      ctx.beginPath();
+      ctx.ellipse(headX, headY, r * 0.32, r * 0.46, 0, 0, U.TAU);
+      ctx.fill();
+
+      // sunken eye sockets: dark smudges above the midline
+      ctx.fillStyle = 'rgba(8,4,12,0.82)';
+      ctx.beginPath();
+      ctx.ellipse(headX + r * 0.06, headY - r * 0.16, r * 0.14, r * 0.09, 0, 0, U.TAU);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(headX + r * 0.06, headY + r * 0.16, r * 0.14, r * 0.09, 0, 0, U.TAU);
+      ctx.fill();
+
+      // eye slits: sharp almond cuts; glow red on frenzy
+      // aimDelta+idleLook shifts gaze laterally so the eyes track the aim direction
+      const lookOff = idleLook;
+      const eyeColor = frenzy ? '#ff2030' : (cc.eye || '#d83040');
+      if (frenzy) {
+        ctx.shadowColor = '#ff2030'; ctx.shadowBlur = 6;
+      }
+      ctx.fillStyle = eyeColor;
+      // upper eye slit
+      ctx.beginPath();
+      ctx.moveTo(headX + r * 0.01, headY - r * 0.16 + lookOff);
+      ctx.quadraticCurveTo(headX + r * 0.14, headY - r * 0.22 + lookOff, headX + r * 0.22, headY - r * 0.16 + lookOff);
+      ctx.quadraticCurveTo(headX + r * 0.14, headY - r * 0.10 + lookOff, headX + r * 0.01, headY - r * 0.16 + lookOff);
+      ctx.closePath(); ctx.fill();
+      // lower eye slit
+      ctx.beginPath();
+      ctx.moveTo(headX + r * 0.01, headY + r * 0.16 + lookOff);
+      ctx.quadraticCurveTo(headX + r * 0.14, headY + r * 0.10 + lookOff, headX + r * 0.22, headY + r * 0.16 + lookOff);
+      ctx.quadraticCurveTo(headX + r * 0.14, headY + r * 0.22 + lookOff, headX + r * 0.01, headY + r * 0.16 + lookOff);
+      ctx.closePath(); ctx.fill();
+      ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
+
+      // angular jaw line: dark underside of the skull
+      ctx.fillStyle = 'rgba(8,4,12,0.55)';
+      ctx.beginPath();
+      ctx.moveTo(headX - r * 0.12, headY - r * 0.36);
+      ctx.lineTo(headX + r * 0.28, headY - r * 0.20);
+      ctx.lineTo(headX + r * 0.32, headY);
+      ctx.lineTo(headX + r * 0.28, headY + r * 0.20);
+      ctx.lineTo(headX - r * 0.12, headY + r * 0.36);
+      ctx.lineTo(headX + r * 0.04, headY);
+      ctx.closePath(); ctx.fill();
+
+      // fangs: always visible — this is a vampire
+      ctx.fillStyle = '#f0ecf2';
+      // upper fang
+      ctx.beginPath();
+      ctx.moveTo(headX + r * 0.22, headY - r * 0.09);
+      ctx.lineTo(headX + r * 0.32, headY - r * 0.04);
+      ctx.lineTo(headX + r * 0.22, headY);
+      ctx.closePath(); ctx.fill();
+      // lower fang
+      ctx.beginPath();
+      ctx.moveTo(headX + r * 0.22, headY + r * 0.09);
+      ctx.lineTo(headX + r * 0.32, headY + r * 0.04);
+      ctx.lineTo(headX + r * 0.22, headY);
+      ctx.closePath(); ctx.fill();
+      // blood-tip on fangs when feeding or frenzied
+      if (feeding || frenzy) {
+        ctx.fillStyle = '#cc0020';
+        ctx.beginPath();
+        ctx.moveTo(headX + r * 0.27, headY - r * 0.04);
+        ctx.lineTo(headX + r * 0.32, headY - r * 0.04);
+        ctx.lineTo(headX + r * 0.27, headY + r * 0.01);
+        ctx.closePath(); ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(headX + r * 0.27, headY + r * 0.04);
+        ctx.lineTo(headX + r * 0.32, headY + r * 0.04);
+        ctx.lineTo(headX + r * 0.27, headY - r * 0.01);
+        ctx.closePath(); ctx.fill();
+      }
     } else if (feeding || frenzy) {
       ctx.fillStyle = frenzy ? '#ff2030' : (cc.eye || '#d83040');
       ctx.beginPath(); ctx.arc(r * 0.55, -r * 0.1, 2, 0, U.TAU); ctx.arc(r * 0.55, r * 0.1, 2, 0, U.TAU); ctx.fill();

@@ -20,6 +20,645 @@
     nosferatu: { cape: '#0e140e', cape2: '#1c2a1c', collar: '#3a5a3a', eye: '#80ff80', aura: '#60c060' },
     malkavian: { cape: '#140a14', cape2: '#2c1830', collar: '#7030a0', eye: '#ffd040', aura: '#c0a0ff' },
   };
+  // ----------------------------------------------------------------
+  // drawClanCard — gothic portrait card, all canvas primitives
+  //
+  // (ctx, x, y, w, h, clanId, name, desc, selected, over, time) → boolean clicked
+  //
+  // Coordinate system: x,y is top-left of the card rectangle.
+  // All art stays inside that box. The clan silhouette is drawn in
+  // a local reference frame via ctx.save/translate/restore so the
+  // per-clan paths never need to know the absolute position.
+  // ----------------------------------------------------------------
+  function drawClanCard(ctx, cx, cy, cw, ch, clanId, clanName, clanDesc, selected, over, time) {
+    const pal  = CLAN_COLORS[clanId] || CLAN_COLORS.brujah;
+    const eye  = pal.eye;
+    const aura = pal.aura;
+    const cape = pal.cape  || '#111';
+    const cape2= pal.cape2 || '#222';
+    const col  = pal.collar;
+    const m    = VAMP.Input.mouse;
+    const clicked = over && m.pressed;
+
+    ctx.save();
+
+    // ---- glow halo behind card (selected or hover) ----------------
+    if (selected || over) {
+      const glowR = selected ? 28 : 16;
+      const grd = ctx.createRadialGradient(cx + cw / 2, cy + ch * 0.38, 4, cx + cw / 2, cy + ch * 0.38, glowR + ch * 0.4);
+      grd.addColorStop(0, aura + (selected ? '88' : '44'));
+      grd.addColorStop(1, 'transparent');
+      ctx.fillStyle = grd;
+      ctx.fillRect(cx - 8, cy - 8, cw + 16, ch + 16);
+    }
+
+    // ---- gothic pointed-arch card body ----------------------------
+    // Path: bottom-left corner clockwise, top forms a pointed arch.
+    // Peak is INSIDE the box (ay + cw*0.08) so no art bleeds above cy —
+    // layout math stays honest and the spire never stabs the header label.
+    const ax = cx, ay = cy;          // anchor top-left
+    const midX = ax + cw / 2;
+    const archPeakY = ay + cw * 0.08; // tip of pointed arch — well inside the rect
+    const sideH = ch * 0.72;          // where the arch shoulders meet the sides
+
+    ctx.beginPath();
+    ctx.moveTo(ax, ay + ch);                     // bottom-left
+    ctx.lineTo(ax + cw, ay + ch);                // bottom-right
+    ctx.lineTo(ax + cw, ay + sideH);             // right shoulder
+    // right side of arch: two bezier segments up to peak
+    ctx.bezierCurveTo(ax + cw, ay + sideH * 0.3, midX + cw * 0.30, archPeakY + cw * 0.18, midX, archPeakY);
+    // left side of arch: mirror
+    ctx.bezierCurveTo(midX - cw * 0.30, archPeakY + cw * 0.18, ax, ay + sideH * 0.3, ax, ay + sideH);
+    ctx.closePath();
+
+    // card fill — dark gradient, cape colour at base
+    const bgGrd = ctx.createLinearGradient(cx, cy, cx, cy + ch);
+    bgGrd.addColorStop(0, '#09060f');
+    bgGrd.addColorStop(0.55, cape);
+    bgGrd.addColorStop(1, cape2);
+    ctx.fillStyle = bgGrd;
+    ctx.fill();
+
+    // inner highlight edge (very subtle bevel)
+    ctx.strokeStyle = 'rgba(255,220,255,0.06)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // ---- border / frame --------------------------------------------
+    ctx.lineWidth = selected ? 2.2 : (over ? 1.6 : 1.1);
+    ctx.strokeStyle = selected ? aura : (over ? col : 'rgba(160,120,150,0.4)');
+    ctx.stroke();   // re-stroke the arch path already in effect
+
+    // thin inner frame inset by 3px (gothic double-line look)
+    if (selected || over) {
+      ctx.beginPath();
+      const fi = 3;
+      const iax = ax + fi, iay = ay, imidX = iax + (cw - fi * 2) / 2;
+      const isideH = sideH - fi * 0.4;
+      const iarchPeakY = archPeakY + fi * 0.5;
+      ctx.moveTo(iax, ay + ch - fi);
+      ctx.lineTo(iax + (cw - fi * 2), ay + ch - fi);
+      ctx.lineTo(iax + (cw - fi * 2), iay + isideH);
+      ctx.bezierCurveTo(iax + (cw - fi * 2), iay + isideH * 0.3, imidX + (cw - fi * 2) * 0.30, iarchPeakY + (cw - fi * 2) * 0.18, imidX, iarchPeakY);
+      ctx.bezierCurveTo(imidX - (cw - fi * 2) * 0.30, iarchPeakY + (cw - fi * 2) * 0.18, iax, iay + isideH * 0.3, iax, iay + isideH);
+      ctx.closePath();
+      ctx.strokeStyle = eye + (selected ? '55' : '28');
+      ctx.lineWidth = 0.7;
+      ctx.stroke();
+    }
+
+    // ---- clip to card shape so silhouette can't bleed out ---------
+    // Re-draw the arch path then clip
+    ctx.beginPath();
+    ctx.moveTo(ax, ay + ch);
+    ctx.lineTo(ax + cw, ay + ch);
+    ctx.lineTo(ax + cw, ay + sideH);
+    ctx.bezierCurveTo(ax + cw, ay + sideH * 0.3, midX + cw * 0.30, archPeakY + cw * 0.18, midX, archPeakY);
+    ctx.bezierCurveTo(midX - cw * 0.30, archPeakY + cw * 0.18, ax, ay + sideH * 0.3, ax, ay + sideH);
+    ctx.closePath();
+    ctx.clip();
+
+    // ---- figure baseline + centre --------------------------------
+    // All silhouettes are drawn in a local box centred at (cx+cw/2).
+    // Baseline is at cy + ch*0.82. Head/body are above that.
+    // R is "reference unit" ≈ half card width for scaling poses.
+    const fx = cx + cw / 2;   // figure horizontal centre
+    const fb = cy + ch * 0.82; // figure bottom / feet
+    const R  = cw * 0.38;      // reference unit
+
+    // --- helper: filled bezier shape using arrays of cubic segments ---
+    function body(segs, fill, stroke, sw) {
+      ctx.beginPath();
+      ctx.moveTo(segs[0][0], segs[0][1]);
+      for (let s = 1; s < segs.length; s++) {
+        const sg = segs[s];
+        if (sg.length === 2) ctx.lineTo(sg[0], sg[1]);
+        else ctx.bezierCurveTo(sg[0], sg[1], sg[2], sg[3], sg[4], sg[5]);
+      }
+      ctx.closePath();
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = sw || 1; ctx.stroke(); }
+    }
+    // helper: glowing circle (eye / orb)
+    function glowDot(gx, gy, r, clr) {
+      const grd = ctx.createRadialGradient(gx, gy, 0, gx, gy, r * 2.2);
+      grd.addColorStop(0, '#fff');
+      grd.addColorStop(0.25, clr);
+      grd.addColorStop(1, 'transparent');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(gx, gy, r * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = clr;
+      ctx.beginPath();
+      ctx.arc(gx, gy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ====================== PER-CLAN SILHOUETTES ====================
+    // idle sway: subtle figure animation driven by time
+    const sway = Math.sin(time * 1.2 + clanId.charCodeAt(0) * 0.7) * 1.8;
+    const breathe = Math.sin(time * 0.9 + clanId.charCodeAt(0) * 0.4) * 0.8;
+    ctx.save();
+    ctx.translate(sway, breathe);
+
+    if (clanId === 'brujah') {
+      // Muscular punk brawler — wide stance, one fist raised, spiked collar
+      // body: wide torso, thick legs
+      const hy = fb - R * 2.1; // head centre y
+      // cape/cloak behind
+      body([
+        [fx - R * 0.55, fb],
+        [fx - R * 0.65, hy + R * 0.3],
+        [fx - R * 0.6, hy, fx, hy - R * 0.15, fx + R * 0.6, hy],
+        [fx + R * 0.65, hy + R * 0.3],
+        [fx + R * 0.55, fb],
+      ], cape, null);
+      // torso — wide, aggressive
+      body([
+        [fx - R * 0.42, fb - R * 0.05],
+        [fx - R * 0.46, fb - R * 1.0],
+        [fx - R * 0.38, fb - R * 1.6],
+        [fx,            fb - R * 1.7],
+        [fx + R * 0.38, fb - R * 1.6],
+        [fx + R * 0.46, fb - R * 1.0],
+        [fx + R * 0.42, fb - R * 0.05],
+      ], col, null);
+      // raised fist (right arm punching upward)
+      body([
+        [fx + R * 0.46, fb - R * 1.3],
+        [fx + R * 0.66, fb - R * 1.6],
+        [fx + R * 0.78, fb - R * 1.4, fx + R * 0.88, fb - R * 1.65, fx + R * 0.82, fb - R * 1.82],
+        [fx + R * 0.70, fb - R * 1.78, fx + R * 0.60, fb - R * 1.65, fx + R * 0.58, fb - R * 1.55],
+      ], eye + 'cc', null);
+      // head — angular jaw
+      body([
+        [fx - R * 0.22, hy + R * 0.24],
+        [fx - R * 0.26, hy - R * 0.10],
+        [fx - R * 0.18, hy - R * 0.32, fx, hy - R * 0.38, fx + R * 0.18, hy - R * 0.32],
+        [fx + R * 0.26, hy - R * 0.10],
+        [fx + R * 0.22, hy + R * 0.24],
+        [fx + R * 0.12, hy + R * 0.30, fx - R * 0.12, hy + R * 0.30],
+      ], '#c8b4a0', null);
+      glowDot(fx - R * 0.08, hy - R * 0.06, R * 0.055, eye);
+      glowDot(fx + R * 0.08, hy - R * 0.06, R * 0.055, eye);
+      // spiked collar studs
+      for (let s = -2; s <= 2; s++) {
+        const sx2 = fx + s * R * 0.11, sy2 = fb - R * 1.62;
+        ctx.fillStyle = '#ddd';
+        ctx.beginPath();
+        ctx.moveTo(sx2 - R * 0.04, sy2);
+        ctx.lineTo(sx2, sy2 - R * 0.1);
+        ctx.lineTo(sx2 + R * 0.04, sy2);
+        ctx.fill();
+      }
+
+    } else if (clanId === 'gangrel') {
+      // Hunched feral creature — crouching, arms dangling, huge claw hands
+      const hy = fb - R * 1.5;
+      // cape shreds trailing behind
+      body([
+        [fx - R * 0.3, fb],
+        [fx - R * 0.55, hy + R * 0.6],
+        [fx - R * 0.72, hy + R * 0.2, fx - R * 0.6, hy, fx - R * 0.45, hy - R * 0.1],
+        [fx,            hy - R * 0.2],
+        [fx + R * 0.45, hy - R * 0.1],
+        [fx + R * 0.72, hy, fx + R * 0.55, hy + R * 0.6],
+        [fx + R * 0.3, fb],
+      ], cape, null);
+      // crouched body — hunched over, asymmetric
+      body([
+        [fx - R * 0.35, fb],
+        [fx - R * 0.50, fb - R * 0.9],
+        [fx - R * 0.60, fb - R * 1.3, fx - R * 0.40, fb - R * 1.55, fx - R * 0.05, fb - R * 1.5],
+        [fx + R * 0.35, fb - R * 1.48],
+        [fx + R * 0.48, fb - R * 1.0],
+        [fx + R * 0.35, fb],
+      ], col, null);
+      // left claw arm hanging low (knuckles near ground)
+      body([
+        [fx - R * 0.50, fb - R * 0.9],
+        [fx - R * 0.75, fb - R * 0.3],
+        [fx - R * 0.72, fb + R * 0.04],
+      ], cape2, col, 1.4);
+      // claw tips on left hand
+      for (let c2 = 0; c2 < 4; c2++) {
+        const cx2 = fx - R * 0.78 + c2 * R * 0.08;
+        const cy2 = fb + R * 0.04 - c2 * R * 0.03;
+        ctx.beginPath();
+        ctx.moveTo(cx2, cy2);
+        ctx.lineTo(cx2 - R * 0.035, cy2 + R * 0.18);
+        ctx.lineTo(cx2 + R * 0.015, cy2 + R * 0.16);
+        ctx.strokeStyle = eye; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+      // right claw raised slightly
+      body([
+        [fx + R * 0.48, fb - R * 1.0],
+        [fx + R * 0.70, fb - R * 0.50],
+        [fx + R * 0.68, fb - R * 0.14],
+      ], cape2, col, 1.4);
+      for (let c2 = 0; c2 < 4; c2++) {
+        const cx2 = fx + R * 0.62 + c2 * R * 0.07;
+        const cy2 = fb - R * 0.14 + c2 * R * 0.02;
+        ctx.beginPath();
+        ctx.moveTo(cx2, cy2);
+        ctx.lineTo(cx2 + R * 0.03, cy2 + R * 0.18);
+        ctx.lineTo(cx2 + R * 0.07, cy2 + R * 0.16);
+        ctx.strokeStyle = eye; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+      // feral head — pushed forward / down
+      body([
+        [fx - R * 0.22, hy + R * 0.18],
+        [fx - R * 0.28, hy - R * 0.15, fx - R * 0.15, hy - R * 0.35, fx, hy - R * 0.36],
+        [fx + R * 0.15, hy - R * 0.35, fx + R * 0.28, hy - R * 0.15, fx + R * 0.22, hy + R * 0.18],
+        [fx + R * 0.1, hy + R * 0.28, fx - R * 0.1, hy + R * 0.28],
+      ], '#8a6a4a', null);
+      // muzzle protrusion
+      body([[fx - R * 0.1, hy + R * 0.1], [fx + R * 0.1, hy + R * 0.1], [fx + R * 0.12, hy + R * 0.28], [fx, hy + R * 0.35], [fx - R * 0.12, hy + R * 0.28]], '#6a4a2a', null);
+      glowDot(fx - R * 0.09, hy - R * 0.04, R * 0.06, eye);
+      glowDot(fx + R * 0.09, hy - R * 0.04, R * 0.06, eye);
+
+    } else if (clanId === 'tremere') {
+      // Robed sorcerer — tall narrow figure, one arm extended with arcane gesture
+      const hy = fb - R * 2.2;
+      // wide robe base sweeps the floor
+      body([
+        [fx - R * 0.55, fb],
+        [fx - R * 0.42, fb - R * 1.1],
+        [fx - R * 0.30, fb - R * 1.9],
+        [fx - R * 0.20, hy + R * 0.2],
+        [fx,            hy - R * 0.35],
+        [fx + R * 0.20, hy + R * 0.2],
+        [fx + R * 0.30, fb - R * 1.9],
+        [fx + R * 0.42, fb - R * 1.1],
+        [fx + R * 0.55, fb],
+      ], cape, null);
+      // inner robe — crimson lining visible
+      body([
+        [fx - R * 0.28, fb],
+        [fx - R * 0.18, fb - R * 1.0],
+        [fx - R * 0.12, hy + R * 0.4],
+        [fx,            hy + R * 0.1],
+        [fx + R * 0.12, hy + R * 0.4],
+        [fx + R * 0.18, fb - R * 1.0],
+        [fx + R * 0.28, fb],
+      ], cape2, null);
+      // left arm straight down / tucked
+      body([
+        [fx - R * 0.20, hy + R * 0.30],
+        [fx - R * 0.28, fb - R * 1.2],
+        [fx - R * 0.22, fb - R * 1.0],
+      ], col, null);
+      // right arm extended outward, fingers splayed (arcane gesture)
+      body([
+        [fx + R * 0.22, hy + R * 0.28],
+        [fx + R * 0.68, hy + R * 0.44],
+        [fx + R * 0.72, hy + R * 0.60],
+        [fx + R * 0.44, hy + R * 0.56],
+      ], col, null);
+      // splayed fingers
+      const fBase = [fx + R * 0.70, hy + R * 0.48];
+      const fingerAngles = [-0.6, -0.25, 0.05, 0.3, 0.55];
+      fingerAngles.forEach((a, fi2) => {
+        const fl = R * (fi2 === 2 ? 0.22 : 0.18);
+        ctx.beginPath();
+        ctx.moveTo(fBase[0], fBase[1]);
+        ctx.lineTo(fBase[0] + Math.cos(a) * fl, fBase[1] + Math.sin(a) * fl);
+        ctx.strokeStyle = '#b8a090'; ctx.lineWidth = 1.4; ctx.stroke();
+      });
+      // arcane orb glowing at fingertips
+      glowDot(fBase[0] + R * 0.04, fBase[1] - R * 0.08, R * 0.10, aura);
+      // head — slightly pointed hood cowl
+      body([
+        [fx - R * 0.20, hy + R * 0.22],
+        [fx - R * 0.24, hy + R * 0.04],
+        [fx - R * 0.14, hy - R * 0.30, fx, hy - R * 0.45, fx + R * 0.14, hy - R * 0.30],
+        [fx + R * 0.24, hy + R * 0.04],
+        [fx + R * 0.20, hy + R * 0.22],
+      ], '#261830', null);
+      // face in shadow — just eyes
+      glowDot(fx - R * 0.07, hy - R * 0.08, R * 0.055, eye);
+      glowDot(fx + R * 0.07, hy - R * 0.08, R * 0.055, eye);
+      // arcane rune ring — 5 sigil ticks around the collar
+      const runeR = R * 0.28;  // radius of rune ring
+      const runeX = fx, runeY = fb - R * 2.7;
+      for (let ri = 0; ri < 5; ri++) {
+        const angle = (ri / 5) * Math.PI * 2 - Math.PI / 2 + time * 0.3;
+        const innerR = runeR * 0.78, outerR = runeR * (ri % 2 === 0 ? 1.0 : 0.88);
+        ctx.beginPath();
+        ctx.moveTo(runeX + Math.cos(angle) * innerR, runeY + Math.sin(angle) * innerR);
+        ctx.lineTo(runeX + Math.cos(angle) * outerR, runeY + Math.sin(angle) * outerR);
+        ctx.strokeStyle = eye + 'cc';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      // glowing orb center
+      glowDot(runeX, runeY, R * 0.08, eye);
+
+    } else if (clanId === 'ventrue') {
+      // Aristocratic lord — ramrod straight, cape swept back, formal high collar
+      const hy = fb - R * 2.3;
+      // swept cape — billows to one side
+      body([
+        [fx - R * 0.02, fb],
+        [fx - R * 0.02, fb - R * 1.8],
+        [fx - R * 0.12, hy + R * 0.3],
+        [fx,            hy - R * 0.2],
+        [fx + R * 0.18, hy + R * 0.1],
+        [fx + R * 0.58, fb - R * 1.2],
+        [fx + R * 0.72, fb - R * 0.4, fx + R * 0.82, fb, fx + R * 0.55, fb],
+      ], cape, null);
+      // suit / body — narrow and upright
+      body([
+        [fx - R * 0.24, fb],
+        [fx - R * 0.26, fb - R * 1.6],
+        [fx - R * 0.18, hy + R * 0.25],
+        [fx,            hy + R * 0.1],
+        [fx + R * 0.18, hy + R * 0.25],
+        [fx + R * 0.26, fb - R * 1.6],
+        [fx + R * 0.24, fb],
+      ], '#1a1f2e', null);
+      // white shirt / cravat
+      body([
+        [fx - R * 0.08, fb - R * 1.5],
+        [fx - R * 0.06, hy + R * 0.3],
+        [fx,            hy + R * 0.15],
+        [fx + R * 0.06, hy + R * 0.3],
+        [fx + R * 0.08, fb - R * 1.5],
+      ], '#e8e4f0', null);
+      // left arm straight down
+      body([
+        [fx - R * 0.26, fb - R * 1.6],
+        [fx - R * 0.32, fb - R * 0.8],
+        [fx - R * 0.26, fb - R * 0.7],
+      ], '#1a1f2e', null);
+      // right arm angled out — one hand raised
+      body([
+        [fx + R * 0.26, fb - R * 1.6],
+        [fx + R * 0.42, fb - R * 1.15],
+        [fx + R * 0.38, fb - R * 0.98],
+      ], '#1a1f2e', null);
+      // high collar framing head
+      body([
+        [fx - R * 0.22, hy + R * 0.30],
+        [fx - R * 0.26, hy + R * 0.04],
+        [fx - R * 0.24, hy - R * 0.05],
+        [fx + R * 0.24, hy - R * 0.05],
+        [fx + R * 0.26, hy + R * 0.04],
+        [fx + R * 0.22, hy + R * 0.30],
+      ], col, null);
+      // head — noble jaw, high forehead
+      body([
+        [fx - R * 0.18, hy + R * 0.15],
+        [fx - R * 0.20, hy - R * 0.04],
+        [fx - R * 0.12, hy - R * 0.32, fx, hy - R * 0.40, fx + R * 0.12, hy - R * 0.32],
+        [fx + R * 0.20, hy - R * 0.04],
+        [fx + R * 0.18, hy + R * 0.15],
+        [fx + R * 0.08, hy + R * 0.22, fx - R * 0.08, hy + R * 0.22],
+      ], '#c0b0a4', null);
+      glowDot(fx - R * 0.065, hy - R * 0.08, R * 0.05, eye);
+      glowDot(fx + R * 0.065, hy - R * 0.08, R * 0.05, eye);
+      // crown / signet ring glint
+      ctx.fillStyle = eye + 'bb';
+      ctx.beginPath(); ctx.arc(fx, hy - R * 0.38, R * 0.04, 0, Math.PI * 2); ctx.fill();
+
+    } else if (clanId === 'toreador') {
+      // Elegant dancer — hip canted, one arm arched over head, flowing garment
+      const hy = fb - R * 2.2;
+      // flowing skirt / garment
+      body([
+        [fx - R * 0.45, fb],
+        [fx - R * 0.30, fb - R * 1.05],
+        [fx - R * 0.14, fb - R * 1.65],
+        [fx,            fb - R * 1.80],
+        [fx + R * 0.14, fb - R * 1.65],
+        [fx + R * 0.25, fb - R * 1.10],
+        [fx + R * 0.38, fb],
+      ], cape, null);
+      // inner dress — deep rose
+      body([
+        [fx - R * 0.22, fb],
+        [fx - R * 0.18, fb - R * 1.0],
+        [fx - R * 0.10, fb - R * 1.65],
+        [fx,            fb - R * 1.78],
+        [fx + R * 0.10, fb - R * 1.65],
+        [fx + R * 0.18, fb - R * 1.0],
+        [fx + R * 0.22, fb],
+      ], col, null);
+      // canted hip — slight rightward lean: body offset
+      // left arm curving gracefully downward
+      body([
+        [fx - R * 0.14, fb - R * 1.68],
+        [fx - R * 0.40, fb - R * 1.30],
+        [fx - R * 0.44, fb - R * 1.05],
+      ], '#b87890', null);
+      // right arm arched overhead (arabesque)
+      body([
+        [fx + R * 0.14, fb - R * 1.68],
+        [fx + R * 0.42, fb - R * 1.95],
+        [fx + R * 0.32, hy - R * 0.10],
+      ], '#b87890', null);
+      // graceful hand at top of arc
+      ctx.beginPath();
+      ctx.arc(fx + R * 0.30, hy - R * 0.12, R * 0.06, 0, Math.PI * 2);
+      ctx.fillStyle = '#e0c0c8'; ctx.fill();
+      // head — oval, tilted
+      body([
+        [fx - R * 0.14, hy + R * 0.18],
+        [fx - R * 0.17, hy - R * 0.06, fx - R * 0.12, hy - R * 0.32, fx + R * 0.01, hy - R * 0.36],
+        [fx + R * 0.16, hy - R * 0.30, fx + R * 0.20, hy - R * 0.04, fx + R * 0.17, hy + R * 0.18],
+        [fx + R * 0.08, hy + R * 0.26, fx - R * 0.06, hy + R * 0.26],
+      ], '#d8b4a8', null);
+      glowDot(fx - R * 0.05, hy - R * 0.06, R * 0.05, eye);
+      glowDot(fx + R * 0.08, hy - R * 0.08, R * 0.05, eye);
+      // rose adornment at collar
+      const roseX = fx - R * 0.02, roseY = fb - R * 1.84;
+      for (let p2 = 0; p2 < 5; p2++) {
+        const pa = (p2 / 5) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(roseX + Math.cos(pa) * R * 0.05, roseY + Math.sin(pa) * R * 0.05, R * 0.04, 0, Math.PI * 2);
+        ctx.fillStyle = aura; ctx.fill();
+      }
+      ctx.beginPath(); ctx.arc(roseX, roseY, R * 0.035, 0, Math.PI * 2); ctx.fillStyle = eye; ctx.fill();
+
+    } else if (clanId === 'nosferatu') {
+      // Crouching horror — low, wide, enormous claw hands, bat ears, hump
+      const hy = fb - R * 1.42;
+      // hunched mass — asymmetric, very wide at shoulder hump
+      body([
+        [fx - R * 0.50, fb],
+        [fx - R * 0.70, fb - R * 0.80],
+        [fx - R * 0.80, fb - R * 1.15, fx - R * 0.60, hy - R * 0.05, fx - R * 0.30, hy - R * 0.15],
+        [fx,            hy - R * 0.20],
+        [fx + R * 0.30, hy - R * 0.15],
+        [fx + R * 0.60, hy - R * 0.05, fx + R * 0.80, fb - R * 1.15, fx + R * 0.70, fb - R * 0.80],
+        [fx + R * 0.50, fb],
+      ], cape, null);
+      // neck / collar hump
+      body([
+        [fx - R * 0.25, fb - R * 0.85],
+        [fx - R * 0.30, hy + R * 0.18],
+        [fx,            hy + R * 0.06],
+        [fx + R * 0.30, hy + R * 0.18],
+        [fx + R * 0.25, fb - R * 0.85],
+      ], col, null);
+      // left massive claw arm — sprawling to the side
+      body([
+        [fx - R * 0.68, fb - R * 0.82],
+        [fx - R * 0.92, fb - R * 0.30],
+        [fx - R * 0.88, fb + R * 0.02],
+      ], cape2, cape, 1.5);
+      const lClawBase = [fx - R * 0.90, fb];
+      for (let c2 = 0; c2 < 5; c2++) {
+        const ca = Math.PI * (0.55 + c2 * 0.12);
+        ctx.beginPath();
+        ctx.moveTo(lClawBase[0], lClawBase[1]);
+        ctx.lineTo(lClawBase[0] + Math.cos(ca) * R * 0.30, lClawBase[1] + Math.sin(ca) * R * 0.28);
+        ctx.strokeStyle = eye; ctx.lineWidth = 1.8; ctx.stroke();
+      }
+      // right claw arm — reaching forward
+      body([
+        [fx + R * 0.68, fb - R * 0.82],
+        [fx + R * 0.86, fb - R * 0.38],
+        [fx + R * 0.82, fb - R * 0.04],
+      ], cape2, cape, 1.5);
+      const rClawBase = [fx + R * 0.84, fb - R * 0.06];
+      for (let c2 = 0; c2 < 5; c2++) {
+        const ca = Math.PI * (-0.10 + c2 * 0.12);
+        ctx.beginPath();
+        ctx.moveTo(rClawBase[0], rClawBase[1]);
+        ctx.lineTo(rClawBase[0] + Math.cos(ca) * R * 0.28, rClawBase[1] + Math.sin(ca) * R * 0.26);
+        ctx.strokeStyle = eye; ctx.lineWidth = 1.8; ctx.stroke();
+      }
+      // head — monstrous: oversized, bat-like ear spikes
+      body([
+        [fx - R * 0.24, hy + R * 0.10],
+        [fx - R * 0.30, hy - R * 0.18, fx - R * 0.20, hy - R * 0.40, fx, hy - R * 0.42],
+        [fx + R * 0.20, hy - R * 0.40, fx + R * 0.30, hy - R * 0.18, fx + R * 0.24, hy + R * 0.10],
+        [fx + R * 0.10, hy + R * 0.20, fx - R * 0.10, hy + R * 0.20],
+      ], '#6a4a38', null);
+      // left ear spike
+      body([[fx - R * 0.22, hy - R * 0.26], [fx - R * 0.36, hy - R * 0.60], [fx - R * 0.18, hy - R * 0.36]], cape2, null);
+      // right ear spike
+      body([[fx + R * 0.22, hy - R * 0.26], [fx + R * 0.36, hy - R * 0.60], [fx + R * 0.18, hy - R * 0.36]], cape2, null);
+      // wide-set glowing eyes
+      glowDot(fx - R * 0.12, hy - R * 0.10, R * 0.07, eye);
+      glowDot(fx + R * 0.12, hy - R * 0.10, R * 0.07, eye);
+      // exposed fang
+      ctx.fillStyle = '#f0f0f0';
+      ctx.beginPath();
+      ctx.moveTo(fx - R * 0.04, hy + R * 0.09);
+      ctx.lineTo(fx - R * 0.01, hy + R * 0.22);
+      ctx.lineTo(fx + R * 0.03, hy + R * 0.09);
+      ctx.fill();
+      // blood drip from exposed fang
+      const dripT = (time * 0.4) % 1;  // 0→1 cycle every 2.5 seconds
+      const dripY = fb - R * 0.24 + dripT * R * 0.8;  // falls from fang tip
+      const dripAlpha = dripT < 0.7 ? 1 : (1 - (dripT - 0.7) / 0.3);
+      ctx.fillStyle = 'rgba(180,0,20,' + dripAlpha + ')';
+      ctx.beginPath();
+      ctx.ellipse(fx - R * 0.01, dripY, R * 0.025, R * 0.045, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+    } else if (clanId === 'malkavian') {
+      // Fragmented seer — body partially dissolving, one eye huge, mirror-shards floating
+      const hy = fb - R * 2.15;
+      // main body — thin, slightly off-centre
+      body([
+        [fx - R * 0.28, fb],
+        [fx - R * 0.32, fb - R * 1.5],
+        [fx - R * 0.20, hy + R * 0.20],
+        [fx + R * 0.04, hy + R * 0.05],
+        [fx + R * 0.28, hy + R * 0.22],
+        [fx + R * 0.30, fb - R * 1.5],
+        [fx + R * 0.24, fb],
+      ], cape, null);
+      // tattered overlay — ghost fragments breaking off
+      body([
+        [fx - R * 0.16, fb - R * 0.6],
+        [fx - R * 0.30, fb - R * 1.1],
+        [fx - R * 0.42, fb - R * 0.95, fx - R * 0.50, fb - R * 0.72, fx - R * 0.38, fb - R * 0.62],
+      ], aura + '55', null);
+      body([
+        [fx + R * 0.16, fb - R * 0.8],
+        [fx + R * 0.34, fb - R * 1.3],
+        [fx + R * 0.46, fb - R * 1.14, fx + R * 0.52, fb - R * 0.90, fx + R * 0.38, fb - R * 0.78],
+      ], eye + '44', null);
+      // left arm extended — clutching at something unseen
+      body([
+        [fx - R * 0.30, fb - R * 1.50],
+        [fx - R * 0.54, fb - R * 1.20],
+        [fx - R * 0.58, fb - R * 1.00],
+      ], col, null);
+      // right arm bent inward oddly
+      body([
+        [fx + R * 0.30, fb - R * 1.50],
+        [fx + R * 0.38, fb - R * 1.78],
+        [fx + R * 0.28, fb - R * 1.90],
+      ], col, null);
+      // head — slight tilt, disturbing
+      body([
+        [fx - R * 0.17, hy + R * 0.18],
+        [fx - R * 0.22, hy - R * 0.08, fx - R * 0.14, hy - R * 0.34, fx + R * 0.02, hy - R * 0.38],
+        [fx + R * 0.20, hy - R * 0.32, fx + R * 0.25, hy - R * 0.06, fx + R * 0.20, hy + R * 0.18],
+        [fx + R * 0.08, hy + R * 0.27, fx - R * 0.06, hy + R * 0.27],
+      ], '#bca8c8', null);
+      // one huge eye (dominant / unseeing)
+      glowDot(fx - R * 0.04, hy - R * 0.06, R * 0.11, eye);
+      // one tiny eye (the other)
+      glowDot(fx + R * 0.10, hy - R * 0.08, R * 0.04, aura);
+      // floating mirror-shard fragments around the figure
+      const shardData = [
+        [fx - R * 0.62, fb - R * 1.38, -0.4],
+        [fx - R * 0.48, fb - R * 1.72, 0.8],
+        [fx + R * 0.60, fb - R * 1.55, -0.6],
+        [fx + R * 0.50, fb - R * 0.90, 1.1],
+      ];
+      shardData.forEach(([sx2, sy2, angle], si) => {
+        ctx.save();
+        ctx.translate(sx2, sy2);
+        ctx.rotate(angle + time * (0.18 + si * 0.09));
+        ctx.fillStyle = aura + '60';
+        ctx.beginPath();
+        ctx.moveTo(0, -R * 0.08);
+        ctx.lineTo(R * 0.06, R * 0.04);
+        ctx.lineTo(-R * 0.04, R * 0.07);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = eye + '99';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+
+    // ---- end sway transform (must happen before clip restore) ------
+    ctx.restore();
+
+    // ---- restore before drawing text (text must not be clipped) ---
+    ctx.restore();
+    ctx.save();
+
+    // ---- clan name label below the arch body ----------------------
+    // Name sits at the very bottom of the bounding rect (below foot y=cy+ch)
+    const nameY = cy + ch + 13;
+    ctx.font = selected ? 'bold 9px Georgia, serif' : 'bold 8px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = selected ? eye : (over ? '#e8d8e8' : '#a898a8');
+    ctx.fillText(clanName.toUpperCase(), cx + cw / 2, nameY);
+
+    // desc shown only when selected — tiny line below name
+    if (selected) {
+      ctx.font = 'italic 7px Verdana';
+      ctx.fillStyle = '#9a8';
+      ctx.fillText(clanDesc, cx + cw / 2, nameY + 11);
+    }
+
+    ctx.restore();
+    return clicked;
+  }
+  // ---- end drawClanCard (module scope) ---------------------------
+
   const Game = {
     canvas: null, ctx: null, w: 0, h: 0,
     world: null, player: null, cam: null,
@@ -1020,30 +1659,59 @@
       ctx.textAlign = 'left';
       if (!this._clan) this._clan = 'brujah';
       const clans = [
-        ['brujah', 'Brujah', 'Rebels — Potence & Celerity'],
-        ['gangrel', 'Gangrel', 'Feral — Protean & claws'],
-        ['tremere', 'Tremere', 'Blood Sorcerers — spells'],
-        ['ventrue', 'Ventrue', 'Lords — Dominate'],
+        ['brujah',   'Brujah',   'Rebels — Potence & Celerity'],
+        ['gangrel',  'Gangrel',  'Feral — Protean & claws'],
+        ['tremere',  'Tremere',  'Blood Sorcerers — spells'],
+        ['ventrue',  'Ventrue',  'Lords — Dominate'],
         ['toreador', 'Toreador', 'Swift, beguiling — Celerity'],
-        ['nosferatu', 'Nosferatu', 'Hidden — Obfuscate stealth'],
-        ['malkavian', 'Malkavian', 'Seers — Auspex & madness'],
+        ['nosferatu','Nosferatu','Hidden — Obfuscate stealth'],
+        ['malkavian','Malkavian','Seers — Auspex & madness'],
       ];
-      const bw = 200, bh = 44, gap = 10, cols = 2;
-      const totalH = Math.ceil(clans.length / cols) * (bh + gap);
-      let startY = h * 0.46;
-      ctx.font = 'bold 14px Verdana'; ctx.textAlign = 'center'; ctx.fillStyle = '#cdd';
-      ctx.fillText('CHOOSE YOUR CLAN', w / 2, startY - 10);
+
+
+      // ---- Layout: single row if wide (≥900px), 4+3 stacked if narrow ----------
+      // Wide:   7 cards × 92px + gaps.  Narrow: 4+3 rows × 80px cards.
+      // Card heights are tuned so the downstream chain (diffY→slotY→byy→action btns)
+      // always fits inside the viewport:
+      //   bottom = startY + totalH + 176  (diffY+10, slotY+48, byy+58, btns+46+14)
+      //   => startY = h - totalH - 176 - 18  (18px bottom gutter) at the tightest.
+      // Wide cards: 92w × 122h + 26 nameZone → totalH=148, startY≥0.43h OK at any h≥600
+      // Narrow cards: 80w × 108h + 24 nameZone → totalH=272+8=280, startY≥h-474 OK at h≥720
+      const useWideRow = (w >= 900);
+      const cw = useWideRow ? 92 : 80;
+      const ch = useWideRow ? 122 : 108;
+      const cgap = 8;
+      const nameZone = useWideRow ? 26 : 24;
+      const rows3 = useWideRow ? 1 : 2;
+      const totalH = rows3 * (ch + nameZone) + (rows3 > 1 ? cgap : 0);
+      // Place startY so the full stack fits; never push above the subtitle (h*0.42)
+      // downstream chain: diffY = startY+totalH+10, slotY=diffY+48, byy=slotY+58, bottom=byy+46+14
+      // => bottom = startY + totalH + 176
+      let startY = h * 0.43;
+      const projectedBottom = startY + totalH + 176;
+      if (projectedBottom > h - 18) {
+        startY -= (projectedBottom - (h - 18));
+        // floor: don't go so high that 'CHOOSE YOUR CLAN' overlaps the subtitle,
+        // but only if there's actually room — prefer buttons on-screen over label separation
+        if (startY < h * 0.40 + 8 && (h - totalH - 176 - 18) >= h * 0.40 + 8) startY = h * 0.40 + 8;
+      }
+
+      ctx.font = 'bold 11px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#b8a8c0';
+      ctx.fillText('CHOOSE YOUR CLAN', w / 2, startY - 8);
+
+      const mcc = VAMP.Input.mouse;
       for (let i = 0; i < clans.length; i++) {
-        const col = i % cols, row = (i / cols) | 0;
-        const bx = w / 2 - (cols * (bw + gap) - gap) / 2 + col * (bw + gap);
-        const by = startY + row * (bh + gap);
+        // 4+3 layout: row 0 = 4 cards, row 1 = 3 cards, each row centred independently
+        const row3 = useWideRow ? 0 : ((i < 4) ? 0 : 1);
+        const rowCount = useWideRow ? 7 : (row3 === 0 ? 4 : 3);
+        const posInRow = useWideRow ? i : (row3 === 0 ? i : i - 4);
+        const rowTotalW = rowCount * cw + (rowCount - 1) * cgap;
+        const bx = w / 2 - rowTotalW / 2 + posInRow * (cw + cgap);
+        const by = startY + row3 * (ch + nameZone + cgap);
         const sel = this._clan === clans[i][0];
-        const emblemKey = VAMP.clanEmblemKey && VAMP.clanEmblemKey(clans[i][0]);
-        if (emblemKey && VAMP.Assets.ready && VAMP.Assets.has(emblemKey)) {
-          VAMP.Assets.drawKey(ctx, emblemKey, bx + 22, by + bh / 2, { w: 28, h: 28, ax: 0.5, ay: 0.5, alpha: sel ? 1 : 0.65 });
-        }
-        if (VAMP.Menus.btn(ctx, bx, by, bw, bh, clans[i][1], { color: sel ? 'rgba(150,40,70,0.95)' : 'rgba(30,18,28,0.9)', accent: sel ? '#ff7a9a' : null })) this._clan = clans[i][0];
-        if (sel) { ctx.fillStyle = '#9a8'; ctx.font = '10px Verdana'; ctx.textAlign = 'center'; ctx.fillText(clans[i][2], bx + bw / 2, by + bh - 5); }
+        const over = (mcc.x >= bx && mcc.x <= bx + cw && mcc.y >= by && mcc.y <= by + ch + nameZone);
+        const clicked = drawClanCard(ctx, bx, by, cw, ch, clans[i][0], clans[i][1], clans[i][2], sel, over, this.time);
+        if (clicked) { this._clan = clans[i][0]; if (VAMP.Audio) VAMP.Audio.play('ui'); }
       }
       if (!this._difficulty) this._difficulty = 'normal';
       if (!this._saveSlot) this._saveSlot = 0;

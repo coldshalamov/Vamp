@@ -265,8 +265,12 @@
     };
     if (m.id >= MID) MID = m.id + 1;
     if (raw.type === 'cleanse' && savedData.center) m.data.center = savedData.center;
+    const savedTimeLimit = m.timeLimit;
+    const savedTimer = m.timer;
     game.activeMission = m;
     setup(game, m);
+    m.timeLimit = savedTimeLimit;
+    m.timer = savedTimer;
     Object.assign(m.data, savedData);
     if (raw.type === 'survive') {
       m.data.wave = savedData.wave || 0;

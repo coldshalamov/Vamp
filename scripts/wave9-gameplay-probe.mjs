@@ -94,6 +94,33 @@ async function main() {
       missionPickups: g.pickups.filter((p) => p.mission === 124).length,
     };
 
+    g.newGame(9012, 'brujah', 0, 'normal');
+    const dest = g.world.randomWalkPos(Math.random);
+    const timedCourier = {
+      state: 'active',
+      type: 'courier',
+      id: 125,
+      name: 'Timed Courier',
+      icon: '#',
+      color: '#fff',
+      desc: '',
+      level: 1,
+      need: 1,
+      progress: 0,
+      reward: { xp: 1, money: 1, itemChance: 0 },
+      targetName: 'Target',
+      modifier: { id: 'none', bonus: 0 },
+      timeLimit: 42,
+      timer: 7,
+      phase: 0,
+      data: { dest },
+    };
+    VAMP.Missions.restore(g, timedCourier);
+    out.timedCourierRestore = {
+      timeLimit: g.activeMission && g.activeMission.timeLimit,
+      timer: g.activeMission && g.activeMission.timer,
+    };
+
     return out;
   });
 
@@ -111,6 +138,8 @@ async function main() {
   assert(report.partialCollectRestore.need === 3, 'Partial collect need changed unexpectedly', report.partialCollectRestore);
   assert(report.partialCollectRestore.progress === 2, 'Partial collect progress changed unexpectedly', report.partialCollectRestore);
   assert(report.partialCollectRestore.missionPickups === 1, 'Partial collect did not spawn exactly the remaining relic', report.partialCollectRestore);
+  assert(report.timedCourierRestore.timeLimit === 42, 'Timed courier time limit was not restored', report.timedCourierRestore);
+  assert(report.timedCourierRestore.timer === 7, 'Timed courier timer was reset during restore', report.timedCourierRestore);
 
   console.log(JSON.stringify(report, null, 2));
 }

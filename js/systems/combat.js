@@ -30,8 +30,9 @@
       if (opts.dps) cur.dps = Math.max(cur.dps, opts.dps);
       if (opts.factor) cur.factor = Math.min(cur.factor || 1, opts.factor);
       if (opts.amount) cur.amount = Math.max(cur.amount || 0, opts.amount);
+      if (opts.dmgType) cur.dmgType = opts.dmgType;
     } else {
-      s[kind] = { t: dur, max: dur, dps: opts.dps || 0, factor: opts.factor, amount: opts.amount, src: opts.src };
+      s[kind] = { t: dur, max: dur, dps: opts.dps || 0, factor: opts.factor, amount: opts.amount, src: opts.src, dmgType: opts.dmgType };
     }
     if (VAMP.FX && opts.popup !== false) VAMP.FX.number(e.x, e.y - 14, kind.toUpperCase(), STATUS_COLOR[kind] || '#fff', { small: true });
   }
@@ -50,7 +51,7 @@
       if ((k === 'burn' || k === 'bleed' || k === 'poison') && st.dps) {
         const dmg = st.dps * dt;
         if (isPlayer) damagePlayer(game, dmg, { type: k, silent: true, dot: true });
-        else damageNPC(game, e, dmg, { type: k, noCrit: true, silent: true, dot: true, src: st.src });
+        else damageNPC(game, e, dmg, { type: k, noCrit: true, silent: true, dot: true, src: st.src, dmgType: st.dmgType });
       }
     }
   }

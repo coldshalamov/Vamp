@@ -78,7 +78,7 @@
       if (VAMP.FX) { VAMP.FX.ring(p.x, p.y, r, '#d2a04a'); VAMP.FX.shock(p.x, p.y, r); }
       if (game.cam) game.cam.shake(7, 0.3);
       for (const n of enemiesIn(game, p.x, p.y, r, true)) {
-        C().damageNPC(game, n, (def.dmg || 22) * sp(p), { knockback: def.knockback || 240, angle: U.angleTo(p.x, p.y, n.x, n.y), color: '#d2a04a' });
+        C().damageNPC(game, n, (def.dmg || 22) * sp(p), { knockback: def.knockback || 240, angle: U.angleTo(p.x, p.y, n.x, n.y), color: '#d2a04a', dmgType: 'phys' });
         C().applyStatus(n, 'stun', { dur: def.stun || 1.2 });
       }
       if (VAMP.Audio) VAMP.Audio.play('explode');
@@ -95,7 +95,7 @@
         nx = tx; ny = ty;
         for (const n of anyNpcIn(game, tx, ty, 30)) {
           if (hitSet.has(n)) continue; hitSet.add(n);
-          C().damageNPC(game, n, (def.dmg || 26) * sp(p), { knockback: 200, angle: a, color: '#d2a04a' });
+          C().damageNPC(game, n, (def.dmg || 26) * sp(p), { knockback: 200, angle: a, color: '#d2a04a', dmgType: 'phys' });
           C().applyStatus(n, 'stun', { dur: 0.6 });
         }
       }
@@ -110,7 +110,7 @@
       if (game.cam) game.cam.shake(12, 0.5);
       for (const n of enemiesIn(game, p.x, p.y, r, true)) {
         const d = U.dist(p.x, p.y, n.x, n.y);
-        C().damageNPC(game, n, (def.dmg || 40) * sp(p) * (1 - d / r * 0.4), { knockback: 320, angle: U.angleTo(p.x, p.y, n.x, n.y), color: '#e0b050' });
+        C().damageNPC(game, n, (def.dmg || 40) * sp(p) * (1 - d / r * 0.4), { knockback: 320, angle: U.angleTo(p.x, p.y, n.x, n.y), color: '#e0b050', dmgType: 'phys' });
         C().applyStatus(n, 'stun', { dur: 1.6 });
       }
       if (VAMP.Audio) VAMP.Audio.play('explode');
@@ -276,7 +276,8 @@
         vx: Math.cos(a) * (def.speed || 520), vy: Math.sin(a) * (def.speed || 520),
         owner: 'player', dmg: (def.dmg || 24) * sp(p), r: 6, color: '#d11838', glow: true,
         life: 1.6, kind: 'blood', knockback: 60, pierce: def.pierce || 0,
-        status: def.bleed ? { kind: 'bleed', dur: 3, dps: (def.dmg || 24) * 0.25 * sp(p) } : null,
+        dmgType: 'blood',
+        status: def.bleed ? { kind: 'bleed', dur: 3, dps: (def.dmg || 24) * 0.25 * sp(p), dmgType: 'blood' } : null,
       });
       if (VAMP.FX) VAMP.FX.ring(p.x + Math.cos(a) * 14, p.y + Math.sin(a) * 14, 13, '#e0203f');
       return true;
@@ -284,9 +285,9 @@
     bsCauldron(p, game, def) {
       const t = nearestAny(game, p, def.range || 300);
       if (!t) return false;
-      C().applyStatus(t, 'bleed', { dur: def.dur || 5, dps: (def.dps || 16) * sp(p) });
+      C().applyStatus(t, 'bleed', { dur: def.dur || 5, dps: (def.dps || 16) * sp(p), dmgType: 'blood' });
       // spread to nearby
-      for (const n of anyNpcIn(game, t.x, t.y, def.splash || 70)) C().applyStatus(n, 'bleed', { dur: (def.dur || 5) * 0.6, dps: (def.dps || 16) * 0.6 * sp(p) });
+      for (const n of anyNpcIn(game, t.x, t.y, def.splash || 70)) C().applyStatus(n, 'bleed', { dur: (def.dur || 5) * 0.6, dps: (def.dps || 16) * 0.6 * sp(p), dmgType: 'blood' });
       if (VAMP.FX) VAMP.FX.blood(t.x, t.y, 8);
       return true;
     },
@@ -300,7 +301,7 @@
       const t = nearestAny(game, p, def.range || 280);
       if (!t) return false;
       const dmg = (def.dmg || 18) * sp(p);
-      C().damageNPC(game, t, dmg, { color: '#d11838', type: 'blood' });
+      C().damageNPC(game, t, dmg, { color: '#d11838', type: 'blood', dmgType: 'blood' });
       const gain = dmg * (def.steal || 0.6);
       p.blood = Math.min(p.derived.maxBlood, p.blood + gain);
       if (VAMP.FX) { VAMP.FX.beam(p.x, p.y, t.x, t.y, '#d11838'); VAMP.FX.number(p.x, p.y - 26, '+' + Math.round(gain) + ' vitae', '#d11838', { small: true }); }
@@ -313,7 +314,7 @@
         game.spawnProjectile({
           x: p.x + Math.cos(a) * (p.r + 6), y: p.y + Math.sin(a) * (p.r + 6),
           vx: Math.cos(a) * (def.speed || 360), vy: Math.sin(a) * (def.speed || 360),
-          owner: 'player', dmg: (def.dmg || 16) * sp(p), r: 5, color: '#e0203f', glow: true, life: 1.2, kind: 'blood', knockback: 80,
+          owner: 'player', dmg: (def.dmg || 16) * sp(p), r: 5, color: '#e0203f', glow: true, life: 1.2, kind: 'blood', knockback: 80, dmgType: 'blood',
         });
       }
       if (VAMP.FX) { VAMP.FX.ring(p.x, p.y, 60, '#e0203f'); VAMP.FX.flash('rgba(180,0,30,0.12)', 0.2); }
@@ -327,14 +328,14 @@
       const cx = t === p ? p.x + Math.cos(p.facing) * 120 : t.x;
       const cy = t === p ? p.y + Math.sin(p.facing) * 120 : t.y;
       const r = def.radius || 90;
-      for (const n of anyNpcIn(game, cx, cy, r)) { C().applyStatus(n, 'root', { dur: def.dur || 3 }); C().damageNPC(game, n, (def.dmg || 8) * sp(p), { color: '#3a1a5a' }); }
+      for (const n of anyNpcIn(game, cx, cy, r)) { C().applyStatus(n, 'root', { dur: def.dur || 3 }); C().damageNPC(game, n, (def.dmg || 8) * sp(p), { color: '#3a1a5a', dmgType: 'shadow' }); }
       if (VAMP.FX) VAMP.FX.shadow(cx, cy, r);
       return true;
     },
     shdArms(p, game, def) {
       const t = nearestAny(game, p, def.range || 320);
       if (!t) return false;
-      C().damageNPC(game, t, (def.dmg || 14) * sp(p), { color: '#3a1a5a' });
+      C().damageNPC(game, t, (def.dmg || 14) * sp(p), { color: '#3a1a5a', dmgType: 'shadow' });
       // pull toward player
       const a = U.angleTo(t.x, t.y, p.x, p.y);
       t.x += Math.cos(a) * (def.pull || 120); t.y += Math.sin(a) * (def.pull || 120);

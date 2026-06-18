@@ -155,6 +155,50 @@ async function main() {
     } catch (e) {
       report.malformedCodexLoad = { error: e.message };
     }
+    report.malformedProgressLoad = null;
+    try {
+      VAMP.Game.loadGame({
+        seed: 3,
+        day: 1,
+        player: {
+          clan: 'brujah',
+          level: 1,
+          codex: 'bad',
+          mastery: 'bad',
+          reagents: null,
+          nemeses: [],
+          legend: 0,
+          progress: {
+            revealed: { codex: 'bad', mastery: 'bad', elder: 'bad', alchemy: 'bad', nemesis: 'bad' },
+            seen: { 'codex:done': 'bad', 'move:done': 1 },
+            objIdx: 'bad',
+          },
+        },
+      }, 0);
+      report.malformedProgressLoad = {
+        mode: VAMP.Game.mode,
+        revealed: Object.assign({}, VAMP.Game.player.progress && VAMP.Game.player.progress.revealed),
+        seen: Object.assign({}, VAMP.Game.player.progress && VAMP.Game.player.progress.seen),
+        masteryVisible: VAMP.Progress.tabVisible(VAMP.Game, 'mastery'),
+        codexVisible: VAMP.Progress.tabVisible(VAMP.Game, 'codex'),
+        elderVisible: VAMP.Progress.tabVisible(VAMP.Game, 'elder'),
+        alchemyFeature: VAMP.Progress.hudFeature(VAMP.Game, 'alchemy'),
+        nemesisFeature: VAMP.Progress.hudFeature(VAMP.Game, 'nemesis'),
+        forcedTabAfterRender: null,
+        renderError: null,
+      };
+      try {
+        VAMP.Menus.openScreen('char', { tab: 'codex' });
+        VAMP.Game.render(1);
+        report.malformedProgressLoad.forcedTabAfterRender = VAMP.Menus.tab;
+      } catch (e) {
+        report.malformedProgressLoad.renderError = e.message;
+      } finally {
+        VAMP.Menus.close();
+      }
+    } catch (e) {
+      report.malformedProgressLoad = { error: e.message };
+    }
     if (previousMode) VAMP.Game.mode = previousMode;
     if (previous == null) localStorage.removeItem(key);
     else localStorage.setItem(key, previous);
@@ -273,6 +317,13 @@ async function main() {
   }
   if (!corruptSaveReport.malformedCodexLoad || corruptSaveReport.malformedCodexLoad.error || corruptSaveReport.malformedCodexLoad.renderError || corruptSaveReport.malformedCodexLoad.mode !== 'play' || corruptSaveReport.malformedCodexLoad.codexType !== 'object' || corruptSaveReport.malformedCodexLoad.codexCompleteType !== 'object') {
     console.error('MALFORMED CODEX SAVE LOAD NOT SANITIZED:', corruptSaveReport);
+    fail = true;
+  }
+  const mp = corruptSaveReport.malformedProgressLoad;
+  const badRevealed = mp && mp.revealed && (mp.revealed.codex || mp.revealed.mastery || mp.revealed.elder || mp.revealed.alchemy || mp.revealed.nemesis);
+  const badSeen = mp && mp.seen && (mp.seen['codex:done'] || mp.seen['move:done'] !== 1);
+  if (!mp || mp.error || mp.renderError || mp.mode !== 'play' || mp.masteryVisible || mp.codexVisible || mp.elderVisible || mp.alchemyFeature || mp.nemesisFeature || mp.forcedTabAfterRender !== 'skills' || badRevealed || badSeen) {
+    console.error('MALFORMED PROGRESS SAVE LOAD NOT SANITIZED:', corruptSaveReport);
     fail = true;
   }
   if (gameReport.error) { console.error('GAME ERROR:', gameReport.error); fail = true; }

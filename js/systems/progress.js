@@ -112,11 +112,28 @@
   const TAB_GATE = { holdings: 'legend', coterie: 'thralls', mastery: 'mastery', codex: 'codex', elder: 'elder' };
 
   function obj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
+  function savedFlag(v) { return v === 1 || v === true; }
+  function cleanRevealed(src) {
+    const out = {};
+    if (!obj(src)) return out;
+    for (const k in src) if (BY_KEY[k] && savedFlag(src[k])) out[k] = 1;
+    return out;
+  }
+  function cleanSeen(src) {
+    const out = {};
+    if (!obj(src)) return out;
+    for (const k in src) {
+      const done = typeof k === 'string' && k.slice(-5) === ':done';
+      const base = done ? k.slice(0, -5) : '';
+      if (done && BY_KEY[base] && savedFlag(src[k])) out[k] = 1;
+    }
+    return out;
+  }
 
   function ensure(p) {
     if (!obj(p.progress)) p.progress = { revealed: {}, seen: {}, objIdx: 0 };
-    if (!obj(p.progress.revealed)) p.progress.revealed = {};
-    if (!obj(p.progress.seen)) p.progress.seen = {};
+    p.progress.revealed = cleanRevealed(p.progress.revealed);
+    p.progress.seen = cleanSeen(p.progress.seen);
     p.progress.objIdx = Math.max(0, Math.floor(+p.progress.objIdx || 0));
     backfill(p);
     return p.progress;

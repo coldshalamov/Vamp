@@ -1,0 +1,100 @@
+/* VAMPIRE CITY — Nocturne first-impression layer.
+   Loaded after style.css; no external assets, no build step, file:// safe. */
+:root {
+  --nocturne-void: #050408;
+  --nocturne-coal: #0a0810;
+  --nocturne-blood: #b4213b;
+  --nocturne-arterial: #ff426d;
+  --nocturne-bone: #d8c4ad;
+  --nocturne-brass: #bd9462;
+}
+body { background: var(--nocturne-void); }
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  opacity: .17;
+  background:
+    radial-gradient(circle at 14% -10%, rgba(82, 104, 148, .17), transparent 38%),
+    radial-gradient(circle at 88% 112%, rgba(108, 10, 40, .16), transparent 42%);
+  mix-blend-mode: screen;
+}
+#splash {
+  background:
+    linear-gradient(rgba(2, 2, 5, .43), rgba(2, 2, 5, .82)),
+    radial-gradient(ellipse at 50% 38%, #23101b 0%, #09070d 38%, #030305 76%);
+}
+#splash::before,
+#splash::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: min(48vw, 620px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+#splash::before {
+  top: 8vh;
+  height: 66vh;
+  opacity: .46;
+  clip-path: polygon(50% 0, 100% 30%, 92% 30%, 92% 100%, 8% 100%, 8% 30%, 0 30%);
+  background: linear-gradient(180deg, rgba(0,0,0,.92), rgba(3,2,5,.48));
+  border-bottom: 1px solid rgba(180, 33, 62, .24);
+}
+#splash::after {
+  bottom: 16vh;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(180,33,62,.6) 40%, rgba(255,66,109,.8) 50%, rgba(180,33,62,.6) 60%, transparent);
+  box-shadow: 0 0 24px rgba(255,66,109,.12);
+}
+#splash .splash-inner { position: relative; z-index: 2; width: min(620px, 86vw); }
+#splash h1 {
+  margin: 0 0 12px;
+  color: var(--nocturne-bone);
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  letter-spacing: .22em;
+  text-shadow: 0 2px 0 #000, 0 0 28px rgba(180, 33, 62, .24);
+}
+#splash h1::first-letter { color: var(--nocturne-arterial); }
+#splash p {
+  color: #9d8992;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+#splash .splash-progress {
+  position: relative;
+  width: min(360px, 72vw);
+  height: 5px;
+  margin: 27px auto 0;
+  border: 1px solid rgba(189, 148, 98, .42);
+  border-radius: 0;
+  background: rgba(0,0,0,.7);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.025), 0 10px 38px rgba(0,0,0,.55);
+}
+#splash .splash-progress::before,
+#splash .splash-progress::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border: 1px solid rgba(189, 148, 98, .48);
+  background: #09060b;
+  transform: translateY(-50%) rotate(45deg);
+}
+#splash .splash-progress::before { left: -16px; }
+#splash .splash-progress::after { right: -16px; }
+#splash .splash-progress-fill {
+  background: linear-gradient(90deg, #651428, var(--nocturne-arterial), #9e1d3b);
+  box-shadow: 0 0 14px rgba(255, 66, 109, .44);
+}
+@media (prefers-reduced-motion: no-preference) {
+  #splash h1 { animation: nocturne-breathe 3.4s ease-in-out infinite; }
+  #splash .splash-progress-fill { animation: nocturne-pulse 1.7s ease-in-out infinite alternate; }
+}
+@keyframes nocturne-breathe { 0%,100% { opacity:.88; } 50% { opacity:1; text-shadow:0 2px 0 #000,0 0 35px rgba(180,33,62,.32); } }
+@keyframes nocturne-pulse { from { filter:saturate(.85) brightness(.82); } to { filter:saturate(1.15) brightness(1.18); } }

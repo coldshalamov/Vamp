@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Vampire City — Nocturne Visual Lab</title>
+  <link rel="stylesheet" href="lab.css">
+</head>
+<body>
+  <canvas id="nocturne" width="1600" height="900" aria-label="Vampire City Nocturne visual direction laboratory"></canvas>
+  <aside id="controls" aria-label="Visual lab controls">
+    <strong>NOCTURNE LAB</strong>
+    <label>Screen <select id="screen">
+      <option value="gameplay">Gameplay</option><option value="title">Title</option>
+      <option value="pause">Pause</option><option value="inventory">Inventory</option>
+      <option value="dialogue">Dialogue</option><option value="styleguide">Style guide</option>
+    </select></label>
+    <label>Pass <select id="pass"><option>1</option><option>2</option><option selected>3</option></select></label>
+    <label><input id="reduced" type="checkbox"> Reduced motion</label>
+    <button id="hide">Hide controls</button>
+  </aside>
+  <script src="lab.js"></script>
+</body>
+</html>

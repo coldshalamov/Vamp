@@ -28,11 +28,20 @@ var hitstop: int = 0                     # ticks frozen on connection (handled i
 var hp: float = 100.0
 var max_hp: float = 100.0
 
+# Optional behaviour delegate (composition over inheritance). When set, step() forwards
+# to behaviour.step() so SimPlayer/SimNPC/etc. drive per-tick logic without SimEntity
+# knowing about them. Set to null for pure-dumb entities (target dummies, props).
+var behaviour: RefCounted = null
+
+# damage-tracking hooks (Combat.resolve_hit calls these via has_method checks)
+signal damage_dealt(amount: float)
+signal damage_taken(amount: float)
+
 func _init(entity_id: int, entity_kind: String) -> void:
 	id = entity_id
 	kind = entity_kind
 
-## Advance this entity by one fixed tick. Override in subclasses; call super first.
+## Advance this entity by one fixed tick. Calls behaviour.step() if a delegate is attached.
 func step(delta: float, sim) -> void:
 	if dead:
 		return
@@ -45,6 +54,10 @@ func step(delta: float, sim) -> void:
 	# advance the active action's frame counter
 	if current_action != null:
 		action_frame += 1
+		# when the action fully completes (past recovery), return to idle so we can act again
+		if action_frame >= current_action.def.total_ticks():
+			current_action = null
+			action_frame = 0
 	# tick down cooldowns
 	var expired: Array = []
 	for key in cooldowns:
@@ -57,6 +70,25 @@ func step(delta: float, sim) -> void:
 	pos += vel * delta
 	# friction — tunable per entity
 	vel *= 0.86
+	# delegate per-tick behaviour (player input, AI, etc.)
+	if behaviour != null and behaviour.has_method("step"):
+		behaviour.step(delta, sim)
+
+# --- damage hooks (called by Combat via duck typing) ---
+func on_damage_dealt(amount: float) -> void:
+	damage_dealt.emit(amount)
+	if behaviour != null and behaviour.has_method("on_damage_dealt"):
+		behaviour.on_damage_dealt(amount)
+
+func on_damage_taken(amount: float) -> void:
+	damage_taken.emit(amount)
+	if behaviour != null and behaviour.has_method("on_damage_taken"):
+		behaviour.on_damage_taken(amount)
+
+func heal_blood(amount: float) -> void:
+	# default: no-op. SimPlayer overrides via behaviour.
+	if behaviour != null and behaviour.has_method("heal_blood"):
+		behaviour.heal_blood(amount)
 
 ## Begin an action defined by `def`. Returns false if we can't (cooldown/stun/recovery-lock).
 func begin_action(def: ActionDef, sim) -> bool:

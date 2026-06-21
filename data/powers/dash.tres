@@ -1,0 +1,43 @@
+; dash.tres — the defensive verb (the Hades dash, studied frame-for-frame).
+;
+; Design intent: this is the second half of the skill ceiling. A directional double-tap
+; (or Shift) blinks the player ~205px with i-frames. It cancels the recovery of ANY action
+; (it's in every action's cancel_into list), so a skilled player uses it to:
+;   - escape melee_heavy's 24f recovery instead of eating the punish
+;   - phase through a telegraphed sniper shot
+;   - reposition behind a shielded enemy (the front-armor counter)
+; A masher doesn't dash intentionally and eats the recovery/punish.
+;
+; Long cooldown (60f = 1s) so it can't be spammed — each dash is a committed decision.
+;
+[gd_resource type="Resource" script_class="ActionDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/ActionDef.gd" id="1_ad"]
+
+[resource]
+script = ExtResource("1_ad")
+id = "dash"
+display_name = "Blink"
+description = "Directional dash with i-frames. Cancels any recovery. Long cooldown — commit to it."
+startup = 2
+active = 0
+recovery = 6
+cancel_into = PackedStringArray()
+blood_cost = 0.0
+stamina_cost = 0.0
+cooldown_ticks = 24
+input_grammar = "double_tap"
+range = 70.0
+damage = 0.0
+damage_type = "physical"
+knockback = 0.0
+hitstop_ticks = 0
+lifesteal = 0.0
+applies_status = {}
+cue_on_startup = "movement.dash.start"
+cue_on_active = ""
+cue_on_hit = ""
+sound = "dash"
+combo_next = ""
+combo_window_start = 0
+combo_window_end = 0

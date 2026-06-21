@@ -14,8 +14,12 @@
 ##   - A recorded input sequence replays byte-stably across runs with the same seed.
 ##
 extends Node
-# NOTE: no class_name — this script IS the `Sim` autoload singleton.
-# Adding class_name here collides with the autoload name in GDScript.
+# Registered as both: (1) the `Sim` autoload singleton at runtime (in-game), and
+# (2) the `VCSim` type so headless tests can instantiate it via VCSim.new() — Godot 4.7
+# removed GDScript.new(), but typed classes still support .new(). The two coexist: the
+# type name is VCSim, the singleton instance is Sim. GUT's CLI entry doesn't always load
+# project autoloads, so tests must use the type, not the global.
+class_name VCSim
 
 # --- the seeded RNG — every random roll in the game goes through this ---
 var rng := RandomNumberGenerator.new()
@@ -45,9 +49,11 @@ func new_game(seed_value: int, clan_id: String) -> void:
 	_recorded_inputs.clear()
 	_replay_queue.clear()
 	_recording = false
-	# TODO(spawn): construct player from clan data, spawn the slice district.
+	# Player entity always carries a SimPlayer behaviour (the verbs). TODO(spawn): later,
+	# construct from clan data + spawn the slice district; for now the slice is a void.
 	player = SimEntity.new(rng.randi(), "player")
 	player.pos = Vector2(400, 300)
+	player.behaviour = SimPlayer.new(player)
 	entities.append(player)
 
 ## Advance the world by exactly one fixed step. The ONLY place sim state mutates per-frame.
@@ -58,13 +64,85 @@ func tick_sim(delta: float) -> void:
 	for e in entities:
 		if is_instance_valid(e):
 			e.step(delta, self)
+	# resolve combat: any entity in the active window of an action hits overlapping targets
+	tick_combat()
+
+## Check active action windows against nearby targets and resolve hits.
+func tick_combat() -> void:
+	for attacker in entities:
+		if not is_instance_valid(attacker) or attacker.dead or attacker.current_action == null:
+			continue
+		if attacker.action_phase() != "active":
+			continue
+		var def: ActionDef = attacker.current_action.def
+		if def.damage <= 0.0:
+			continue   # non-damaging action (e.g. dash) — no hit resolution
+		# already-connected this active window? skip (prevents multi-hit per swing)
+		if attacker.current_action.has_connected:
+			continue
+		attacker.current_action.has_connected = true
+		# query targets within the action's range in the facing direction
+		var hit_arc := 1.2   # ~69 degrees either side of facing
+		for target in entities:
+			if target == attacker or target.dead:
+				continue
+			var to_target := target.pos - attacker.pos
+			var dist := to_target.length()
+			if dist > def.range + target.radius:
+				continue
+			if dist > 1.0:
+				var ang_to := to_target.angle()
+				# smallest signed angular difference, wrapped to [-PI, PI]
+				var da: float = fmod(ang_to - attacker.facing, TAU)
+				if da > PI:
+					da -= TAU
+				elif da < -PI:
+					da += TAU
+				da = abs(da)
+				if da > hit_arc:
+					continue   # outside the attack arc
+			# hit! resolve damage inline (combat logic lives in the sim, not a separate
+			# class — premature abstraction created a circular ref between Sim and Combat).
+			var dmg := _resolve_hit(attacker, def, target)
+			if dmg > 0.0 and attacker.has_method("on_damage_dealt"):
+				attacker.on_damage_dealt(dmg)
+			if target.has_method("on_damage_taken"):
+				target.on_damage_taken(dmg)
+
+## Resolve one action hitting one target. Returns damage dealt. Seeded crit, deterministic.
+func _resolve_hit(attacker: SimEntity, def: ActionDef, target: SimEntity) -> float:
+	if target.dead:
+		return 0.0
+	var crit: bool = rng.randf() < 0.15
+	var dmg: float = def.damage
+	if crit:
+		dmg *= 1.75
+	dmg = max(1.0, dmg)
+	target.hp -= dmg
+	# hitstop freezes both on connection — the "weight" of the hit
+	target.hitstop = max(target.hitstop, def.hitstop_ticks)
+	attacker.hitstop = max(attacker.hitstop, def.hitstop_ticks)
+	# knockback applies impulse along facing
+	if def.knockback > 0.0:
+		var dir := Vector2.RIGHT.rotated(attacker.facing)
+		target.vel += dir * def.knockback
+	# lifesteal
+	if def.lifesteal > 0.0 and attacker.has_method("heal_blood"):
+		attacker.heal_blood(dmg * def.lifesteal)
+	if target.hp <= 0.0:
+		target.hp = 0.0
+		target.dead = true
+	return dmg
 
 ## Apply a player input action. Recorded for replay if recording is on.
+## Routes through the player entity's behaviour delegate (SimPlayer) — SimEntity itself
+## has no apply_action, just as it has no step logic; behaviour owns the verbs.
 func apply_input(action: InputAction) -> void:
 	if _recording:
 		_recorded_inputs.append({ "tick": tick, "action": action.serialize() })
-	if player != null and is_instance_valid(player):
-		player.apply_action(action, self)
+	if player != null and is_instance_valid(player) and player.behaviour != null:
+		if player.behaviour.has_method("apply_action"):
+			player.behaviour.apply_action(action, self)
 
 ## Hash the full sim state — used by the determinism test (20 runs, same seed = same hash).
 func state_hash() -> int:

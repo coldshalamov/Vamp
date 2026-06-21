@@ -5,7 +5,11 @@
 ## (combat skill-gap, AI diversity, replay) is meaningless.
 ##
 ## Run via GUT headless:
-##   godot --headless -s addons/gut/gut_cmdln.gd -gdir=res://test -gexit
+##   godot --headless -s addons/gut/gut_cmdln.gd
+##
+## Uses the VCSim type directly (VCSim.new()) rather than the global `Sim` autoload,
+## because GUT's CLI entry point does not always initialise project autoloads. Each run
+## gets a fresh instance; new_game() fully resets all state.
 ##
 extends GutTest
 
@@ -13,20 +17,12 @@ const RUNS := 20
 const SEED_VALUE := 42
 const TICKS := 600   # 10 seconds of sim at 60Hz
 
-# `Sim` is an autoload singleton; in test mode we load the script and instantiate it
-# directly so each run gets a fresh, isolated instance (mirroring what the autoload
-# system does at boot — same real Sim class, no mock).
-var SimScript: GDScript
-
-func before_all() -> void:
-	SimScript = load("res://src/sim/Sim.gd")
-
 
 ## 20 fresh runs from the same seed must produce byte-identical state hashes.
 func test_state_hash_identical_across_runs() -> void:
 	var first_hash: int = 0
 	for i in RUNS:
-		var sim: Node = SimScript.new()
+		var sim := VCSim.new()
 		sim.new_game(SEED_VALUE, "brujah")
 		for _t in TICKS:
 			sim.tick_sim(1.0 / 60.0)
@@ -48,7 +44,7 @@ func test_different_seeds_diverge() -> void:
 
 
 func _hash_for_seed(s: int) -> int:
-	var sim: Node = SimScript.new()
+	var sim := VCSim.new()
 	sim.new_game(s, "brujah")
 	for _t in TICKS:
 		sim.tick_sim(1.0 / 60.0)

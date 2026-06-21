@@ -1,0 +1,41 @@
+; melee_light.tres — the opening hit of the claw combo.
+;
+; Design intent (REVAMP_SPEC §2.2): this is where the skill ceiling is born. A masher
+; presses attack, gets startup->active->recovery, eats the 9f recovery. A skilled player
+; presses attack AGAIN during the recovery's combo window, which CANCELS the recovery
+; into melee_heavy. That cancel is the gap between a masher and an expert — measurably,
+; repeatably, on a fixed seed.
+;
+; All values in physics ticks @ 60Hz.
+;
+[gd_resource type="Resource" script_class="ActionDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/ActionDef.gd" id="1_ad"]
+
+[resource]
+script = ExtResource("1_ad")
+id = "melee_light"
+display_name = "Claw"
+description = "Quick slash. Cancel into Heavy or Dash during recovery for a combo."
+startup = 3
+active = 3
+recovery = 9
+cancel_into = PackedStringArray("melee_heavy", "dash")
+blood_cost = 0.0
+stamina_cost = 0.0
+cooldown_ticks = 0
+input_grammar = "press"
+range = 56.0
+damage = 8.0
+damage_type = "physical"
+knockback = 60.0
+hitstop_ticks = 2
+lifesteal = 0.0
+applies_status = {}
+cue_on_startup = "attack.slash.windup"
+cue_on_active = "attack.slash.swing"
+cue_on_hit = "attack.slash.hit"
+sound = "slash_light"
+combo_next = "melee_heavy"
+combo_window_start = 3
+combo_window_end = 7

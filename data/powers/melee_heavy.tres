@@ -1,0 +1,46 @@
+; melee_heavy.tres — the finisher of the claw combo.
+;
+; Design intent: the PAYOFF for the cancel. High damage but long recovery (24f = 0.4s) if
+; whiffed or not followed up — the punish window that makes mashing punishable. A skilled
+; player cancels light->heavy during the combo window and either commits (high damage) or
+; cancels the heavy's recovery into a dash (escape). A masher who spams attack gets the
+; heavy's full recovery every time.
+;
+; Small lifesteal reinforces the "predator" fantasy: the combo's end is a feed.
+;
+[gd_resource type="Resource" script_class="ActionDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/sim/ActionDef.gd" id="1_ad"]
+
+[resource]
+script = ExtResource("1_ad")
+id = "melee_heavy"
+display_name = "Eviscerate"
+description = "Heavy finishing slash. Long recovery — cancel into Dash to escape, or commit for big damage + lifesteal."
+startup = 6
+active = 5
+recovery = 24
+cancel_into = PackedStringArray("dash")
+blood_cost = 0.0
+stamina_cost = 0.0
+cooldown_ticks = 0
+input_grammar = "press"
+range = 64.0
+damage = 22.0
+damage_type = "physical"
+knockback = 180.0
+hitstop_ticks = 4
+lifesteal = 0.15
+applies_status = {
+"bleed": {
+"dps": 6.0,
+"dur_ticks": 180
+}
+}
+cue_on_startup = "attack.heavy.windup"
+cue_on_active = "attack.heavy.swing"
+cue_on_hit = "attack.heavy.hit"
+sound = "slash_heavy"
+combo_next = ""
+combo_window_start = 0
+combo_window_end = 0

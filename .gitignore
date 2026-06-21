@@ -8,6 +8,15 @@ mcps/
 terminals/
 
 # misc
-node_modules/
 *.log
 .DS_Store
+
+# === Godot ===
+# Imported asset caches (regenerated from source by the editor on open).
+.godot/
+# Per-user editor state.
+editor_layout.cfg
+
+# === Legacy (web build, archived) ===
+legacy/node_modules/
+legacy/.serve-cache/

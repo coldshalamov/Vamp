@@ -1,0 +1,2 @@
+# Tell Godot to ignore this directory entirely — it's the archived legacy web build,
+# kept only as porting reference. No assets here should be imported or scanned.

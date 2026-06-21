@@ -1,0 +1,76 @@
+;
+; Vampire City — Godot 4 project
+;
+; Top-down vampire action-RPG. See docs/REVAMP_SPEC.md for the operating spec and
+; docs/HANDOFF_QUALITY_BAR.md for the quality discipline.
+;
+; Conventions:
+;   - The `Sim` autoload is the authoritative game state (plain classes, seeded RNG,
+;     deterministic, headless-runable). The scene tree is a VIEW onto it — never mutates it.
+;   - Zero randf()/randi()/Time.get_ticks() in authoritative code. All randomness routes
+;     through Sim.rng (a seeded RandomNumberGenerator).
+;   - Every player/AI action is an ActionDef resource with frame data.
+;
+
+config_version=5
+
+[application]
+
+config/name="Vampire City"
+config/description="A top-down vampire action-RPG. Predator, rise, cost, continuous."
+run/main_scene="res://scenes/Boot.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+config/icon="res://art/icon.png"
+
+[autoload]
+
+Sim="*res://src/sim/Sim.gd"
+CueBus="*res://src/present/CueBus.gd"
+Rebind="*res://src/core/InputMap.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[input]
+
+; Action NAMES are declared here (empty events) so they exist before first run.
+; Default key bindings are registered programmatically by Rebind.gd's _load_settings()
+; fallback, and full remapping is persisted to user://settings.cfg. This avoids
+; hand-writing the verbose Object() InputEventKey syntax for every key.
+move_up={ "deadzone": 0.5, "events": [] }
+move_down={ "deadzone": 0.5, "events": [] }
+move_left={ "deadzone": 0.5, "events": [] }
+move_right={ "deadzone": 0.5, "events": [] }
+attack={ "deadzone": 0.5, "events": [] }
+feed={ "deadzone": 0.5, "events": [] }
+dash={ "deadzone": 0.5, "events": [] }
+interact={ "deadzone": 0.5, "events": [] }
+slot_1={ "deadzone": 0.5, "events": [] }
+slot_2={ "deadzone": 0.5, "events": [] }
+slot_3={ "deadzone": 0.5, "events": [] }
+slot_4={ "deadzone": 0.5, "events": [] }
+pause={ "deadzone": 0.5, "events": [] }
+
+[layer_names]
+
+2d_physics/1="walls"
+2d_physics/2="entities"
+2d_physics/3="props"
+2d_physics/4="triggers"
+
+[physics]
+
+common/physics_ticks_per_second=60
+common/max_physics_steps_per_frame=10
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
+environment/defaults/default_clear_color=Color(0.03, 0.03, 0.05, 1)
+2d_snapping/use_pixel_snap=true

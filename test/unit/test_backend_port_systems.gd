@@ -151,6 +151,85 @@ func test_ai_uses_pathfinding_and_thrall_follow_attacks() -> void:
 	assert_true(target.hp < target.max_hp, "follow-state thrall did not attack a hostile")
 	sim.queue_free()
 
+func test_body_carry_and_evidence_heat_are_authoritative() -> void:
+	var sim := VCSim.new()
+	sim.new_game(7001, "brujah")
+	var body_pos: Vector2 = sim.world.nearest_open_around(sim.world.named_points["exit"], 180.0, 260.0, 41)
+	sim.player.pos = body_pos + Vector2(-28.0, 0.0)
+	var body: SimEntity = sim.spawn_npc("ped", body_pos, { "state": "guard" })
+	body.downed = true
+	body.ai_state = "downed"
+	body.perception_state = "helpless"
+	body.tags["player_body"] = true
+	body.tags["body_discovered"] = false
+	_apply_action(sim, InputAction.Kind.INTERACT)
+	assert_eq(int(sim.player.behaviour.get("carrying_body_id")), body.id, "interact did not pick up the nearby body")
+	assert_true(bool(body.tags.get("carried", false)), "body was not marked as carried")
+	_apply_action(sim, InputAction.Kind.MOVE, Vector2(1.0, 0.0))
+	_tick_for(sim, 20)
+	assert_true(body.pos.distance_to(sim.player.pos) < 48.0, "carried body did not follow player state")
+	_apply_action(sim, InputAction.Kind.ATTACK)
+	assert_null(sim.player.current_action, "player started a melee action while carrying a body")
+	_apply_action(sim, InputAction.Kind.INTERACT)
+	assert_eq(int(sim.player.behaviour.get("carrying_body_id")), 0, "second interact did not drop the body")
+	var witness: SimEntity = sim.spawn_npc("ped", body.pos + Vector2(36.0, 0.0), { "state": "guard" })
+	var heat_before := sim.heat
+	_tick_for(sim, 2)
+	assert_true(bool(body.tags.get("body_discovered", false)), "nearby witness did not discover the dropped evidence")
+	assert_true(sim.heat > heat_before, "body discovery did not raise Heat")
+	assert_true(_has_cue(sim, "body.discovered"), "body discovery cue missing")
+	assert_true(witness.ai_state == "flee" or witness.perception_state == "afraid", "witness did not react to discovered evidence")
+	sim.queue_free()
+
+func test_business_legend_progress_and_domain_caps() -> void:
+	var sim := VCSim.new()
+	sim.new_game(8128, "brujah")
+	var meta: SimMeta = sim.meta
+	meta.money = 20000
+	assert_true(meta.progress_is_revealed("move"), "initial progress did not reveal movement")
+	assert_true(meta.buy_business("bloodbank", sim), "business purchase failed")
+	assert_eq(int(meta.businesses["bloodbank"].get("tier", -1)), 0, "new business tier should start at zero")
+	assert_true(meta.progress_is_revealed("businesses"), "business progress flag was not revealed")
+	var base_income: Dictionary = meta.collect_business_income()
+	assert_true(int(base_income.get("vitae", 0)) >= 16, "owned blood bank did not produce vitae")
+	assert_true(meta.upgrade_business("bloodbank", sim), "business upgrade failed")
+	var upgraded_income: Dictionary = meta.collect_business_income()
+	assert_true(int(upgraded_income.get("cash", 0)) > int(base_income.get("cash", 0)), "business tier did not multiply cash")
+	assert_true(meta.claim_domain("old_town", sim), "first domain should fit Fledgling cap")
+	assert_false(meta.contest_domain("docks", sim), "domain contest ignored legend cap")
+	meta.add_legend(8, sim, "test")
+	assert_true(meta.legend_domain_cap() >= 2, "legend title did not raise domain cap")
+	assert_true(meta.contest_domain("docks", sim), "raised legend cap did not permit another contest")
+	assert_true(_has_cue(sim, "legend.changed"), "legend cue missing")
+	var restored_meta := SimMeta.new()
+	assert_true(restored_meta.restore(meta.serialize()), "meta restore rejected business/legend save data")
+	assert_eq(restored_meta.legend, meta.legend, "legend did not survive meta restore")
+	assert_true(restored_meta.progress_is_revealed("businesses"), "progress flags did not survive meta restore")
+	assert_eq(int(restored_meta.businesses["bloodbank"].get("tier", -1)), 1, "business tier did not survive meta restore")
+	sim.queue_free()
+
+func test_nemesis_escape_return_and_death_are_persistent_backend_state() -> void:
+	var sim := VCSim.new()
+	sim.new_game(9911, "brujah")
+	var hunter: SimEntity = sim.spawn_npc("hunter", sim.player.pos + Vector2(150.0, 0.0), { "state": "guard", "hostile_to_player": true })
+	sim.damage_entity(sim.player, hunter, 9999.0, { "crit_chance": 0.0, "damage_type": "blood", "force_nemesis": true })
+	assert_false(hunter.dead, "forced nemesis escape still killed the hunter")
+	assert_eq(sim.meta.nemeses.size(), 1, "nemesis record was not saved")
+	assert_true(_has_cue(sim, "nemesis.escaped"), "nemesis escape cue missing")
+	var restored_meta := SimMeta.new()
+	assert_true(restored_meta.restore(sim.meta.serialize()), "meta restore rejected nemesis save data")
+	assert_eq(restored_meta.nemeses.size(), 1, "nemesis record did not survive meta restore")
+	assert_eq(String(restored_meta.nemeses[0].get("resistType", "")), "blood", "nemesis adaptive damage type did not survive restore")
+	var returning: SimEntity = sim.meta.maybe_inject_nemesis(sim)
+	assert_not_null(returning, "saved nemesis did not reinject")
+	assert_true(returning.tags.has("nemesis_name"), "returning hunter was not tagged as nemesis")
+	assert_true((returning.tags.get("resist", {}) as Dictionary).has("blood"), "returning nemesis did not adapt to last damage type")
+	sim.damage_entity(sim.player, returning, 99999.0, { "crit_chance": 0.0, "damage_type": "physical" })
+	assert_true(returning.dead, "returning nemesis survived lethal damage")
+	assert_true(sim.meta.nemeses.is_empty(), "nemesis record was not cleared on death")
+	assert_true(_has_cue(sim, "nemesis.dead"), "nemesis death cue missing")
+	sim.queue_free()
+
 func _apply_action(sim: VCSim, kind: int, vector: Vector2 = Vector2.ZERO, action_id: String = "", held: bool = false) -> void:
 	var action := InputAction.new(kind)
 	action.vector = vector

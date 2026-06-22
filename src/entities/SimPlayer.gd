@@ -35,6 +35,7 @@ var feed_drained: float = 0.0
 var feed_lethal: bool = false
 var iframes_remaining: int = 0
 var vehicle_id: int = 0
+var carrying_body_id: int = 0
 
 var power_cooldowns: Dictionary = {}
 var buffs: Dictionary = {}
@@ -105,6 +106,8 @@ func step(delta: float, sim) -> void:
 			entity.facing = vehicle.facing
 			entity.exposure = 1.15
 			return
+	if carrying_body_id != 0:
+		_sync_carried_body(sim)
 	if feeding_target_id != 0:
 		_tick_feeding(delta, sim)
 	var phase := entity.action_phase()
@@ -117,7 +120,9 @@ func step(delta: float, sim) -> void:
 			speed *= 1.25
 		if sneaking:
 			speed *= 0.52
-		if sprinting and blood > 1.0:
+		if carrying_body_id != 0:
+			speed *= 0.60
+		if sprinting and carrying_body_id == 0 and blood > 1.0:
 			speed *= 1.7
 			blood = max(0.0, blood - 6.0 * delta)
 			sim.emit_cue("move.sprint", { "entity_id": entity.id, "pos": entity.pos, "magnitude": 0.35 })
@@ -132,6 +137,9 @@ func cast_power(power_id: String, sim) -> bool:
 	if def.is_empty():
 		return false
 	power_id = String(def.get("id", power_id))
+	if carrying_body_id != 0 and power_id in ["cel_dash", "pot_charge", "pro_mist"]:
+		sim.emit_cue("power.failed.carrying", { "power_id": power_id, "body_id": carrying_body_id })
+		return false
 	if sim.meta != null and not sim.meta.knows_power(power_id):
 		sim.emit_cue("power.failed.unknown", { "power_id": power_id })
 		return false
@@ -308,8 +316,6 @@ func cast_power(power_id: String, sim) -> bool:
 		sim.emit_cue("power.cast", { "power_id": power_id, "name": def.get("name", power_id), "pos": entity.pos, "cue": def.get("cue", "") })
 		if String(def.get("type", "active")) == "toggle":
 			sim.emit_cue("power.toggle", { "power_id": power_id, "enabled": true, "pos": entity.pos })
-		if sim.meta != null:
-			sim.meta.stats["castsTotal"] = int(sim.meta.stats.get("castsTotal", 0)) + 1
 	else:
 		blood = min(max_blood, blood + cost)
 		power_cooldowns.erase(power_id)
@@ -327,6 +333,33 @@ func heal_blood(amount: float) -> void:
 	blood = min(max_blood, blood + amount)
 	hunger = max(0.0, hunger - amount / max_blood * 2.0)
 
+func try_toggle_carry(sim) -> bool:
+	if vehicle_id != 0 or feeding_target_id != 0:
+		return false
+	if carrying_body_id != 0:
+		return _drop_body(sim)
+	var target: SimEntity = sim.nearest_entity(entity.pos, 64.0, func(e: SimEntity) -> bool:
+		return e.kind == "npc" and e.faction != "player" and not bool(e.tags.get("carried", false)) and (e.dead or e.downed or e.ai_state == "downed")
+	) as SimEntity
+	if target == null:
+		return false
+	carrying_body_id = target.id
+	target.tags["carried"] = true
+	target.tags["body_carrier_id"] = entity.id
+	target.tags["player_body"] = true
+	target.tags["body_discovered"] = false
+	target.vel = Vector2.ZERO
+	target.current_action = null
+	target.action_frame = 0
+	target.downed = true
+	target.ai_state = "carried"
+	target.perception_state = "hidden"
+	if sim.meta != null:
+		sim.meta.stats["bodiesCarried"] = int(sim.meta.stats.get("bodiesCarried", 0)) + 1
+	_sync_carried_body(sim)
+	sim.emit_cue("body.pickup", { "body_id": target.id, "pos": target.pos })
+	return true
+
 func state_hash() -> int:
 	var h := hash([
 		snapped(move_dir.x, 0.001), snapped(move_dir.y, 0.001),
@@ -335,7 +368,7 @@ func state_hash() -> int:
 		snapped(hunger, 0.001), snapped(humanity, 0.001),
 		snapped(frenzy, 0.001), frenzied, feeding_target_id, snapped(feed_drained, 0.001),
 		snapped(feed_progress, 0.001), feed_lethal, iframes_remaining,
-		vehicle_id,
+		vehicle_id, carrying_body_id,
 		frenzy_cooldown, sprinting, sneaking, aiming, holding_feed,
 		fed_count, kills, innocent_kills, snapped(damage_dealt, 0.001),
 		snapped(damage_taken, 0.001)
@@ -344,8 +377,43 @@ func state_hash() -> int:
 	h = _hash_dict(h, buffs)
 	return h
 
+func _sync_carried_body(sim) -> void:
+	var body: SimEntity = sim.get_entity(carrying_body_id) as SimEntity
+	if body == null or bool(body.tags.get("body_discovered", false)) or (not body.dead and not body.downed and body.ai_state != "carried"):
+		carrying_body_id = 0
+		return
+	body.tags["carried"] = true
+	body.tags["body_carrier_id"] = entity.id
+	body.vel = Vector2.ZERO
+	body.ai_state = "carried"
+	body.perception_state = "hidden"
+	body.pos = entity.pos - Vector2.RIGHT.rotated(entity.facing) * (entity.radius + body.radius + 6.0)
+	body.facing = entity.facing
+
+func _drop_body(sim) -> bool:
+	var body: SimEntity = sim.get_entity(carrying_body_id) as SimEntity
+	if body == null:
+		carrying_body_id = 0
+		return false
+	body.tags.erase("carried")
+	body.tags.erase("body_carrier_id")
+	body.vel = Vector2.ZERO
+	body.pos = sim.world.resolve_motion(body.pos, entity.pos - Vector2.RIGHT.rotated(entity.facing) * (entity.radius + body.radius + 8.0), body.radius)
+	body.ai_state = "downed" if body.downed and not body.dead else "corpse"
+	body.perception_state = "helpless" if body.downed and not body.dead else "silent"
+	var dumped: bool = sim.world != null and (sim.world.is_in_haven(entity.pos) or sim.world.is_in_exit(entity.pos))
+	if dumped:
+		body.tags["dumped"] = true
+		if sim.meta != null:
+			sim.meta.stats["bodiesDumped"] = int(sim.meta.stats.get("bodiesDumped", 0)) + 1
+		sim.emit_cue("body.dumped", { "body_id": body.id, "pos": body.pos })
+	else:
+		sim.emit_cue("body.drop", { "body_id": body.id, "pos": body.pos })
+	carrying_body_id = 0
+	return true
+
 func _try_attack(sim) -> void:
-	if feeding_target_id != 0:
+	if feeding_target_id != 0 or carrying_body_id != 0:
 		return
 	if vehicle_id != 0:
 		_shoot_from_vehicle(sim)
@@ -369,6 +437,8 @@ func _try_attack(sim) -> void:
 						sim.player_last_attack_tick = sim.tick
 
 func _try_dash(dir: Vector2, sim, distance: float, iframe_ticks: int) -> bool:
+	if carrying_body_id != 0:
+		return false
 	if not entity.can_cancel_into(ACTION_DASH) and entity.action_phase() != "":
 		if entity.action_phase() != "recovery":
 			return false
@@ -384,7 +454,7 @@ func _try_dash(dir: Vector2, sim, distance: float, iframe_ticks: int) -> bool:
 	return true
 
 func _try_pounce(dir: Vector2, sim) -> bool:
-	if int(power_cooldowns.get("pounce", 0)) > 0 or blood < 10.0:
+	if carrying_body_id != 0 or int(power_cooldowns.get("pounce", 0)) > 0 or blood < 10.0:
 		return false
 	var pounce_dir := dir if dir.length() > 0.01 else Vector2.RIGHT.rotated(entity.facing)
 	pounce_dir = pounce_dir.normalized()
@@ -403,11 +473,16 @@ func _try_pounce(dir: Vector2, sim) -> bool:
 	return true
 
 func _try_finish(sim) -> bool:
+	if carrying_body_id != 0:
+		return false
 	var target: SimEntity = sim.nearest_entity(entity.pos, 96.0, func(e: SimEntity) -> bool: return e.kind == "npc" and e.faction != "player" and not e.dead and (e.downed or e.hp <= e.max_hp * 0.36 or e.has_status("mesmerized") or e.has_status("stun"))) as SimEntity
 	if target == null:
 		return false
 	target.hp = 0.0
 	target.dead = true
+	if target.innocent or target.downed or bool(target.tags.get("fed_on", false)):
+		target.tags["player_body"] = true
+		target.tags["body_discovered"] = false
 	kills += 1
 	if target.innocent:
 		innocent_kills += 1
@@ -415,12 +490,17 @@ func _try_finish(sim) -> bool:
 		sim.emit_cue("humanity.lost", { "humanity": humanity, "target_id": target.id })
 	heal_blood(18.0)
 	sim.witnessed_act(target.pos, "kill", 1.5)
-	if sim.meta != null:
-		sim.meta.mission_event("npc.death", { "entity_id": target.id, "type": target.type_id, "pos": target.pos }, sim)
+	if sim.meta != null and target.tags.has("nemesis_name"):
+		sim.meta.on_nemesis_dead(target, sim)
+	if sim.meta != null and target.tags.has("baron_of"):
+		sim.meta.claim_domain(String(target.tags["baron_of"]), sim)
+	sim.emit_cue("npc.death", { "entity_id": target.id, "type": target.type_id, "pos": target.pos, "finisher": true })
 	sim.emit_cue("finisher.start", { "target_id": target.id, "pos": target.pos })
 	return true
 
 func _try_feed(sim) -> bool:
+	if carrying_body_id != 0:
+		return false
 	if feeding_target_id != 0:
 		return true
 	var target: SimEntity = sim.nearest_entity(entity.pos, 52.0, func(e: SimEntity) -> bool: return _can_feed(e)) as SimEntity
@@ -475,6 +555,10 @@ func _finish_feed(sim, lethal: bool) -> void:
 	fed_count += 1
 	if lethal:
 		target.dead = true
+		target.downed = false
+		target.tags["player_body"] = true
+		target.tags["body_discovered"] = false
+		target.tags["fed_on"] = true
 		kills += 1
 		if target.innocent:
 			innocent_kills += 1
@@ -486,6 +570,9 @@ func _finish_feed(sim, lethal: bool) -> void:
 		target.downed = true
 		target.ai_state = "downed"
 		target.perception_state = "helpless"
+		target.tags["player_body"] = true
+		target.tags["body_discovered"] = false
+		target.tags["fed_on"] = true
 		humanity = min(10.0, humanity + 0.03)
 		sim.witnessed_act(target.pos, "feed", 1.0)
 		sim.emit_cue("feed.spare", { "target_id": target.id, "pos": target.pos, "blood": feed_drained })

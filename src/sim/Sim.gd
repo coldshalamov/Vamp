@@ -97,6 +97,7 @@ func tick_sim(delta: float) -> void:
 	tick_combat()
 	if meta != null:
 		meta.tick(delta, self)
+	_update_body_witnesses()
 	_update_heat(delta)
 	_check_escape()
 	_cleanup_dead_transients()
@@ -231,6 +232,8 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 		"damage_type": String(opts.get("damage_type", opts.get("dmgType", "physical"))),
 	})
 	if target.hp <= 0.0:
+		if meta != null and meta.try_nemesis_escape(target, self, opts):
+			return dmg
 		target.dead = true
 		_on_entity_killed(attacker, target, opts)
 	return dmg
@@ -580,7 +583,12 @@ func _check_escape() -> void:
 		emit_cue("player.escape", { "pos": player.pos, "tick": tick })
 
 func _on_entity_killed(attacker: SimEntity, target: SimEntity, _opts: Dictionary) -> void:
+	if attacker == player and target.kind == "npc" and not bool(target.tags.get("no_body", false)) and (target.innocent or bool(target.tags.get("fed_on", false))):
+		target.tags["player_body"] = true
+		target.tags["body_discovered"] = false
 	emit_cue("npc.death", { "entity_id": target.id, "type": target.type_id, "pos": target.pos })
+	if target.tags.has("nemesis_name") and meta != null:
+		meta.on_nemesis_dead(target, self)
 	if target.tags.has("baron_of") and meta != null:
 		meta.claim_domain(String(target.tags["baron_of"]), self)
 	if meta != null and target.faction in ["police", "gang", "inquis"]:
@@ -626,6 +634,8 @@ func _try_interact() -> bool:
 	if player == null:
 		return false
 	var behaviour = player.behaviour
+	if behaviour != null and behaviour.has_method("try_toggle_carry") and bool(behaviour.call("try_toggle_carry", self)):
+		return true
 	if behaviour != null and int(behaviour.get("vehicle_id")) != 0:
 		var current := get_entity(int(behaviour.get("vehicle_id")))
 		if current != null and current.behaviour != null and current.behaviour.has_method("exit"):
@@ -640,6 +650,31 @@ func _try_interact() -> bool:
 				meta.stats["hijacks"] = int(meta.stats.get("hijacks", 0)) + 1
 			return true
 	return false
+
+func _update_body_witnesses() -> void:
+	if player == null:
+		return
+	for body in entities:
+		if body == null or body.kind != "npc":
+			continue
+		if not bool(body.tags.get("player_body", false)):
+			continue
+		if bool(body.tags.get("body_discovered", false)) or bool(body.tags.get("carried", false)):
+			continue
+		if not (body.dead or body.downed):
+			continue
+		var witness: SimEntity = nearest_entity(body.pos, 190.0, func(e: SimEntity) -> bool:
+			return e != body and e.kind == "npc" and not e.dead and not e.downed and e.faction in ["civ", "gang", "police", "inquis"]
+		) as SimEntity
+		if witness == null:
+			continue
+		if world != null and not world.segment_clear(witness.pos, body.pos):
+			continue
+		body.tags["body_discovered"] = true
+		if meta != null:
+			meta.stats["bodiesFound"] = int(meta.stats.get("bodiesFound", 0)) + 1
+		witnessed_act(body.pos, "body", 1.0)
+		emit_cue("body.discovered", { "body_id": body.id, "witness_id": witness.id, "pos": body.pos, "heat": heat })
 
 func _cleanup_dead_transients() -> void:
 	for i in range(entities.size() - 1, -1, -1):

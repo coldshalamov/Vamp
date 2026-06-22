@@ -14,6 +14,26 @@ const NIGHT_START := 21.0
 const DAWN_HOUR := 6.0
 const NIGHT_HOURS := 9.0
 const NIGHT_SECONDS := 18.0 * 60.0
+const BUSINESS_MAX_TIER := 4
+
+const LEGEND_TITLES := [
+	{ "id": "fledgling", "name": "Fledgling", "min": 0, "domainCap": 1, "coterieCap": 0 },
+	{ "id": "neonate", "name": "Neonate", "min": 30, "domainCap": 2, "coterieCap": 0 },
+	{ "id": "anarch", "name": "Anarch", "min": 75, "domainCap": 3, "coterieCap": 1 },
+	{ "id": "ancilla", "name": "Ancilla", "min": 150, "domainCap": 4, "coterieCap": 1 },
+	{ "id": "baron", "name": "Baron", "min": 260, "domainCap": 5, "coterieCap": 2 },
+	{ "id": "elder", "name": "Elder", "min": 420, "domainCap": 6, "coterieCap": 3 },
+	{ "id": "prince", "name": "Prince of the City", "min": 650, "domainCap": 7, "coterieCap": 4 },
+]
+
+const PROGRESS_ORDER := [
+	"move", "feed", "powers", "attributes", "pounce", "finisher", "missions",
+	"vehicles", "havenUpgrade", "mastery", "reputation", "thralls", "legend",
+	"domains", "businesses", "coterieJobs", "codex", "nemesis", "childer",
+	"elder", "prestige", "alchemy",
+]
+
+const NEMESIS_SCARS := ["ash-burned", "fang-split", "blood-warded", "sun-scarred", "silver-pinned"]
 
 var clan_id: String = "brujah"
 var difficulty: String = "normal"
@@ -57,6 +77,9 @@ var chain_progress: Dictionary = {}
 var chain_titles: Dictionary = {}
 var achievements: Dictionary = {}
 var stats: Dictionary = {}
+var legend: int = 0
+var progress: Dictionary = {}
+var nemeses: Array[Dictionary] = []
 
 func reset(new_clan_id: String) -> void:
 	clan_id = _clean_clan(new_clan_id)
@@ -74,7 +97,7 @@ func reset(new_clan_id: String) -> void:
 	skill_points = 4
 	tree_nodes.clear()
 	known_powers.clear()
-	for id in ["cel_dash", "pot_slam", "for_mend", "obf_cloak", "aus_mark", "dom_mesmer", "pre_dread", "bs_bolt"]:
+	for id in ["cel_dash", "pot_slam", "for_mend", "obf_cloak", "obf_vanish", "aus_mark", "dom_mesmer", "pre_dread", "bs_bolt"]:
 		known_powers[id] = true
 	slots = ["cel_dash", "pot_slam", "for_mend", "obf_cloak", "aus_mark", "dom_mesmer", "pre_dread", "bs_bolt"]
 	money = 600
@@ -100,7 +123,24 @@ func reset(new_clan_id: String) -> void:
 	chain_progress.clear()
 	chain_titles.clear()
 	achievements.clear()
-	stats = { "kills": 0, "feeds": 0, "castsTotal": 0, "hijacks": 0 }
+	legend = 0
+	progress.clear()
+	nemeses.clear()
+	stats = {
+		"kills": 0,
+		"feeds": 0,
+		"castsTotal": 0,
+		"hijacks": 0,
+		"bodiesCarried": 0,
+		"bodiesDumped": 0,
+		"bodiesFound": 0,
+		"businessesBought": 0,
+		"businessesUpgraded": 0,
+		"domainsClaimed": 0,
+		"nemesisEscapes": 0,
+		"nemesisKills": 0,
+	}
+	progress_reveal("move", null, true)
 	recompute()
 
 func tick(delta: float, sim) -> void:
@@ -114,6 +154,7 @@ func tick(delta: float, sim) -> void:
 		resolve_dawn(sim)
 	_update_influence(delta)
 	_update_active_mission(delta, sim)
+	progress_check(sim)
 
 func recompute() -> Dictionary:
 	var a := attributes
@@ -307,7 +348,7 @@ func respec_tree(sim = null) -> int:
 	tree_nodes.clear()
 	skill_points += refund
 	known_powers.clear()
-	for id in ["cel_dash", "pot_slam", "for_mend", "obf_cloak", "aus_mark", "dom_mesmer", "pre_dread", "bs_bolt"]:
+	for id in ["cel_dash", "pot_slam", "for_mend", "obf_cloak", "obf_vanish", "aus_mark", "dom_mesmer", "pre_dread", "bs_bolt"]:
 		known_powers[id] = true
 	slots = ["cel_dash", "pot_slam", "for_mend", "obf_cloak", "aus_mark", "dom_mesmer", "pre_dread", "bs_bolt"]
 	recompute()
@@ -513,12 +554,98 @@ func collect_vitae(sim) -> float:
 	haven["cellarVitae"] = stored - drawn
 	return drawn
 
+func legend_title() -> Dictionary:
+	var best: Dictionary = (LEGEND_TITLES[0] as Dictionary)
+	for title in LEGEND_TITLES:
+		var rec: Dictionary = title
+		if legend >= int(rec["min"]):
+			best = rec
+	return best.duplicate(true)
+
+func legend_domain_cap() -> int:
+	return int(legend_title().get("domainCap", 1))
+
+func legend_coterie_cap() -> int:
+	return int(legend_title().get("coterieCap", 0))
+
+func add_legend(amount: int, sim = null, reason: String = "") -> void:
+	if amount <= 0:
+		return
+	var before_title := String(legend_title().get("id", "fledgling"))
+	legend += amount
+	var after_title := legend_title()
+	if sim != null:
+		sim.emit_cue("legend.changed", { "legend": legend, "amount": amount, "reason": reason, "title": after_title.duplicate(true) })
+		if String(after_title.get("id", "")) != before_title:
+			sim.emit_cue("legend.title", { "legend": legend, "title": after_title.duplicate(true) })
+	progress_reveal("legend", sim)
+
+func owned_domain_count() -> int:
+	_ensure_domains()
+	var count := 0
+	for id in domains:
+		if domains[id].get("owner", null) == "player":
+			count += 1
+	return count
+
+func business_cost(business_id: String) -> int:
+	var def: Dictionary = Catalog.BUSINESSES.get(business_id, {})
+	return int(def.get("cost", 0))
+
+func business_upgrade_cost(business_id: String) -> int:
+	var def: Dictionary = Catalog.BUSINESSES.get(business_id, {})
+	var tier := int(businesses.get(business_id, {}).get("tier", 0))
+	return roundi(float(def.get("cost", 0)) * 0.6 * float(tier + 1))
+
+func buy_business(business_id: String, sim = null) -> bool:
+	if not Catalog.BUSINESSES.has(business_id):
+		return false
+	if bool(businesses.get(business_id, {}).get("owned", false)):
+		return upgrade_business(business_id, sim)
+	var cost := business_cost(business_id)
+	if money < cost:
+		return false
+	money -= cost
+	businesses[business_id] = { "owned": true, "tier": 0, "bought_day": day }
+	stats["businessesBought"] = int(stats.get("businessesBought", 0)) + 1
+	add_legend(4, sim, "business")
+	progress_reveal("businesses", sim)
+	if sim != null:
+		sim.emit_cue("business.bought", { "business_id": business_id, "cost": cost, "money": money, "tier": 0 })
+	return true
+
+func upgrade_business(business_id: String, sim = null) -> bool:
+	if not Catalog.BUSINESSES.has(business_id):
+		return false
+	if not bool(businesses.get(business_id, {}).get("owned", false)):
+		return false
+	var tier := int(businesses[business_id].get("tier", 0))
+	if tier >= BUSINESS_MAX_TIER:
+		return false
+	var cost := business_upgrade_cost(business_id)
+	if money < cost:
+		return false
+	money -= cost
+	businesses[business_id]["tier"] = tier + 1
+	businesses[business_id]["upgraded_day"] = day
+	stats["businessesUpgraded"] = int(stats.get("businessesUpgraded", 0)) + 1
+	add_legend(2 + tier, sim, "business_upgrade")
+	if sim != null:
+		sim.emit_cue("business.upgraded", { "business_id": business_id, "cost": cost, "money": money, "tier": tier + 1 })
+	return true
+
+func collect_business_income() -> Dictionary:
+	return _collect_businesses()
+
 func coterie_cap() -> int:
 	_ensure_haven()
-	return 3 + int(haven["rooms"].get("barracks", 0)) + (1 if int(attributes.get("presence", 1)) > 6 else 0)
+	var base := 3 + int(haven["rooms"].get("barracks", 0)) + (1 if int(attributes.get("presence", 1)) > 6 else 0)
+	return max(base, legend_coterie_cap())
 
 func bind_coterie_member(archetype: String, sim = null, childe: bool = false) -> Dictionary:
-	if coterie.size() >= 12:
+	if coterie.size() >= min(12, coterie_cap()):
+		if sim != null:
+			sim.emit_cue("coterie.blocked", { "reason": "cap", "cap": coterie_cap() })
 		return {}
 	var first: String = Catalog.FIRST_NAMES[_draw_index(sim, Catalog.FIRST_NAMES.size())]
 	var last: String = Catalog.LAST_NAMES[_draw_index(sim, Catalog.LAST_NAMES.size())]
@@ -536,6 +663,7 @@ func bind_coterie_member(archetype: String, sim = null, childe: bool = false) ->
 	coterie.append(member)
 	if sim != null:
 		sim.emit_cue("coterie.bound", member.duplicate(true))
+	progress_reveal("childer" if childe else "thralls", sim)
 	return member
 
 func assign_coterie(member_id: int, job_id: String, sim = null) -> bool:
@@ -546,6 +674,7 @@ func assign_coterie(member_id: int, job_id: String, sim = null) -> bool:
 			coterie[i]["assignment"] = job_id
 			if sim != null:
 				sim.emit_cue("coterie.assigned", { "member_id": member_id, "job_id": job_id })
+			progress_reveal("coterieJobs", sim)
 			return true
 	return false
 
@@ -575,6 +704,10 @@ func contest_domain(domain_id: String, sim) -> bool:
 	_ensure_domains()
 	if not domains.has(domain_id) or domains[domain_id].get("owner", null) == "player":
 		return false
+	if owned_domain_count() >= legend_domain_cap():
+		if sim != null:
+			sim.emit_cue("domain.blocked", { "domain_id": domain_id, "reason": "legend_cap", "cap": legend_domain_cap(), "legend": legend })
+		return false
 	domains[domain_id]["contesting"] = true
 	var pos: Vector2 = sim.world.named_points.get("enemy", sim.player.pos + Vector2(220, 0))
 	var baron: SimEntity = sim.spawn_npc("elder", pos, { "state": "chase", "hostile_to_player": true })
@@ -586,12 +719,21 @@ func claim_domain(domain_id: String, sim = null) -> bool:
 	_ensure_domains()
 	if not domains.has(domain_id):
 		return false
+	if domains[domain_id].get("owner", null) == "player":
+		return false
+	if domains[domain_id].get("owner", null) != "player" and owned_domain_count() >= legend_domain_cap():
+		if sim != null:
+			sim.emit_cue("domain.blocked", { "domain_id": domain_id, "reason": "legend_cap", "cap": legend_domain_cap(), "legend": legend })
+		return false
 	domains[domain_id]["owner"] = "player"
 	domains[domain_id]["contesting"] = false
 	district_state[domain_id]["prosperity"] = 1.0
 	district_state[domain_id]["terror"] = 0.0
+	stats["domainsClaimed"] = int(stats.get("domainsClaimed", 0)) + 1
+	add_legend(18, sim, "domain")
+	progress_reveal("domains", sim)
 	if sim != null:
-		sim.emit_cue("domain.claimed", { "domain_id": domain_id })
+		sim.emit_cue("domain.claimed", { "domain_id": domain_id, "owned": owned_domain_count(), "cap": legend_domain_cap() })
 	return true
 
 func collect_domain_tithe() -> Dictionary:
@@ -639,15 +781,23 @@ func accept_mission(mission_id: int, sim = null) -> bool:
 	return false
 
 func mission_event(event_id: String, data: Dictionary, sim) -> void:
+	if event_id == "feed.spare" or event_id == "feed.kill":
+		stats["feeds"] = int(stats.get("feeds", 0)) + 1
+		progress_reveal("feed", sim)
+	elif event_id == "npc.death":
+		stats["kills"] = int(stats.get("kills", 0)) + 1
+		if bool(data.get("finisher", false)):
+			progress_reveal("finisher", sim)
+	elif event_id == "power.cast":
+		stats["castsTotal"] = int(stats.get("castsTotal", 0)) + 1
+		progress_reveal("powers", sim)
 	if active_mission.is_empty() or String(active_mission.get("state", "")) != "active":
 		return
 	var type_id := String(active_mission["type"])
 	if event_id == "feed.spare" or event_id == "feed.kill":
-		stats["feeds"] = int(stats.get("feeds", 0)) + 1
 		if type_id == "feed":
 			_mission_progress(1, sim)
 	if event_id == "npc.death":
-		stats["kills"] = int(stats.get("kills", 0)) + 1
 		if type_id in ["assassinate", "cleanse", "survive"]:
 			_mission_progress(1, sim)
 	if event_id == "player.escape" and type_id in ["heist", "courier", "escort"]:
@@ -667,6 +817,7 @@ func complete_mission(sim) -> bool:
 	var money_reward := roundi(float(reward["money"]) * bonus)
 	money += money_reward
 	gain_xp(xp_reward, sim)
+	add_legend(6 + int(active_mission.get("level", level)) / 4, sim, "mission")
 	if _draw_float(sim) < float(reward.get("itemChance", 0.6)):
 		add_item(generate_item(level + 2, roll_rarity(level, 0.3, sim), "", sim), sim)
 	sim.emit_cue("mission.complete", { "mission": active_mission.duplicate(true), "xp": xp_reward, "money": money_reward })
@@ -679,6 +830,144 @@ func fail_mission(sim, why: String) -> void:
 	var failed := active_mission.duplicate(true)
 	active_mission.clear()
 	sim.emit_cue("mission.failed", { "mission": failed, "why": why })
+
+func progress_reveal(progress_id: String, sim = null, silent: bool = false) -> bool:
+	if progress_id == "" or not PROGRESS_ORDER.has(progress_id):
+		return false
+	if progress.has(progress_id) and bool(progress[progress_id].get("revealed", false)):
+		return false
+	progress[progress_id] = {
+		"revealed": true,
+		"seen": false,
+		"order": PROGRESS_ORDER.find(progress_id),
+		"tick": sim.tick if sim != null else 0,
+	}
+	if sim != null and not silent:
+		sim.emit_cue("progress.revealed", { "id": progress_id, "order": progress[progress_id]["order"] })
+	return true
+
+func progress_is_revealed(progress_id: String) -> bool:
+	return bool(progress.get(progress_id, {}).get("revealed", false))
+
+func progress_mark_seen(progress_id: String) -> bool:
+	if not progress.has(progress_id):
+		return false
+	progress[progress_id]["seen"] = true
+	return true
+
+func progress_check(sim = null) -> void:
+	progress_reveal("move", sim, true)
+	if level > 1 or attr_points > 0:
+		progress_reveal("attributes", sim)
+	if int(stats.get("feeds", 0)) > 0:
+		progress_reveal("feed", sim)
+	if int(stats.get("castsTotal", 0)) > 0:
+		progress_reveal("powers", sim)
+	if int(stats.get("hijacks", 0)) > 0:
+		progress_reveal("vehicles", sim)
+	if active_mission.size() > 0 or missions_done > 0:
+		progress_reveal("missions", sim)
+	if missions_done > 0 or level >= 10:
+		progress_reveal("mastery", sim)
+	if _has_any_haven_upgrade():
+		progress_reveal("havenUpgrade", sim)
+	if _has_any_reputation():
+		progress_reveal("reputation", sim)
+	if coterie.size() > 0:
+		progress_reveal("thralls", sim)
+	if legend > 0:
+		progress_reveal("legend", sim)
+	if owned_domain_count() > 0:
+		progress_reveal("domains", sim)
+	if _owned_business_count() > 0:
+		progress_reveal("businesses", sim)
+	if _has_any_coterie_job():
+		progress_reveal("coterieJobs", sim)
+	if not nemeses.is_empty():
+		progress_reveal("nemesis", sim)
+	if elder_vitae > 0 or level >= MAX_LEVEL:
+		progress_reveal("elder", sim)
+
+func try_nemesis_escape(target: SimEntity, sim, opts: Dictionary = {}) -> bool:
+	if target == null or sim == null:
+		return false
+	if bool(opts.get("no_nemesis", false)) or bool(target.tags.get("no_nemesis", false)):
+		return false
+	if target.tags.has("baron_of"):
+		return false
+	if target.tags.has("nemesis_name"):
+		return false
+	if not (target.faction == "inquis" or target.type_id in ["hunter", "elder"]):
+		return false
+	var force := bool(opts.get("force_nemesis", false)) or bool(target.tags.get("force_nemesis", false))
+	if not force and _draw_float(sim) >= 0.40:
+		return false
+	var dtype := String(opts.get("damage_type", opts.get("dmgType", "physical")))
+	var rank := int(target.tags.get("nemesis_rank", 0)) + 1
+	var rec := {
+		"name": String(target.tags.get("name", _roll_name(sim))),
+		"rank": rank,
+		"scar": NEMESIS_SCARS[_draw_index(sim, NEMESIS_SCARS.size())],
+		"resistType": dtype,
+		"archetype": target.type_id,
+		"escaped_tick": sim.tick,
+	}
+	nemeses.append(rec)
+	while nemeses.size() > 3:
+		nemeses.pop_front()
+	target.hp = maxf(1.0, target.max_hp * 0.35)
+	target.dead = false
+	target.downed = false
+	target.ai_state = "flee"
+	target.perception_state = "retreating"
+	target.hostile_to_player = false
+	target.tags["nemesis_escaped"] = true
+	target.tags["no_body"] = true
+	stats["nemesisEscapes"] = int(stats.get("nemesisEscapes", 0)) + 1
+	add_legend(8 + rank * 2, sim, "nemesis_escape")
+	progress_reveal("nemesis", sim)
+	sim.emit_cue("nemesis.escaped", { "name": rec["name"], "rank": rank, "scar": rec["scar"], "resistType": dtype, "entity_id": target.id, "pos": target.pos })
+	return true
+
+func maybe_inject_nemesis(sim) -> SimEntity:
+	if sim == null or nemeses.is_empty():
+		return null
+	var rec: Dictionary = nemeses[0]
+	var rank: int = max(1, int(rec.get("rank", 1)))
+	var resist_type := String(rec.get("resistType", "physical"))
+	var resist_amount := minf(0.75, 0.22 + float(rank) * 0.08)
+	var pos: Vector2 = sim.world.nearest_open_around(sim.player.pos, 240.0, 760.0, sim.draw_index(997) + rank * 31)
+	var nemesis: SimEntity = sim.spawn_npc("hunter", pos, {
+		"state": "chase",
+		"hostile_to_player": true,
+		"hp": 220.0 + float(rank) * 60.0 + float(level) * 8.0,
+		"resist": { resist_type: resist_amount },
+	})
+	nemesis.tags["nemesis_name"] = String(rec.get("name", "The Hunter"))
+	nemesis.tags["nemesis_rank"] = rank
+	nemesis.tags["nemesis_scar"] = String(rec.get("scar", "scarred"))
+	nemesis.tags["warded_mind"] = true
+	nemesis.armor = minf(0.65, nemesis.armor + 0.06 * float(rank))
+	nemesis.attack_damage *= 1.0 + float(rank) * 0.12
+	if nemesis.behaviour != null:
+		nemesis.behaviour.set("speed", float(nemesis.behaviour.get("speed")) * (1.0 + float(rank) * 0.04))
+	rec["rank"] = rank + 1
+	rec["returned_tick"] = sim.tick
+	nemeses[0] = rec
+	sim.emit_cue("nemesis.return", { "name": nemesis.tags["nemesis_name"], "rank": rank, "entity_id": nemesis.id, "pos": nemesis.pos, "resistType": resist_type })
+	return nemesis
+
+func on_nemesis_dead(target: SimEntity, sim = null) -> void:
+	if target == null:
+		return
+	var name := String(target.tags.get("nemesis_name", ""))
+	for i in range(nemeses.size() - 1, -1, -1):
+		if String(nemeses[i].get("name", "")) == name:
+			nemeses.remove_at(i)
+	stats["nemesisKills"] = int(stats.get("nemesisKills", 0)) + 1
+	add_legend(20 + int(target.tags.get("nemesis_rank", 1)) * 4, sim, "nemesis_kill")
+	if sim != null:
+		sim.emit_cue("nemesis.dead", { "name": name, "entity_id": target.id, "pos": target.pos })
 
 func serialize(sim = null) -> Dictionary:
 	var runtime := {}
@@ -731,6 +1020,9 @@ func serialize(sim = null) -> Dictionary:
 		"chain_titles": chain_titles.duplicate(true),
 		"achievements": achievements.duplicate(true),
 		"stats": stats.duplicate(true),
+		"legend": legend,
+		"progress": progress.duplicate(true),
+		"nemeses": nemeses.duplicate(true),
 		"runtime": runtime,
 	}
 
@@ -773,6 +1065,9 @@ func restore(data: Dictionary, sim = null) -> bool:
 	chain_titles = data.get("chain_titles", {}).duplicate(true) if data.get("chain_titles", {}) is Dictionary else {}
 	achievements = data.get("achievements", {}).duplicate(true) if data.get("achievements", {}) is Dictionary else {}
 	stats = data.get("stats", {}).duplicate(true) if data.get("stats", {}) is Dictionary else {}
+	legend = max(0, int(data.get("legend", 0)))
+	progress = _clean_progress(data.get("progress", {}))
+	nemeses = _clean_nemeses(data.get("nemeses", []))
 	_ensure_haven()
 	_ensure_reputation()
 	_ensure_domains()
@@ -812,7 +1107,8 @@ func state_hash() -> int:
 		_hash_variant(coterie), _hash_variant(domains), _hash_variant(district_state),
 		_hash_variant(businesses), _hash_variant(active_mission),
 		_hash_variant(mission_offers), _hash_variant(chain_progress),
-		_hash_variant(chain_titles), _hash_variant(achievements), _hash_variant(stats)
+		_hash_variant(chain_titles), _hash_variant(achievements), _hash_variant(stats),
+		legend, _hash_variant(progress), _hash_variant(nemeses)
 	])
 
 static func new_attributes() -> Dictionary:
@@ -962,12 +1258,13 @@ func _setup_mission(sim) -> void:
 func _collect_businesses() -> Dictionary:
 	var cash := 0
 	var vitae := 0
+	var domain_mult := 1.0 + float(owned_domain_count()) * 0.12
 	for id in businesses:
 		if not bool(businesses[id].get("owned", false)):
 			continue
 		var def: Dictionary = Catalog.BUSINESSES.get(String(id), {})
 		var tier := int(businesses[id].get("tier", 0))
-		var mult := 1.0 + float(tier) * 0.35
+		var mult := (1.0 + float(tier)) * domain_mult
 		cash += roundi(float(def.get("cash", 0)) * mult)
 		vitae += roundi(float(def.get("vitae", 0)) * mult)
 	return { "cash": cash, "vitae": vitae }
@@ -1004,6 +1301,33 @@ func _ensure_domains() -> void:
 			domains[id] = { "owner": null, "contesting": false }
 		if not district_state.has(id):
 			district_state[id] = { "terror": 0.0, "prosperity": 0.0 }
+
+func _has_any_haven_upgrade() -> bool:
+	_ensure_haven()
+	for id in haven["rooms"]:
+		if int(haven["rooms"][id]) > 0:
+			return true
+	return false
+
+func _has_any_reputation() -> bool:
+	_ensure_reputation()
+	for id in reputation:
+		if absf(float(reputation[id])) > 0.001:
+			return true
+	return false
+
+func _owned_business_count() -> int:
+	var count := 0
+	for id in businesses:
+		if bool(businesses[id].get("owned", false)):
+			count += 1
+	return count
+
+func _has_any_coterie_job() -> bool:
+	for member in coterie:
+		if String(member.get("assignment", "none")) != "none":
+			return true
+	return false
 
 func _inventory_index(item_id: int) -> int:
 	for i in range(inventory.size()):
@@ -1087,7 +1411,7 @@ func _clean_known_powers(source) -> Dictionary:
 			if bool(source[id]) and Catalog.POWERS.has(power_id):
 				out[power_id] = true
 	if out.is_empty():
-		for id in ["cel_dash", "pot_slam", "for_mend", "obf_cloak", "aus_mark", "dom_mesmer", "pre_dread", "bs_bolt"]:
+		for id in ["cel_dash", "pot_slam", "for_mend", "obf_cloak", "obf_vanish", "aus_mark", "dom_mesmer", "pre_dread", "bs_bolt"]:
 			out[id] = true
 	return out
 
@@ -1108,6 +1432,41 @@ func _clean_inventory(source) -> Array[Dictionary]:
 		for item in source:
 			if item is Dictionary and out.size() < 40:
 				out.append((item as Dictionary).duplicate(true))
+	return out
+
+func _clean_progress(source) -> Dictionary:
+	var out := {}
+	if source is Dictionary:
+		for id in source:
+			var key := String(id)
+			if not PROGRESS_ORDER.has(key):
+				continue
+			var rec := {}
+			if source[id] is Dictionary:
+				rec = (source[id] as Dictionary).duplicate(true)
+			rec["revealed"] = bool(rec.get("revealed", true))
+			rec["seen"] = bool(rec.get("seen", false))
+			rec["order"] = PROGRESS_ORDER.find(key)
+			rec["tick"] = max(0, int(rec.get("tick", 0)))
+			out[key] = rec
+	return out
+
+func _clean_nemeses(source) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if source is Array:
+		for item in source:
+			if not (item is Dictionary) or out.size() >= 3:
+				continue
+			var rec: Dictionary = item
+			out.append({
+				"name": String(rec.get("name", "The Hunter")),
+				"rank": max(1, int(rec.get("rank", 1))),
+				"scar": String(rec.get("scar", "scarred")),
+				"resistType": String(rec.get("resistType", "physical")),
+				"archetype": String(rec.get("archetype", "hunter")),
+				"escaped_tick": max(0, int(rec.get("escaped_tick", 0))),
+				"returned_tick": max(0, int(rec.get("returned_tick", 0))),
+			})
 	return out
 
 func _hash_variant(value) -> int:

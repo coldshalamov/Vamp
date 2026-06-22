@@ -401,6 +401,7 @@ func _drop_body(sim) -> bool:
 	body.pos = sim.world.resolve_motion(body.pos, entity.pos - Vector2.RIGHT.rotated(entity.facing) * (entity.radius + body.radius + 8.0), body.radius)
 	body.ai_state = "downed" if body.downed and not body.dead else "corpse"
 	body.perception_state = "helpless" if body.downed and not body.dead else "silent"
+	body.tags["hidden_body"] = sim.world != null and sim.world.surface_at(body.pos) == SimWorld.Surface.SHADOW
 	var dumped: bool = sim.world != null and (sim.world.is_in_haven(entity.pos) or sim.world.is_in_exit(entity.pos))
 	if dumped:
 		body.tags["dumped"] = true

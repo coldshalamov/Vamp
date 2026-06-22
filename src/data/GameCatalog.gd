@@ -300,6 +300,23 @@ const MISSION_MODIFIERS := [
 	{ "id": "bounty", "name": "High Profile", "tag": "BOUNTY", "bonus": 0.50, "hot": true },
 ]
 
+const ACHIEVEMENTS := [
+	{ "id": "first_blood", "name": "First Blood", "desc": "Feed for the first time.", "stat": "feeds", "min": 1 },
+	{ "id": "glutton", "name": "Insatiable", "desc": "Feed 50 times.", "stat": "feeds", "min": 50 },
+	{ "id": "level10", "name": "Fledgling Rises", "desc": "Reach level 10.", "level": 10 },
+	{ "id": "level25", "name": "Ancilla", "desc": "Reach level 25.", "level": 25 },
+	{ "id": "level50", "name": "Methuselah", "desc": "Reach level 50.", "level": 50 },
+	{ "id": "arsenal", "name": "Diverse Arts", "desc": "Learn 10 powers.", "known_powers": 10 },
+	{ "id": "kills100", "name": "Reaper", "desc": "Slay 100 foes.", "stat": "kills", "min": 100 },
+	{ "id": "rich", "name": "Patron of the Night", "desc": "Hold $5000.", "money": 5000 },
+	{ "id": "mission10", "name": "Made Kindred", "desc": "Complete 10 missions.", "missions_done": 10 },
+	{ "id": "driver", "name": "Road Reaver", "desc": "Hijack 10 vehicles.", "stat": "hijacks", "min": 10 },
+	{ "id": "untouchable", "name": "Untouchable", "desc": "Clear 5 Heat stars at once.", "stat": "clearedFiveHeat", "min": 1 },
+	{ "id": "humane", "name": "Golconda Seeker", "desc": "Reach level 20 with Humanity 8+.", "level": 20, "min_humanity": 8.0 },
+	{ "id": "monster", "name": "Embrace the Beast", "desc": "Drop to Humanity 2 or below.", "max_humanity": 2.0 },
+	{ "id": "thralls", "name": "Sire", "desc": "Bind 5 thralls.", "stat": "thralls", "min": 5 },
+]
+
 const VEHICLE_TYPES := {
 	"sedan": { "width": 46.0, "height": 24.0, "max_speed": 330.0, "accel": 240.0, "handling": 2.6, "hp": 120.0 },
 	"sport": { "width": 44.0, "height": 22.0, "max_speed": 460.0, "accel": 340.0, "handling": 3.2, "hp": 100.0 },

@@ -115,6 +115,7 @@ var next_mission_id: int = 1
 var chain_progress: Dictionary = {}
 var chain_titles: Dictionary = {}
 var achievements: Dictionary = {}
+var achievement_check_ticks: int = 0
 var stats: Dictionary = {}
 var legend: int = 0
 var progress: Dictionary = {}
@@ -170,6 +171,7 @@ func reset(new_clan_id: String) -> void:
 	chain_progress.clear()
 	chain_titles.clear()
 	achievements.clear()
+	achievement_check_ticks = 0
 	legend = 0
 	progress.clear()
 	nemeses.clear()
@@ -196,6 +198,8 @@ func reset(new_clan_id: String) -> void:
 		"domainsClaimed": 0,
 		"nemesisEscapes": 0,
 		"nemesisKills": 0,
+		"thralls": 0,
+		"clearedFiveHeat": 0,
 	}
 	progress_reveal("move", null, true)
 	recompute()
@@ -213,6 +217,7 @@ func tick(delta: float, sim) -> void:
 	_update_active_mission(delta, sim)
 	_update_event_director(delta, sim)
 	progress_check(sim)
+	_update_achievements(sim)
 
 func recompute() -> Dictionary:
 	var a := attributes
@@ -723,6 +728,8 @@ func bind_coterie_member(archetype: String, sim = null, childe: bool = false) ->
 	}
 	next_coterie_id += 1
 	coterie.append(member)
+	if not childe:
+		stats["thralls"] = int(stats.get("thralls", 0)) + 1
 	if sim != null:
 		sim.emit_cue("coterie.bound", member.duplicate(true))
 	progress_reveal("childer" if childe else "thralls", sim)
@@ -1052,6 +1059,68 @@ func progress_check(sim = null) -> void:
 	if elder_vitae > 0 or level >= MAX_LEVEL:
 		progress_reveal("elder", sim)
 
+func check_achievements(sim = null) -> Array[String]:
+	var unlocked: Array[String] = []
+	for def in Catalog.ACHIEVEMENTS:
+		var id := String(def.get("id", ""))
+		if id == "" or achievements.has(id):
+			continue
+		if _achievement_met(def, sim) and unlock_achievement(id, sim):
+			unlocked.append(id)
+	return unlocked
+
+func unlock_achievement(achievement_id: String, sim = null) -> bool:
+	if achievement_id == "" or achievements.has(achievement_id):
+		return false
+	var def := _achievement_def(achievement_id)
+	if def.is_empty():
+		return false
+	achievements[achievement_id] = 1
+	skill_points += 1
+	if sim != null:
+		sim.emit_cue("achievement.unlocked", {
+			"id": achievement_id,
+			"name": def.get("name", achievement_id),
+			"desc": def.get("desc", ""),
+			"skill_points": skill_points,
+		})
+	return true
+
+func _update_achievements(sim = null) -> void:
+	achievement_check_ticks -= 1
+	if achievement_check_ticks > 0:
+		return
+	achievement_check_ticks = 60
+	check_achievements(sim)
+
+func _achievement_def(achievement_id: String) -> Dictionary:
+	for def in Catalog.ACHIEVEMENTS:
+		if String(def.get("id", "")) == achievement_id:
+			return (def as Dictionary).duplicate(true)
+	return {}
+
+func _achievement_met(def: Dictionary, sim = null) -> bool:
+	if def.has("stat") and int(stats.get(String(def["stat"]), 0)) < int(def.get("min", 1)):
+		return false
+	if def.has("level") and level < int(def["level"]):
+		return false
+	if def.has("known_powers") and known_powers.size() < int(def["known_powers"]):
+		return false
+	if def.has("money") and money < int(def["money"]):
+		return false
+	if def.has("missions_done") and missions_done < int(def["missions_done"]):
+		return false
+	if def.has("min_humanity") and _player_humanity(sim) < float(def["min_humanity"]):
+		return false
+	if def.has("max_humanity") and _player_humanity(sim) > float(def["max_humanity"]):
+		return false
+	return true
+
+func _player_humanity(sim = null) -> float:
+	if sim != null and sim.player != null and sim.player.behaviour != null:
+		return float(sim.player.behaviour.get("humanity"))
+	return 10.0
+
 func try_nemesis_escape(target: SimEntity, sim, opts: Dictionary = {}) -> bool:
 	if target == null or sim == null:
 		return false
@@ -1367,6 +1436,7 @@ func serialize(sim = null) -> Dictionary:
 		"chain_progress": chain_progress.duplicate(true),
 		"chain_titles": chain_titles.duplicate(true),
 		"achievements": achievements.duplicate(true),
+		"achievement_check_ticks": achievement_check_ticks,
 		"stats": stats.duplicate(true),
 		"legend": legend,
 		"progress": progress.duplicate(true),
@@ -1420,6 +1490,7 @@ func restore(data: Dictionary, sim = null) -> bool:
 	chain_progress = data.get("chain_progress", {}).duplicate(true) if data.get("chain_progress", {}) is Dictionary else {}
 	chain_titles = data.get("chain_titles", {}).duplicate(true) if data.get("chain_titles", {}) is Dictionary else {}
 	achievements = data.get("achievements", {}).duplicate(true) if data.get("achievements", {}) is Dictionary else {}
+	achievement_check_ticks = max(0, int(data.get("achievement_check_ticks", 0)))
 	stats = data.get("stats", {}).duplicate(true) if data.get("stats", {}) is Dictionary else {}
 	legend = max(0, int(data.get("legend", 0)))
 	progress = _clean_progress(data.get("progress", {}))
@@ -1475,7 +1546,7 @@ func state_hash() -> int:
 		_hash_variant(businesses), _hash_variant(active_mission),
 		_hash_variant(mission_offers), _hash_variant(chain_progress),
 		_hash_variant(chain_titles), _hash_variant(achievements), _hash_variant(stats),
-		legend, _hash_variant(progress), _hash_variant(nemeses), snapped(event_timer, 0.001),
+		achievement_check_ticks, legend, _hash_variant(progress), _hash_variant(nemeses), snapped(event_timer, 0.001),
 		next_event_id, _hash_variant(active_events), _hash_variant(pending_raids),
 		_hash_variant(mastery), _hash_variant(trophies), _hash_variant(codex), _hash_variant(bloodline)
 	])

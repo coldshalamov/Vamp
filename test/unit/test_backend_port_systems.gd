@@ -154,7 +154,7 @@ func test_ai_uses_pathfinding_and_thrall_follow_attacks() -> void:
 func test_body_carry_and_evidence_heat_are_authoritative() -> void:
 	var sim := VCSim.new()
 	sim.new_game(7001, "brujah")
-	var body_pos: Vector2 = sim.world.nearest_open_around(sim.world.named_points["exit"], 180.0, 260.0, 41)
+	var body_pos := Vector2(430.0, 576.0)
 	sim.player.pos = body_pos + Vector2(-28.0, 0.0)
 	var body: SimEntity = sim.spawn_npc("ped", body_pos, { "state": "guard" })
 	body.downed = true
@@ -178,7 +178,49 @@ func test_body_carry_and_evidence_heat_are_authoritative() -> void:
 	assert_true(bool(body.tags.get("body_discovered", false)), "nearby witness did not discover the dropped evidence")
 	assert_true(sim.heat > heat_before, "body discovery did not raise Heat")
 	assert_true(_has_cue(sim, "body.discovered"), "body discovery cue missing")
+	assert_true(_has_cue(sim, "investigation.started"), "body discovery did not start an investigation")
+	assert_true(sim.investigations.size() > 0, "investigation state was not recorded")
+	assert_true(witness.tags.has("witness_alarm_tick"), "civilian witness did not get a delayed alarm")
 	assert_true(witness.ai_state == "flee" or witness.perception_state == "afraid", "witness did not react to discovered evidence")
+	var heat_after_discovery := sim.heat
+	_tick_for(sim, 391)
+	assert_true(_has_cue(sim, "witness.alarm"), "surviving witness did not raise the alarm")
+	assert_true(sim.heat > heat_after_discovery, "witness alarm did not spike Heat")
+	sim.queue_free()
+
+func test_carried_body_seen_and_legacy_achievements_are_backend_state() -> void:
+	var sim := VCSim.new()
+	sim.new_game(7077, "brujah")
+	var body_pos: Vector2 = sim.world.nearest_open_around(sim.world.named_points["exit"], 180.0, 260.0, 13)
+	sim.player.pos = body_pos + Vector2(-28.0, 0.0)
+	var body: SimEntity = sim.spawn_npc("ped", body_pos, { "state": "guard" })
+	body.downed = true
+	body.ai_state = "downed"
+	body.perception_state = "helpless"
+	body.tags["player_body"] = true
+	body.tags["body_discovered"] = false
+	var witness: SimEntity = sim.spawn_npc("ped", sim.player.pos + Vector2(82.0, 0.0), { "state": "guard" })
+	_apply_action(sim, InputAction.Kind.INTERACT)
+	var heat_before := sim.heat
+	_tick_for(sim, 31)
+	assert_true(_has_cue(sim, "body.carried_seen"), "carrying evidence in view did not emit a semantic cue")
+	assert_true(sim.heat > heat_before, "carrying a body past a mortal did not raise Heat")
+	assert_true(witness.tags.has("witness_alarm_tick"), "body-carry witness did not get an alarm deadline")
+
+	var meta: SimMeta = sim.meta
+	var skill_points_before := meta.skill_points
+	sim.emit_cue("feed.spare", { "target_id": body.id })
+	meta.check_achievements(sim)
+	assert_true(meta.achievements.has("first_blood"), "first feed achievement did not unlock from backend stats")
+	assert_eq(meta.skill_points, skill_points_before + 1, "achievement did not reward one skill point")
+	assert_true(_has_cue(sim, "achievement.unlocked"), "achievement unlock cue missing")
+	meta.level = 10
+	meta.check_achievements(sim)
+	assert_true(meta.achievements.has("level10"), "level achievement did not unlock from SimMeta level")
+	sim.heat = 5.5
+	sim.reduce_heat(5.5, "test")
+	meta.check_achievements(sim)
+	assert_true(meta.achievements.has("untouchable"), "five-star Heat clear achievement did not unlock")
 	sim.queue_free()
 
 func test_business_legend_progress_and_domain_caps() -> void:

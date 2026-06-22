@@ -31,6 +31,8 @@ var responder_spawn_ticks: int = 0
 var player_last_attack_tick: int = -999999
 var escaped: bool = false
 var reached_haven: bool = false
+var investigations: Array[Dictionary] = []
+var last_body_carried_seen_tick: int = -999999
 
 var cue_events: Array[Dictionary] = []
 var cue_events_this_tick: Array[Dictionary] = []
@@ -54,6 +56,8 @@ func new_game(new_seed_value: int, clan_id: String) -> void:
 	player_last_attack_tick = -999999
 	escaped = false
 	reached_haven = false
+	investigations.clear()
+	last_body_carried_seen_tick = -999999
 	_next_entity_seq = 1
 	entities.clear()
 	cue_events.clear()
@@ -98,6 +102,7 @@ func tick_sim(delta: float) -> void:
 	if meta != null:
 		meta.tick(delta, self)
 	_update_body_witnesses()
+	_update_investigations(delta)
 	_update_heat(delta)
 	_check_escape()
 	_cleanup_dead_transients()
@@ -341,8 +346,12 @@ func add_heat(amount: float, reason: String = "") -> void:
 
 func reduce_heat(amount: float, reason: String = "") -> void:
 	var before := heat_stars()
+	var before_heat := heat
 	heat = clamp(heat - amount, 0.0, 6.0)
 	var after := heat_stars()
+	if meta != null and before_heat >= 5.0 and before_heat - heat >= 5.0:
+		meta.stats["clearedFiveHeat"] = int(meta.stats.get("clearedFiveHeat", 0)) + 1
+		emit_cue("heat.cleared_five", { "heat_before": before_heat, "heat": heat, "reason": reason })
 	if after < before:
 		emit_cue("heat.fall", { "stars": after, "heat": heat, "reason": reason })
 
@@ -362,6 +371,9 @@ func clear_witness_panic() -> void:
 		if e != null and e.kind == "npc" and e.faction == "civ" and e.ai_state == "flee":
 			e.ai_state = "wander"
 			e.perception_state = "calm"
+			e.tags.erase("witness_alarm_tick")
+			e.tags.erase("witness_body_id")
+			e.tags.erase("witness_alarm_pos")
 
 func emit_vitals_changed() -> void:
 	if tick - _last_vitals_emit_tick < 15 or player == null or player.behaviour == null:
@@ -412,7 +424,8 @@ func state_hash() -> int:
 		last_crime_tick, last_provoke_tick, snapped(last_seen_pos.x, 0.001),
 		snapped(last_seen_pos.y, 0.001), responder_spawn_ticks,
 		player_last_attack_tick, _last_vitals_emit_tick, time_scale,
-		escaped, reached_haven
+		escaped, reached_haven, last_body_carried_seen_tick,
+		_hash_variant(investigations)
 	])
 	for e in entities:
 		if e != null:
@@ -434,6 +447,8 @@ func serialize_run() -> Dictionary:
 		"player_last_attack_tick": player_last_attack_tick,
 		"escaped": escaped,
 		"reached_haven": reached_haven,
+		"investigations": investigations.duplicate(true),
+		"last_body_carried_seen_tick": last_body_carried_seen_tick,
 		"meta": meta.serialize(self) if meta != null else {},
 	}
 
@@ -455,6 +470,8 @@ func restore_run(data: Dictionary) -> bool:
 	player_last_attack_tick = int(data.get("player_last_attack_tick", player_last_attack_tick))
 	escaped = bool(data.get("escaped", escaped))
 	reached_haven = bool(data.get("reached_haven", reached_haven))
+	investigations = _clean_investigations(data.get("investigations", []))
+	last_body_carried_seen_tick = int(data.get("last_body_carried_seen_tick", last_body_carried_seen_tick))
 	if data.has("meta") and data["meta"] is Dictionary and meta != null:
 		meta.restore(data["meta"], self)
 	emit_cue("save.restored", { "tick": tick, "day": meta.day if meta != null else 1 })
@@ -670,10 +687,13 @@ func _update_body_witnesses() -> void:
 			continue
 		if bool(body.tags.get("body_discovered", false)) or bool(body.tags.get("carried", false)):
 			continue
+		if bool(body.tags.get("dumped", false)):
+			continue
 		if not (body.dead or body.downed):
 			continue
-		var witness: SimEntity = nearest_entity(body.pos, 190.0, func(e: SimEntity) -> bool:
-			return e != body and e.kind == "npc" and not e.dead and not e.downed and e.faction in ["civ", "gang", "police", "inquis"]
+		var find_range := 46.0 if bool(body.tags.get("hidden_body", false)) else 132.0
+		var witness: SimEntity = nearest_entity(body.pos, find_range, func(e: SimEntity) -> bool:
+			return e != body and e.kind == "npc" and not e.dead and not e.downed and e.faction in ["civ", "police"] and not e.hostile_to_player
 		) as SimEntity
 		if witness == null:
 			continue
@@ -682,8 +702,176 @@ func _update_body_witnesses() -> void:
 		body.tags["body_discovered"] = true
 		if meta != null:
 			meta.stats["bodiesFound"] = int(meta.stats.get("bodiesFound", 0)) + 1
+		_add_investigation(body, witness)
 		witnessed_act(body.pos, "body", 1.0)
+		if witness.faction == "civ":
+			witness.ai_state = "flee"
+			witness.perception_state = "afraid"
+			witness.tags["witness_alarm_tick"] = tick + 390
+			witness.tags["witness_body_id"] = body.id
+			witness.tags["witness_alarm_pos"] = body.pos
+		else:
+			witness.ai_state = "investigate"
+			witness.perception_state = "searching"
+			witness.last_seen_pos = body.pos
+			witness.search_ticks = max(witness.search_ticks, 360)
 		emit_cue("body.discovered", { "body_id": body.id, "witness_id": witness.id, "pos": body.pos, "heat": heat })
+
+func _update_investigations(_delta: float) -> void:
+	_update_witness_alarms()
+	_update_carried_body_witnesses()
+	for i in range(investigations.size() - 1, -1, -1):
+		var inv: Dictionary = investigations[i]
+		var ttl := int(inv.get("ttl_ticks", 1320))
+		inv["ticks"] = int(inv.get("ticks", 0)) + 1
+		if int(inv["ticks"]) >= ttl or tick - int(inv.get("born_tick", tick)) > ttl * 3:
+			emit_cue("investigation.ended", { "body_id": int(inv.get("body_id", 0)), "pos": inv.get("pos", Vector2.ZERO) })
+			investigations.remove_at(i)
+			continue
+		var pos: Vector2 = inv.get("pos", Vector2.ZERO)
+		var radius := float(inv.get("radius", 150.0))
+		var player_visible := player != null and not bool(player.tags.get("cloaked", false)) and player.pos.distance_to(pos) < radius and player.exposure > 0.30
+		if player_visible:
+			if not bool(inv.get("hot", false)):
+				inv["hot"] = true
+				emit_cue("investigation.hot", { "body_id": int(inv.get("body_id", 0)), "pos": pos, "player_pos": player.pos })
+			inv["ticks"] = min(int(inv["ticks"]), max(0, ttl - 240))
+			last_seen_pos = player.pos
+			last_provoke_tick = tick
+			for e in entities:
+				if e == null or e.dead:
+					continue
+				if not (e.faction == "police" or e.responder):
+					continue
+				if e.pos.distance_to(pos) > radius + 240.0:
+					continue
+				e.hostile_to_player = true
+				e.ai_state = "chase"
+				e.perception_state = "combat"
+				e.last_seen_pos = player.pos
+				e.search_ticks = max(e.search_ticks, 360)
+		investigations[i] = inv
+
+func _add_investigation(body: SimEntity, witness: SimEntity) -> void:
+	var rec := {
+		"body_id": body.id,
+		"pos": body.pos,
+		"radius": 150.0,
+		"ticks": 0,
+		"ttl_ticks": 1320,
+		"born_tick": tick,
+		"hot": false,
+		"witness_id": witness.id if witness != null else 0,
+	}
+	investigations.append(rec)
+	emit_cue("investigation.started", { "body_id": body.id, "witness_id": rec["witness_id"], "pos": body.pos, "radius": rec["radius"] })
+
+func _update_witness_alarms() -> void:
+	for e in entities:
+		if e == null or e.kind != "npc" or not e.tags.has("witness_alarm_tick"):
+			continue
+		if e.dead or e.downed or e.has_status("mesmerized") or e.has_status("stun"):
+			_clear_witness_alarm(e)
+			emit_cue("witness.silenced", { "witness_id": e.id, "pos": e.pos })
+			continue
+		var alarm_tick := int(e.tags.get("witness_alarm_tick", 0))
+		if tick < alarm_tick:
+			continue
+		var alarm_pos := e.pos
+		if e.tags.get("witness_alarm_pos", null) is Vector2:
+			alarm_pos = e.tags["witness_alarm_pos"]
+		var domain_mult: float = meta.heat_mult_at(alarm_pos) if meta != null else 1.0
+		last_seen_pos = alarm_pos
+		last_crime_tick = tick
+		last_provoke_tick = tick
+		add_heat(1.0 * domain_mult, "witness_alarm")
+		emit_cue("witness.alarm", { "witness_id": e.id, "body_id": int(e.tags.get("witness_body_id", 0)), "pos": alarm_pos, "heat": heat })
+		_clear_witness_alarm(e)
+
+func _update_carried_body_witnesses() -> void:
+	if player == null or player.behaviour == null or bool(player.tags.get("cloaked", false)):
+		return
+	var carrying_id := int(player.behaviour.get("carrying_body_id"))
+	if carrying_id == 0 or tick - last_body_carried_seen_tick < 30:
+		return
+	var carried_body := get_entity(carrying_id)
+	if carried_body == null:
+		return
+	for e in entities:
+		if e == null or e == player or e.dead or e.downed:
+			continue
+		if not (e.faction == "civ" or e.faction == "police"):
+			continue
+		if e.tags.has("witness_alarm_tick") or e.pos.distance_to(player.pos) >= 170.0:
+			continue
+		if world != null and not world.segment_clear(e.pos, player.pos):
+			continue
+		last_body_carried_seen_tick = tick
+		last_seen_pos = player.pos
+		last_crime_tick = tick
+		last_provoke_tick = tick
+		var domain_mult: float = meta.heat_mult_at(player.pos) if meta != null else 1.0
+		add_heat(0.30 * domain_mult, "body_carried")
+		if e.faction == "civ":
+			e.ai_state = "flee"
+			e.perception_state = "afraid"
+			e.tags["witness_alarm_tick"] = tick + 390
+			e.tags["witness_body_id"] = carrying_id
+			e.tags["witness_alarm_pos"] = player.pos
+		else:
+			e.hostile_to_player = true
+			e.ai_state = "chase"
+			e.perception_state = "combat"
+			e.last_seen_pos = player.pos
+			e.search_ticks = max(e.search_ticks, 300)
+		emit_cue("body.carried_seen", { "body_id": carrying_id, "witness_id": e.id, "pos": player.pos, "heat": heat })
+		return
+
+func _clear_witness_alarm(entity: SimEntity) -> void:
+	entity.tags.erase("witness_alarm_tick")
+	entity.tags.erase("witness_body_id")
+	entity.tags.erase("witness_alarm_pos")
+
+func _clean_investigations(source) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if not (source is Array):
+		return out
+	for item in source:
+		if not (item is Dictionary):
+			continue
+		var rec: Dictionary = item
+		var pos := Vector2.ZERO
+		if rec.get("pos", null) is Vector2:
+			pos = rec["pos"]
+		out.append({
+			"body_id": max(0, int(rec.get("body_id", 0))),
+			"pos": pos,
+			"radius": maxf(1.0, float(rec.get("radius", 150.0))),
+			"ticks": max(0, int(rec.get("ticks", 0))),
+			"ttl_ticks": max(1, int(rec.get("ttl_ticks", 1320))),
+			"born_tick": max(0, int(rec.get("born_tick", tick))),
+			"hot": bool(rec.get("hot", false)),
+			"witness_id": max(0, int(rec.get("witness_id", 0))),
+		})
+	return out
+
+func _hash_variant(value) -> int:
+	if value is Dictionary:
+		var keys := (value as Dictionary).keys()
+		keys.sort()
+		var h := 0
+		for key in keys:
+			h = hash([h, key, _hash_variant((value as Dictionary)[key])])
+		return h
+	if value is Array:
+		var h := 0
+		for item in value:
+			h = hash([h, _hash_variant(item)])
+		return h
+	if value is Vector2:
+		var v: Vector2 = value
+		return hash([snapped(v.x, 0.001), snapped(v.y, 0.001)])
+	return hash(value)
 
 func _cleanup_dead_transients() -> void:
 	for i in range(entities.size() - 1, -1, -1):

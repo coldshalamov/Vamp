@@ -290,6 +290,13 @@ func test_emergent_events_domain_raids_and_childer_backend() -> void:
 	assert_true(_has_cue(sim, "domain.raid_failed"), "raid failure cue missing")
 	assert_true(meta.trigger_event("bloodhunt", sim), "blood hunt event did not spawn")
 	assert_true(_has_cue(sim, "event.bloodhunt"), "blood hunt cue missing")
+	assert_true(meta.trigger_event("bounty", sim), "bounty event did not spawn")
+	var bounty: SimEntity = _first_with_tag(sim, "bounty")
+	assert_not_null(bounty, "bounty event did not tag a target")
+	var money_before_bounty := meta.money
+	sim.damage_entity(sim.player, bounty, 9999.0, { "crit_chance": 0.0, "no_nemesis": true })
+	assert_true(meta.money > money_before_bounty, "bounty target death did not pay out")
+	assert_true(_has_cue(sim, "bounty.claimed"), "bounty payout cue missing")
 	var noble: SimEntity = sim.spawn_npc("ped", sim.player.pos + Vector2(48.0, 0.0), { "state": "guard" })
 	noble.victim_type = "noble"
 	sim.player.behaviour.set("blood", 100.0)
@@ -366,6 +373,12 @@ func _has_cue(sim: VCSim, cue_id: String) -> bool:
 func _first_tagged(sim: VCSim, tag_id: String, tag_value: String) -> SimEntity:
 	for e in sim.entities:
 		if e != null and e.tags.has(tag_id) and String(e.tags[tag_id]) == tag_value:
+			return e
+	return null
+
+func _first_with_tag(sim: VCSim, tag_id: String) -> SimEntity:
+	for e in sim.entities:
+		if e != null and e.tags.has(tag_id):
 			return e
 	return null
 

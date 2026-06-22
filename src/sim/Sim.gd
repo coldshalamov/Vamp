@@ -608,6 +608,8 @@ func _on_entity_killed(attacker: SimEntity, target: SimEntity, _opts: Dictionary
 	emit_cue("npc.death", { "entity_id": target.id, "type": target.type_id, "pos": target.pos })
 	if target.tags.has("nemesis_name") and meta != null:
 		meta.on_nemesis_dead(target, self)
+	if target.tags.has("bounty") and meta != null:
+		meta.claim_bounty(target, self)
 	if target.tags.has("baron_of") and meta != null:
 		meta.claim_domain(String(target.tags["baron_of"]), self)
 	if attacker != null and attacker.tags.has("coterie_id") and meta != null:

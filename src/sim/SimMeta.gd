@@ -40,6 +40,7 @@ const EVENT_DEFS := {
 	"bloodhunt": { "weight": 2, "minStars": 3, "name": "Blood Hunt" },
 	"vip": { "weight": 2, "minStars": 0, "name": "Aristocrat Sighting" },
 	"faint": { "weight": 2, "minStars": 0, "name": "Fainting Mortals" },
+	"bounty": { "weight": 2, "minStars": 0, "name": "Bounty" },
 	"domainraid": { "weight": 2, "minStars": 0, "name": "Rival Domain Raid", "needsDomain": true },
 }
 const MASTERY_CAP := 12
@@ -198,6 +199,7 @@ func reset(new_clan_id: String) -> void:
 		"domainsClaimed": 0,
 		"nemesisEscapes": 0,
 		"nemesisKills": 0,
+		"bounties": 0,
 		"thralls": 0,
 		"clearedFiveHeat": 0,
 	}
@@ -1202,6 +1204,20 @@ func on_nemesis_dead(target: SimEntity, sim = null) -> void:
 	if sim != null:
 		sim.emit_cue("nemesis.dead", { "name": name, "entity_id": target.id, "pos": target.pos })
 
+func claim_bounty(target: SimEntity, sim = null) -> bool:
+	if target == null or not target.tags.has("bounty"):
+		return false
+	var amount: int = max(0, int(target.tags.get("bounty", 0)))
+	if amount <= 0:
+		return false
+	target.tags.erase("bounty")
+	money += amount
+	stats["bounties"] = int(stats.get("bounties", 0)) + 1
+	add_legend(5 + int(amount / 100), sim, "bounty")
+	if sim != null:
+		sim.emit_cue("bounty.claimed", { "entity_id": target.id, "amount": amount, "money": money, "pos": target.pos })
+	return true
+
 func mastery_rank_for(xp_amount: float) -> int:
 	return min(MASTERY_CAP, floori(sqrt(maxf(0.0, xp_amount) / 28.0)))
 
@@ -1353,6 +1369,8 @@ func trigger_event(event_id: String, sim) -> bool:
 			return _event_vip(sim)
 		"faint":
 			return _event_faint(sim)
+		"bounty":
+			return _event_bounty(sim)
 		"domainraid":
 			return _event_domainraid(sim)
 	return false
@@ -1746,6 +1764,9 @@ func _update_event_director(delta: float, sim) -> void:
 	if event_timer > 0.0:
 		return
 	event_timer = 90.0 + _draw_float(sim) * 70.0
+	if _is_notorious(sim) and not nemeses.is_empty() and _draw_float(sim) < 0.40:
+		if maybe_inject_nemesis(sim) != null:
+			return
 	var event_id := _pick_event_id(sim)
 	if event_id != "":
 		trigger_event(event_id, sim)
@@ -1758,7 +1779,7 @@ func _pick_event_id(sim) -> String:
 	ids.sort()
 	for id in ids:
 		var def: Dictionary = EVENT_DEFS[id]
-		if stars < int(def.get("minStars", 0)):
+		if stars < int(def.get("minStars", 0)) and not (String(id) == "bloodhunt" and _is_notorious(sim)):
 			continue
 		if bool(def.get("needsDomain", false)) and not has_domain:
 			continue
@@ -1767,6 +1788,11 @@ func _pick_event_id(sim) -> String:
 	if pool.is_empty():
 		return ""
 	return pool[_draw_index(sim, pool.size())]
+
+func _is_notorious(sim) -> bool:
+	if sim == null:
+		return false
+	return sim.heat_stars() >= 3 or _player_humanity(sim) <= 3.0
 
 func _event_gangwar(sim) -> bool:
 	var pos := _pick_event_pos(sim, 500.0, 900.0)
@@ -1841,6 +1867,19 @@ func _event_faint(sim) -> bool:
 		mortal.apply_status("mesmerized", 120)
 		mortals.append(mortal.id)
 	sim.emit_cue("event.faint", { "event_id": event_id, "pos": pos, "mortals": mortals, "caption": "Dazed revelers stumble nearby." })
+	return true
+
+func _event_bounty(sim) -> bool:
+	var pos := _pick_event_pos(sim, 300.0, 700.0)
+	if pos == Vector2.INF:
+		return false
+	var event_id := _register_event("bounty", pos, 75.0, sim)
+	var amount := 150 + level * 25
+	var target := _spawn_event_npc(sim, "gunner", pos, event_id, { "state": "wander", "hostile_to_player": false, "hp": 90.0 + float(level) * 6.0 })
+	target.tags["bounty"] = amount
+	target.tags["vip"] = true
+	target.tags["mission_target"] = true
+	sim.emit_cue("event.bounty", { "event_id": event_id, "entity_id": target.id, "amount": amount, "pos": pos, "caption": "A marked killer roams nearby." })
 	return true
 
 func _event_domainraid(sim) -> bool:

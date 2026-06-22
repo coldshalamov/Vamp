@@ -230,6 +230,45 @@ func test_nemesis_escape_return_and_death_are_persistent_backend_state() -> void
 	assert_true(_has_cue(sim, "nemesis.dead"), "nemesis death cue missing")
 	sim.queue_free()
 
+func test_emergent_events_domain_raids_and_childer_backend() -> void:
+	var sim := VCSim.new()
+	sim.new_game(42424, "brujah")
+	var meta: SimMeta = sim.meta
+	meta.legend = 300
+	meta.money = 5000
+	assert_true(meta.claim_domain("old_town", sim), "test setup could not claim a domain")
+	var terror_before := float(meta.district_state["old_town"].get("terror", 0.0))
+	assert_true(meta.trigger_event("domainraid", sim), "domain raid event did not spawn")
+	assert_eq(meta.pending_raids.size(), 1, "domain raid did not register a pending deadline")
+	var raid_id := int(meta.pending_raids[0].get("event_id", 0))
+	assert_true(_count_tagged_int(sim, "raid_id", raid_id) >= 4, "raid did not tag spawned raiders")
+	meta.pending_raids[0]["deadline_tick"] = sim.tick + 1
+	_tick_for(sim, 2)
+	assert_true(float(meta.district_state["old_town"].get("terror", 0.0)) > terror_before, "unanswered raid did not raise domain terror")
+	assert_true(_has_cue(sim, "domain.raid_failed"), "raid failure cue missing")
+	assert_true(meta.trigger_event("bloodhunt", sim), "blood hunt event did not spawn")
+	assert_true(_has_cue(sim, "event.bloodhunt"), "blood hunt cue missing")
+	var noble: SimEntity = sim.spawn_npc("ped", sim.player.pos + Vector2(48.0, 0.0), { "state": "guard" })
+	noble.victim_type = "noble"
+	sim.player.behaviour.set("blood", 100.0)
+	var childe: Dictionary = meta.embrace(noble.id, sim)
+	assert_false(childe.is_empty(), "valid noble embrace did not create a childe")
+	assert_true(noble.dead, "embraced target was not removed from runtime")
+	assert_true(meta.progress_is_revealed("childer"), "childer progress flag was not revealed")
+	var ally: SimEntity = meta.summon_coterie(int(childe["id"]), sim)
+	assert_not_null(ally, "summon_coterie did not spawn an ally")
+	assert_eq(ally.faction, "player", "summoned coterie member was not allied")
+	assert_true(bool(ally.tags.get("childe", false)), "summoned childe did not carry childe tag")
+	var previous_level := int(meta.coterie[meta.coterie.size() - 1].get("level", 0))
+	for _i in range(16):
+		assert_true(meta.coterie_ally_kill(ally, sim), "ally kill did not route to coterie XP")
+	assert_true(int(meta.coterie[meta.coterie.size() - 1].get("level", 0)) > previous_level, "coterie ally XP did not level the childe")
+	var restored_meta := SimMeta.new()
+	assert_true(restored_meta.restore(meta.serialize()), "meta restore rejected event/childe save data")
+	assert_eq(restored_meta.active_events.size(), meta.active_events.size(), "active event state did not survive restore")
+	assert_true(_has_cue(sim, "coterie.embraced"), "embrace cue missing")
+	sim.queue_free()
+
 func _apply_action(sim: VCSim, kind: int, vector: Vector2 = Vector2.ZERO, action_id: String = "", held: bool = false) -> void:
 	var action := InputAction.new(kind)
 	action.vector = vector
@@ -252,6 +291,13 @@ func _first_tagged(sim: VCSim, tag_id: String, tag_value: String) -> SimEntity:
 		if e != null and e.tags.has(tag_id) and String(e.tags[tag_id]) == tag_value:
 			return e
 	return null
+
+func _count_tagged_int(sim: VCSim, tag_id: String, tag_value: int) -> int:
+	var count := 0
+	for e in sim.entities:
+		if e != null and int(e.tags.get(tag_id, -1)) == tag_value:
+			count += 1
+	return count
 
 func _feed_mission() -> Dictionary:
 	return {

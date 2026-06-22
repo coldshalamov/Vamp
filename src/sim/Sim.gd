@@ -591,6 +591,8 @@ func _on_entity_killed(attacker: SimEntity, target: SimEntity, _opts: Dictionary
 		meta.on_nemesis_dead(target, self)
 	if target.tags.has("baron_of") and meta != null:
 		meta.claim_domain(String(target.tags["baron_of"]), self)
+	if attacker != null and attacker.tags.has("coterie_id") and meta != null:
+		meta.coterie_ally_kill(attacker, self)
 	if meta != null and target.faction in ["police", "gang", "inquis"]:
 		meta.change_reputation(target.faction, -2.0 if target.faction == "police" else -1.5, self)
 	if attacker == player and player.behaviour != null:

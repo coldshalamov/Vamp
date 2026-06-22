@@ -34,6 +34,14 @@ const PROGRESS_ORDER := [
 ]
 
 const NEMESIS_SCARS := ["ash-burned", "fang-split", "blood-warded", "sun-scarred", "silver-pinned"]
+const EVENT_DEFS := {
+	"gangwar": { "weight": 3, "minStars": 0, "name": "Gang War" },
+	"crackdown": { "weight": 2, "minStars": 2, "name": "Police Crackdown" },
+	"bloodhunt": { "weight": 2, "minStars": 3, "name": "Blood Hunt" },
+	"vip": { "weight": 2, "minStars": 0, "name": "Aristocrat Sighting" },
+	"faint": { "weight": 2, "minStars": 0, "name": "Fainting Mortals" },
+	"domainraid": { "weight": 2, "minStars": 0, "name": "Rival Domain Raid", "needsDomain": true },
+}
 
 var clan_id: String = "brujah"
 var difficulty: String = "normal"
@@ -80,6 +88,10 @@ var stats: Dictionary = {}
 var legend: int = 0
 var progress: Dictionary = {}
 var nemeses: Array[Dictionary] = []
+var event_timer: float = 75.0
+var active_events: Array[Dictionary] = []
+var pending_raids: Array[Dictionary] = []
+var next_event_id: int = 1
 
 func reset(new_clan_id: String) -> void:
 	clan_id = _clean_clan(new_clan_id)
@@ -126,6 +138,10 @@ func reset(new_clan_id: String) -> void:
 	legend = 0
 	progress.clear()
 	nemeses.clear()
+	event_timer = 75.0
+	active_events.clear()
+	pending_raids.clear()
+	next_event_id = 1
 	stats = {
 		"kills": 0,
 		"feeds": 0,
@@ -154,6 +170,7 @@ func tick(delta: float, sim) -> void:
 		resolve_dawn(sim)
 	_update_influence(delta)
 	_update_active_mission(delta, sim)
+	_update_event_director(delta, sim)
 	progress_check(sim)
 
 func recompute() -> Dictionary:
@@ -678,6 +695,92 @@ func assign_coterie(member_id: int, job_id: String, sim = null) -> bool:
 			return true
 	return false
 
+func summon_coterie(member_id: int, sim) -> SimEntity:
+	if sim == null or sim.player == null:
+		return null
+	for member in coterie:
+		if int(member.get("id", 0)) != member_id:
+			continue
+		if String(member.get("assignment", "none")) != "none":
+			if sim != null:
+				sim.emit_cue("coterie.summon_failed", { "member_id": member_id, "reason": "assigned" })
+			return null
+		for e in sim.entities:
+			if e != null and not e.dead and int(e.tags.get("coterie_id", 0)) == member_id:
+				sim.emit_cue("coterie.summon_failed", { "member_id": member_id, "reason": "already_active" })
+				return null
+		if _active_coterie_count(sim) >= coterie_cap():
+			sim.emit_cue("coterie.summon_failed", { "member_id": member_id, "reason": "active_cap", "cap": coterie_cap() })
+			return null
+		var level_i := int(member.get("level", 1))
+		var is_childe := bool(member.get("isChilde", false))
+		var pos: Vector2 = sim.world.nearest_open_around(sim.player.pos, 28.0, 82.0, member_id + next_coterie_id)
+		var ally: SimEntity = sim.spawn_npc("thrall", pos, {
+			"state": "follow",
+			"hostile_to_player": false,
+			"hp": (70.0 + float(level_i) * 18.0) * (1.6 if is_childe else 1.0),
+		})
+		ally.faction = "player"
+		ally.hostile_to_player = false
+		ally.ai_state = "follow"
+		ally.tags["coterie_id"] = member_id
+		ally.tags["coterie_name"] = String(member.get("name", "Thrall"))
+		ally.tags["childe"] = is_childe
+		ally.attack_damage *= (1.40 if is_childe else 1.0) + float(level_i) * 0.08
+		if is_childe:
+			ally.tags["weapon"] = "rifle"
+		sim.emit_cue("coterie.summoned", { "member_id": member_id, "entity_id": ally.id, "name": ally.tags["coterie_name"], "pos": ally.pos, "childe": is_childe })
+		return ally
+	return null
+
+func coterie_ally_kill(ally: SimEntity, sim = null) -> bool:
+	if ally == null or not ally.tags.has("coterie_id"):
+		return false
+	var member_id := int(ally.tags["coterie_id"])
+	for i in range(coterie.size()):
+		if int(coterie[i].get("id", 0)) != member_id:
+			continue
+		var gain := 8
+		coterie[i]["xp"] = int(coterie[i].get("xp", 0)) + gain
+		var need: int = max(40, int(coterie[i].get("level", 1)) * 40)
+		if int(coterie[i]["xp"]) >= need:
+			coterie[i]["xp"] = int(coterie[i]["xp"]) - need
+			coterie[i]["level"] = int(coterie[i].get("level", 1)) + 1
+			coterie[i]["loyalty"] = min(100, int(coterie[i].get("loyalty", 50)) + 5)
+			if sim != null:
+				sim.emit_cue("coterie.level_up", { "member_id": member_id, "level": coterie[i]["level"], "name": coterie[i].get("name", "") })
+		elif sim != null:
+			sim.emit_cue("coterie.xp", { "member_id": member_id, "xp": coterie[i]["xp"], "gain": gain })
+		return true
+	return false
+
+func can_embrace(target: SimEntity, sim) -> bool:
+	if target == null or sim == null or sim.player == null or sim.player.behaviour == null:
+		return false
+	var quality := target.victim_type in ["noble", "athlete", "hunter", "cop"] or target.type_id in ["hunter", "cop", "swat"]
+	return legend >= 260 and quality and float(sim.player.behaviour.get("blood")) >= 60.0
+
+func embrace(target_id: int, sim) -> Dictionary:
+	var target: SimEntity = sim.get_entity(target_id) if sim != null else null
+	if not can_embrace(target, sim):
+		if sim != null:
+			sim.emit_cue("coterie.embrace_failed", { "target_id": target_id, "legend": legend })
+		return {}
+	var blood := float(sim.player.behaviour.get("blood"))
+	sim.player.behaviour.set("blood", blood - 60.0)
+	var member := bind_coterie_member("childe", sim, true)
+	if member.is_empty():
+		sim.player.behaviour.set("blood", blood)
+		return {}
+	target.dead = true
+	target.tags["embraced"] = true
+	stats["childer"] = int(stats.get("childer", 0)) + 1
+	sim.add_heat(1.0, "embrace")
+	add_legend(15, sim, "embrace")
+	progress_reveal("childer", sim)
+	sim.emit_cue("coterie.embraced", { "member": member.duplicate(true), "target_id": target.id, "pos": target.pos })
+	return member
+
 func collect_coterie_jobs() -> Dictionary:
 	var cash := 0
 	var vitae := 0
@@ -687,6 +790,12 @@ func collect_coterie_jobs() -> Dictionary:
 		cash += roundi(float(job.get("cash", 0)) * mult)
 		vitae += roundi(float(job.get("vitae", 0)) * mult)
 	return { "cash": cash, "vitae": vitae }
+
+func collect_coterie_wages() -> Dictionary:
+	var vitae := 0
+	for member in coterie:
+		vitae += 14 if bool(member.get("isChilde", false)) else 6
+	return { "cash": 0, "vitae": vitae }
 
 func change_reputation(faction: String, amount: float, sim = null, apply_rival: bool = true) -> void:
 	_ensure_reputation()
@@ -732,6 +841,7 @@ func claim_domain(domain_id: String, sim = null) -> bool:
 	stats["domainsClaimed"] = int(stats.get("domainsClaimed", 0)) + 1
 	add_legend(18, sim, "domain")
 	progress_reveal("domains", sim)
+	change_reputation("anarch", 8.0, sim)
 	if sim != null:
 		sim.emit_cue("domain.claimed", { "domain_id": domain_id, "owned": owned_domain_count(), "cap": legend_domain_cap() })
 	return true
@@ -969,6 +1079,53 @@ func on_nemesis_dead(target: SimEntity, sim = null) -> void:
 	if sim != null:
 		sim.emit_cue("nemesis.dead", { "name": name, "entity_id": target.id, "pos": target.pos })
 
+func trigger_event(event_id: String, sim) -> bool:
+	if sim == null or not EVENT_DEFS.has(event_id):
+		return false
+	match event_id:
+		"gangwar":
+			return _event_gangwar(sim)
+		"crackdown":
+			return _event_crackdown(sim)
+		"bloodhunt":
+			return _event_bloodhunt(sim)
+		"vip":
+			return _event_vip(sim)
+		"faint":
+			return _event_faint(sim)
+		"domainraid":
+			return _event_domainraid(sim)
+	return false
+
+func domain_upkeep() -> Dictionary:
+	_ensure_domains()
+	var cash := 0
+	for d in Catalog.DISTRICTS:
+		var id := String(d["id"])
+		if domains[id].get("owner", null) == "player":
+			cash += roundi(18.0 * (1.0 + float(d.get("danger", 0.0))))
+	return { "cash": cash, "vitae": 0 }
+
+func raise_terror_by_id(domain_id: String, amount: float, sim = null, reason: String = "") -> bool:
+	_ensure_domains()
+	if not district_state.has(domain_id):
+		return false
+	var before := float(district_state[domain_id].get("terror", 0.0))
+	district_state[domain_id]["terror"] = clamp(before + amount, 0.0, 1.0)
+	if sim != null and not is_equal_approx(before, float(district_state[domain_id]["terror"])):
+		sim.emit_cue("domain.terror", { "domain_id": domain_id, "terror": district_state[domain_id]["terror"], "reason": reason })
+	return true
+
+func raise_prosperity_by_id(domain_id: String, amount: float, sim = null, reason: String = "") -> bool:
+	_ensure_domains()
+	if not district_state.has(domain_id):
+		return false
+	var before := float(district_state[domain_id].get("prosperity", 0.0))
+	district_state[domain_id]["prosperity"] = clamp(before + amount, 0.0, 1.0)
+	if sim != null and not is_equal_approx(before, float(district_state[domain_id]["prosperity"])):
+		sim.emit_cue("domain.prosperity", { "domain_id": domain_id, "prosperity": district_state[domain_id]["prosperity"], "reason": reason })
+	return true
+
 func serialize(sim = null) -> Dictionary:
 	var runtime := {}
 	if sim != null and sim.player != null and sim.player.behaviour != null:
@@ -1023,6 +1180,10 @@ func serialize(sim = null) -> Dictionary:
 		"legend": legend,
 		"progress": progress.duplicate(true),
 		"nemeses": nemeses.duplicate(true),
+		"event_timer": event_timer,
+		"active_events": active_events.duplicate(true),
+		"pending_raids": pending_raids.duplicate(true),
+		"next_event_id": next_event_id,
 		"runtime": runtime,
 	}
 
@@ -1068,6 +1229,10 @@ func restore(data: Dictionary, sim = null) -> bool:
 	legend = max(0, int(data.get("legend", 0)))
 	progress = _clean_progress(data.get("progress", {}))
 	nemeses = _clean_nemeses(data.get("nemeses", []))
+	event_timer = maxf(0.0, float(data.get("event_timer", 75.0)))
+	active_events = _clean_events(data.get("active_events", []))
+	pending_raids = _clean_raids(data.get("pending_raids", []))
+	next_event_id = max(1, int(data.get("next_event_id", 1)))
 	_ensure_haven()
 	_ensure_reputation()
 	_ensure_domains()
@@ -1108,7 +1273,8 @@ func state_hash() -> int:
 		_hash_variant(businesses), _hash_variant(active_mission),
 		_hash_variant(mission_offers), _hash_variant(chain_progress),
 		_hash_variant(chain_titles), _hash_variant(achievements), _hash_variant(stats),
-		legend, _hash_variant(progress), _hash_variant(nemeses)
+		legend, _hash_variant(progress), _hash_variant(nemeses), snapped(event_timer, 0.001),
+		next_event_id, _hash_variant(active_events), _hash_variant(pending_raids)
 	])
 
 static func new_attributes() -> Dictionary:
@@ -1171,10 +1337,20 @@ func resolve_dawn(sim) -> void:
 	var coterie_pay := collect_coterie_jobs()
 	var domain_pay := collect_domain_tithe()
 	var business_pay := _collect_businesses()
-	var cash := int(coterie_pay["cash"]) + int(domain_pay["cash"]) + int(business_pay["cash"])
-	var vitae := int(coterie_pay["vitae"]) + int(domain_pay["vitae"]) + int(business_pay["vitae"])
-	money += cash
-	deposit_vitae(float(vitae))
+	var coterie_cost := collect_coterie_wages()
+	var domain_cost := domain_upkeep()
+	var gross_cash := int(coterie_pay["cash"]) + int(domain_pay["cash"]) + int(business_pay["cash"])
+	var gross_vitae := int(coterie_pay["vitae"]) + int(domain_pay["vitae"]) + int(business_pay["vitae"])
+	var upkeep_cash := int(coterie_cost["cash"]) + int(domain_cost["cash"])
+	var upkeep_vitae := int(coterie_cost["vitae"]) + int(domain_cost["vitae"])
+	var cash := gross_cash - upkeep_cash
+	var vitae := gross_vitae - upkeep_vitae
+	money = max(0, money + cash)
+	if vitae >= 0:
+		deposit_vitae(float(vitae))
+	else:
+		_ensure_haven()
+		haven["cellarVitae"] = maxf(0.0, float(haven.get("cellarVitae", 0.0)) + float(vitae))
 	day += 1
 	clock = NIGHT_START
 	dawn_warning_sent = false
@@ -1185,7 +1361,7 @@ func resolve_dawn(sim) -> void:
 			if sim.player.hp <= 0.0:
 				sim.emit_cue("player.torpor", { "day": day, "pos": sim.player.pos })
 	sim.reduce_heat(1.5, "dawn")
-	sim.emit_cue("dawn.arrive", { "day": day, "cash": cash, "vitae": vitae, "clock": clock })
+	sim.emit_cue("dawn.arrive", { "day": day, "cash": cash, "vitae": vitae, "gross_cash": gross_cash, "gross_vitae": gross_vitae, "upkeep_cash": upkeep_cash, "upkeep_vitae": upkeep_vitae, "clock": clock })
 
 func _update_active_mission(delta: float, sim) -> void:
 	if active_mission.is_empty() or String(active_mission.get("state", "")) != "active":
@@ -1254,6 +1430,198 @@ func _setup_mission(sim) -> void:
 			active_mission["courier_member_id"] = member.get("id", 0)
 		"heist":
 			sim.add_heat(0.8, "mission")
+
+func _update_event_director(delta: float, sim) -> void:
+	_resolve_pending_raids(sim)
+	_prune_active_events(sim)
+	event_timer -= delta
+	if event_timer > 0.0:
+		return
+	event_timer = 90.0 + _draw_float(sim) * 70.0
+	var event_id := _pick_event_id(sim)
+	if event_id != "":
+		trigger_event(event_id, sim)
+
+func _pick_event_id(sim) -> String:
+	var pool: Array[String] = []
+	var stars: int = sim.heat_stars() if sim != null else 0
+	var has_domain := owned_domain_count() > 0
+	var ids: Array = EVENT_DEFS.keys()
+	ids.sort()
+	for id in ids:
+		var def: Dictionary = EVENT_DEFS[id]
+		if stars < int(def.get("minStars", 0)):
+			continue
+		if bool(def.get("needsDomain", false)) and not has_domain:
+			continue
+		for _i in range(int(def.get("weight", 1))):
+			pool.append(String(id))
+	if pool.is_empty():
+		return ""
+	return pool[_draw_index(sim, pool.size())]
+
+func _event_gangwar(sim) -> bool:
+	var pos := _pick_event_pos(sim, 500.0, 900.0)
+	if pos == Vector2.INF:
+		return false
+	var event_id := _register_event("gangwar", pos, 60.0, sim)
+	var red: Array[int] = []
+	var blue: Array[int] = []
+	for i in range(3):
+		var a := _spawn_event_npc(sim, "gunner", pos + _event_offset(sim, 70.0), event_id, { "state": "guard", "hostile_to_player": false })
+		a.tags["event_side"] = "red"
+		red.append(a.id)
+		var b_type := "gunner" if _draw_float(sim) < 0.5 else "thug"
+		var b := _spawn_event_npc(sim, b_type, pos + Vector2(100.0, 0.0) + _event_offset(sim, 70.0), event_id, { "state": "guard", "hostile_to_player": false })
+		b.tags["event_side"] = "blue"
+		blue.append(b.id)
+	sim.emit_cue("event.gangwar", { "event_id": event_id, "pos": pos, "red": red, "blue": blue, "caption": "A gang war erupts nearby." })
+	return true
+
+func _event_crackdown(sim) -> bool:
+	var pos := _pick_event_pos(sim, 400.0, 700.0)
+	if pos == Vector2.INF:
+		return false
+	var event_id := _register_event("crackdown", pos, 75.0, sim)
+	var units: Array[int] = []
+	for i in range(4):
+		var unit := _spawn_event_npc(sim, "swat", pos + _event_offset(sim, 120.0), event_id, { "state": "search", "hostile_to_player": false, "responder": true })
+		unit.responder = true
+		unit.search_ticks = 420
+		units.append(unit.id)
+	sim.emit_cue("event.crackdown", { "event_id": event_id, "pos": pos, "units": units, "caption": "Sirens sweep the district." })
+	return true
+
+func _event_bloodhunt(sim) -> bool:
+	var pos := _pick_event_pos(sim, 600.0, 1000.0)
+	if pos == Vector2.INF:
+		return false
+	var event_id := _register_event("bloodhunt", pos, 90.0, sim)
+	var hunters: Array[int] = []
+	for i in range(3):
+		var hunter := _spawn_event_npc(sim, "hunter", pos + _event_offset(sim, 60.0), event_id, { "state": "chase", "hostile_to_player": true })
+		hunter.hostile_to_player = true
+		hunters.append(hunter.id)
+	sim.add_heat(0.6, "bloodhunt")
+	sim.emit_cue("event.bloodhunt", { "event_id": event_id, "pos": pos, "hunters": hunters, "caption": "Second Inquisition hunters have your scent." })
+	return true
+
+func _event_vip(sim) -> bool:
+	var pos := _pick_event_pos(sim, 300.0, 600.0)
+	if pos == Vector2.INF:
+		return false
+	var event_id := _register_event("vip", pos, 45.0, sim)
+	var vip := _spawn_event_npc(sim, "ped", pos, event_id, { "state": "wander", "hostile_to_player": false })
+	vip.victim_type = "noble"
+	vip.blood_yield = 34.0
+	vip.blood_left = 52.0
+	vip.tags["vip"] = true
+	sim.emit_cue("event.vip", { "event_id": event_id, "entity_id": vip.id, "pos": pos, "caption": "An aristocrat lingers nearby." })
+	return true
+
+func _event_faint(sim) -> bool:
+	var pos := _pick_event_pos(sim, 200.0, 500.0)
+	if pos == Vector2.INF:
+		return false
+	var event_id := _register_event("faint", pos, 45.0, sim)
+	var mortals: Array[int] = []
+	for i in range(3):
+		var mortal := _spawn_event_npc(sim, "ped", pos + _event_offset(sim, 60.0), event_id, { "state": "wander", "hostile_to_player": false })
+		mortal.victim_type = "junkie"
+		mortal.blood_yield = 18.0
+		mortal.blood_left = 28.0
+		mortal.apply_status("mesmerized", 120)
+		mortals.append(mortal.id)
+	sim.emit_cue("event.faint", { "event_id": event_id, "pos": pos, "mortals": mortals, "caption": "Dazed revelers stumble nearby." })
+	return true
+
+func _event_domainraid(sim) -> bool:
+	_ensure_domains()
+	var owned: Array[String] = []
+	for id in domains:
+		if domains[id].get("owner", null) == "player":
+			owned.append(String(id))
+	owned.sort()
+	if owned.is_empty():
+		return false
+	var domain_id := owned[_draw_index(sim, owned.size())]
+	var pos := _pick_event_pos(sim, 400.0, 800.0)
+	if pos == Vector2.INF:
+		return false
+	var event_id := _register_event("domainraid", pos, 120.0, sim)
+	var raiders: Array[int] = []
+	var count := 4 + _draw_index(sim, 3)
+	for i in range(count):
+		var type_id := "gunner" if _draw_float(sim) < 0.5 else "thug"
+		var raider := _spawn_event_npc(sim, type_id, pos + _event_offset(sim, 100.0), event_id, { "state": "guard", "hostile_to_player": false })
+		raider.tags["domain_raider"] = true
+		raider.tags["raid_id"] = event_id
+		raider.tags["raid_district"] = domain_id
+		raiders.append(raider.id)
+	pending_raids.append({
+		"event_id": event_id,
+		"domain_id": domain_id,
+		"deadline_tick": sim.tick + 90 * 60,
+		"pos": pos,
+	})
+	sim.emit_cue("domain.raid_started", { "event_id": event_id, "domain_id": domain_id, "pos": pos, "raiders": raiders, "deadline_tick": sim.tick + 90 * 60 })
+	return true
+
+func _resolve_pending_raids(sim) -> void:
+	if pending_raids.is_empty():
+		return
+	for i in range(pending_raids.size() - 1, -1, -1):
+		var raid: Dictionary = pending_raids[i]
+		if sim.tick < int(raid.get("deadline_tick", 0)):
+			continue
+		var event_id := int(raid.get("event_id", 0))
+		var alive := 0
+		for e in sim.entities:
+			if e != null and not e.dead and int(e.tags.get("raid_id", 0)) == event_id:
+				alive += 1
+		var domain_id := String(raid.get("domain_id", ""))
+		if alive > 0:
+			raise_terror_by_id(domain_id, 0.25, sim, "raid")
+			raise_prosperity_by_id(domain_id, -0.15, sim, "raid")
+			sim.emit_cue("domain.raid_failed", { "event_id": event_id, "domain_id": domain_id, "alive": alive, "pos": raid.get("pos", Vector2.ZERO) })
+		else:
+			raise_prosperity_by_id(domain_id, 0.10, sim, "raid_defended")
+			add_legend(8, sim, "raid_defended")
+			sim.emit_cue("domain.raid_defended", { "event_id": event_id, "domain_id": domain_id, "pos": raid.get("pos", Vector2.ZERO) })
+		pending_raids.remove_at(i)
+
+func _prune_active_events(sim) -> void:
+	for i in range(active_events.size() - 1, -1, -1):
+		var rec: Dictionary = active_events[i]
+		if sim.tick >= int(rec.get("expires_tick", 0)):
+			active_events.remove_at(i)
+
+func _register_event(event_type: String, pos: Vector2, ttl_seconds: float, sim) -> int:
+	var event_id := next_event_id
+	next_event_id += 1
+	active_events.append({ "id": event_id, "type": event_type, "pos": pos, "started_tick": sim.tick, "expires_tick": sim.tick + roundi(ttl_seconds * 60.0) })
+	sim.emit_cue("event.started", { "event_id": event_id, "type": event_type, "name": EVENT_DEFS.get(event_type, {}).get("name", event_type), "pos": pos })
+	return event_id
+
+func _spawn_event_npc(sim, type_id: String, pos: Vector2, event_id: int, opts: Dictionary) -> SimEntity:
+	var npc: SimEntity = sim.spawn_npc(type_id, pos, opts)
+	npc.tags["event_id"] = event_id
+	npc.tags["event_type"] = active_events.back().get("type", "")
+	return npc
+
+func _pick_event_pos(sim, min_d: float, max_d: float) -> Vector2:
+	if sim == null or sim.player == null or sim.world == null:
+		return Vector2.INF
+	for i in range(30):
+		var angle := _draw_float(sim) * TAU
+		var dist := min_d + _draw_float(sim) * (max_d - min_d)
+		var p: Vector2 = sim.player.pos + Vector2.RIGHT.rotated(angle) * dist
+		if not sim.world.is_blocked_world(p, 8.0):
+			return p
+	return sim.world.nearest_open_around(sim.player.pos, min_d, max_d, _draw_index(sim, 997))
+
+func _event_offset(sim, spread: float) -> Vector2:
+	return Vector2((_draw_float(sim) - 0.5) * spread, (_draw_float(sim) - 0.5) * spread)
 
 func _collect_businesses() -> Dictionary:
 	var cash := 0
@@ -1328,6 +1696,15 @@ func _has_any_coterie_job() -> bool:
 		if String(member.get("assignment", "none")) != "none":
 			return true
 	return false
+
+func _active_coterie_count(sim) -> int:
+	if sim == null:
+		return 0
+	var count := 0
+	for e in sim.entities:
+		if e != null and not e.dead and e.tags.has("coterie_id"):
+			count += 1
+	return count
 
 func _inventory_index(item_id: int) -> int:
 	for i in range(inventory.size()):
@@ -1466,6 +1843,41 @@ func _clean_nemeses(source) -> Array[Dictionary]:
 				"archetype": String(rec.get("archetype", "hunter")),
 				"escaped_tick": max(0, int(rec.get("escaped_tick", 0))),
 				"returned_tick": max(0, int(rec.get("returned_tick", 0))),
+			})
+	return out
+
+func _clean_events(source) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if source is Array:
+		for item in source:
+			if not (item is Dictionary) or out.size() >= 16:
+				continue
+			var rec: Dictionary = item
+			out.append({
+				"id": max(1, int(rec.get("id", 1))),
+				"type": String(rec.get("type", "")),
+				"pos": rec.get("pos", Vector2.ZERO) if rec.get("pos", null) is Vector2 else Vector2.ZERO,
+				"started_tick": max(0, int(rec.get("started_tick", 0))),
+				"expires_tick": max(0, int(rec.get("expires_tick", 0))),
+			})
+	return out
+
+func _clean_raids(source) -> Array[Dictionary]:
+	_ensure_domains()
+	var out: Array[Dictionary] = []
+	if source is Array:
+		for item in source:
+			if not (item is Dictionary) or out.size() >= 8:
+				continue
+			var rec: Dictionary = item
+			var domain_id := String(rec.get("domain_id", ""))
+			if not domains.has(domain_id):
+				continue
+			out.append({
+				"event_id": max(1, int(rec.get("event_id", 1))),
+				"domain_id": domain_id,
+				"deadline_tick": max(0, int(rec.get("deadline_tick", 0))),
+				"pos": rec.get("pos", Vector2.ZERO) if rec.get("pos", null) is Vector2 else Vector2.ZERO,
 			})
 	return out
 

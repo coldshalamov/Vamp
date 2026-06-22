@@ -494,6 +494,10 @@ func _try_finish(sim) -> bool:
 		sim.meta.on_nemesis_dead(target, sim)
 	if sim.meta != null and target.tags.has("baron_of"):
 		sim.meta.claim_domain(String(target.tags["baron_of"]), sim)
+	if sim.meta != null:
+		sim.meta.gain_mastery("brawn", 5.0, sim)
+		sim.meta.award_trophy_for(target, sim)
+		sim.meta.codex_mark("killedKinds", target.faction if target.faction != "" else target.type_id, sim)
 	sim.emit_cue("npc.death", { "entity_id": target.id, "type": target.type_id, "pos": target.pos, "finisher": true })
 	sim.emit_cue("finisher.start", { "target_id": target.id, "pos": target.pos })
 	return true

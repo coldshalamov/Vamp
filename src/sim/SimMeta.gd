@@ -42,6 +42,37 @@ const EVENT_DEFS := {
 	"faint": { "weight": 2, "minStars": 0, "name": "Fainting Mortals" },
 	"domainraid": { "weight": 2, "minStars": 0, "name": "Rival Domain Raid", "needsDomain": true },
 }
+const MASTERY_CAP := 12
+const MASTERY_TRACKS := {
+	"predation": { "name": "Predation", "per": { "pct": { "feedYield": 0.02, "feedSpeed": 0.02 } } },
+	"sorcery": { "name": "Hemomancy", "per": { "pct": { "spellPower": 0.025 } } },
+	"brawn": { "name": "Brutality", "per": { "pct": { "meleeDmg": 0.025 } } },
+	"survival": { "name": "Fortitude", "per": { "pct": { "maxHP": 0.02, "armor": 0.01 } } },
+	"driving": { "name": "Road Reaver", "per": { "pct": { "vehicle": 0.03 } } },
+	"nightstalker": { "name": "Nightstalker", "per": { "add": { "critChance": 1.0 }, "pct": { "moveSpeed": 0.01 } } },
+}
+const TROPHY_DEFS := {
+	"hunter": { "name": "Hunter's Fang", "mod": { "pct": { "sunResist": 0.08 } }, "desc": "+8% sun resistance" },
+	"inquis": { "name": "Inquisitor's Badge", "mod": { "pct": { "armor": 0.05 } }, "desc": "+5% armor" },
+	"elder": { "name": "Elder's Skull", "mod": { "pct": { "maxHP": 0.08 } }, "desc": "+8% max HP" },
+	"baron": { "name": "Baron's Sigil", "mod": { "pct": { "discount": 0.06, "maxBlood": 0.05 } }, "desc": "-6% prices, +5% vitae" },
+	"nemesis": { "name": "Nemesis' Heart", "mod": { "pct": { "meleeDmg": 0.08, "spellPower": 0.08 } }, "desc": "+8% all damage" },
+}
+const CODEX_TOTALS := { "fedTypes": 6, "killedKinds": 5, "relicsSeen": 5, "districts": 4, "powers": 20 }
+const CODEX_MODS := {
+	"fedTypes": { "pct": { "feedYield": 0.10, "maxBlood": 0.05 } },
+	"killedKinds": { "pct": { "meleeDmg": 0.08 } },
+	"relicsSeen": { "pct": { "spellPower": 0.08, "meleeDmg": 0.08 } },
+	"districts": { "pct": { "moveSpeed": 0.06 }, "add": { "critChance": 3.0 } },
+	"powers": { "pct": { "cdr": 0.06 } },
+}
+const ALCHEMY_RECIPES := {
+	"refine": { "inRarity": "common", "outRarity": "uncommon", "need": 3, "minWorkshop": 1 },
+	"distill": { "inRarity": "uncommon", "outRarity": "rare", "need": 3, "minWorkshop": 2 },
+	"sublime": { "inRarity": "rare", "outRarity": "epic", "need": 3, "minWorkshop": 3 },
+	"extract": { "inRarity": "", "outRarity": "", "need": 1, "minWorkshop": 1 },
+}
+const EXTRACT_VITAE := { "common": 4, "uncommon": 10, "rare": 22, "epic": 48, "legendary": 100, "relic": 200 }
 
 var clan_id: String = "brujah"
 var difficulty: String = "normal"
@@ -92,6 +123,10 @@ var event_timer: float = 75.0
 var active_events: Array[Dictionary] = []
 var pending_raids: Array[Dictionary] = []
 var next_event_id: int = 1
+var mastery: Dictionary = {}
+var trophies: Dictionary = {}
+var codex: Dictionary = {}
+var bloodline: Dictionary = {}
 
 func reset(new_clan_id: String) -> void:
 	clan_id = _clean_clan(new_clan_id)
@@ -142,6 +177,12 @@ func reset(new_clan_id: String) -> void:
 	active_events.clear()
 	pending_raids.clear()
 	next_event_id = 1
+	mastery.clear()
+	trophies.clear()
+	codex.clear()
+	bloodline = { "generation": 1, "bonus": 0.0, "ledger": [] }
+	_ensure_mastery()
+	_ensure_codex()
 	stats = {
 		"kills": 0,
 		"feeds": 0,
@@ -181,6 +222,10 @@ func recompute() -> Dictionary:
 	add_mods(bag, aggregate_equipment_mods())
 	add_mods(bag, aggregate_haven_mods())
 	add_mods(bag, aggregate_reputation_mods())
+	add_mods(bag, aggregate_mastery_mods())
+	add_mods(bag, aggregate_trophy_mods())
+	add_mods(bag, aggregate_codex_mods())
+	add_mods(bag, aggregate_bloodline_mods())
 	add_mods(bag, Catalog.CLAN_BANES.get(clan_id, {}))
 	add_mods(bag, Catalog.CLAN_BOONS.get(clan_id, {}))
 	mods = bag
@@ -894,6 +939,11 @@ func mission_event(event_id: String, data: Dictionary, sim) -> void:
 	if event_id == "feed.spare" or event_id == "feed.kill":
 		stats["feeds"] = int(stats.get("feeds", 0)) + 1
 		progress_reveal("feed", sim)
+		gain_mastery("predation", 6.0, sim)
+		if data.has("target_id") and sim != null:
+			var feed_target: SimEntity = sim.get_entity(int(data["target_id"]))
+			if feed_target != null:
+				codex_mark("fedTypes", feed_target.victim_type if feed_target.victim_type != "" else feed_target.type_id, sim)
 	elif event_id == "npc.death":
 		stats["kills"] = int(stats.get("kills", 0)) + 1
 		if bool(data.get("finisher", false)):
@@ -901,6 +951,10 @@ func mission_event(event_id: String, data: Dictionary, sim) -> void:
 	elif event_id == "power.cast":
 		stats["castsTotal"] = int(stats.get("castsTotal", 0)) + 1
 		progress_reveal("powers", sim)
+		codex_mark("powers", String(data.get("power_id", "")), sim)
+		var power_id := String(data.get("power_id", ""))
+		if power_id.begins_with("bs_") or power_id.begins_with("shd_") or power_id.begins_with("dem_"):
+			gain_mastery("sorcery", 4.0, sim)
 	if active_mission.is_empty() or String(active_mission.get("state", "")) != "active":
 		return
 	var type_id := String(active_mission["type"])
@@ -1079,6 +1133,143 @@ func on_nemesis_dead(target: SimEntity, sim = null) -> void:
 	if sim != null:
 		sim.emit_cue("nemesis.dead", { "name": name, "entity_id": target.id, "pos": target.pos })
 
+func mastery_rank_for(xp_amount: float) -> int:
+	return min(MASTERY_CAP, floori(sqrt(maxf(0.0, xp_amount) / 28.0)))
+
+func gain_mastery(track_id: String, amount: float, sim = null) -> bool:
+	if not MASTERY_TRACKS.has(track_id) or amount <= 0.0:
+		return false
+	_ensure_mastery()
+	var rec: Dictionary = mastery[track_id]
+	rec["xp"] = float(rec.get("xp", 0.0)) + amount
+	var next_rank := mastery_rank_for(float(rec["xp"]))
+	var ranked := next_rank > int(rec.get("rank", 0))
+	if ranked:
+		rec["rank"] = next_rank
+	mastery[track_id] = rec
+	if ranked:
+		recompute()
+		if sim != null:
+			apply_to_runtime(sim)
+			sim.emit_cue("mastery.rank", { "track_id": track_id, "rank": next_rank, "name": MASTERY_TRACKS[track_id].get("name", track_id) })
+		progress_reveal("mastery", sim)
+	return ranked
+
+func award_trophy_for(target: SimEntity, sim = null) -> bool:
+	var key := _trophy_key_for(target)
+	if key == "" or trophies.has(key):
+		return false
+	var def: Dictionary = TROPHY_DEFS[key]
+	trophies[key] = { "id": key, "name": def["name"], "desc": def["desc"] }
+	add_legend(4, sim, "trophy")
+	recompute()
+	if sim != null:
+		apply_to_runtime(sim)
+		sim.emit_cue("trophy.awarded", { "id": key, "name": def["name"], "desc": def["desc"], "target_id": target.id if target != null else 0 })
+	return true
+
+func codex_mark(category: String, key: String, sim = null) -> bool:
+	if key == "" or not CODEX_TOTALS.has(category):
+		return false
+	_ensure_codex()
+	if bool(codex[category].get(key, false)):
+		return false
+	codex[category][key] = true
+	var completed := _codex_check_complete(category, sim)
+	if sim != null:
+		sim.emit_cue("codex.marked", { "category": category, "key": key, "count": codex[category].size(), "complete": completed })
+	progress_reveal("codex", sim)
+	return true
+
+func alchemy_available() -> Array[String]:
+	_ensure_haven()
+	var workshop := int(haven.get("rooms", {}).get("workshop", 0))
+	var out: Array[String] = []
+	var ids := ALCHEMY_RECIPES.keys()
+	ids.sort()
+	for id in ids:
+		if workshop >= int(ALCHEMY_RECIPES[id].get("minWorkshop", 1)):
+			out.append(String(id))
+	return out
+
+func alchemy_input_count(recipe_id: String) -> int:
+	if not ALCHEMY_RECIPES.has(recipe_id):
+		return 0
+	var recipe: Dictionary = ALCHEMY_RECIPES[recipe_id]
+	if recipe_id == "extract":
+		return inventory.size()
+	var count := 0
+	for item in inventory:
+		if String(item.get("rarity", "common")) == String(recipe.get("inRarity", "")):
+			count += 1
+	return count
+
+func alchemy_brew(recipe_id: String, sim = null) -> bool:
+	_ensure_haven()
+	if not ALCHEMY_RECIPES.has(recipe_id) or not alchemy_available().has(recipe_id):
+		return false
+	var recipe: Dictionary = ALCHEMY_RECIPES[recipe_id]
+	if recipe_id == "extract":
+		if inventory.is_empty():
+			return false
+		var cheapest_idx := 0
+		var cheapest_value := sell_value(inventory[0])
+		for i in range(1, inventory.size()):
+			var value := sell_value(inventory[i])
+			if value < cheapest_value:
+				cheapest_value = value
+				cheapest_idx = i
+		var item: Dictionary = inventory[cheapest_idx]
+		var vitae := int(EXTRACT_VITAE.get(String(item.get("rarity", "common")), 4))
+		inventory.remove_at(cheapest_idx)
+		deposit_vitae(float(vitae))
+		if sim != null:
+			sim.emit_cue("alchemy.extracted", { "item": item.get("name", ""), "vitae": vitae })
+		return true
+	var need := int(recipe.get("need", 3))
+	if alchemy_input_count(recipe_id) < need:
+		return false
+	var removed := 0
+	for i in range(inventory.size() - 1, -1, -1):
+		if removed >= need:
+			break
+		if String(inventory[i].get("rarity", "common")) == String(recipe.get("inRarity", "")):
+			inventory.remove_at(i)
+			removed += 1
+	var out_item := generate_item(level, String(recipe.get("outRarity", "uncommon")), "", sim)
+	add_item(out_item, sim)
+	if sim != null:
+		sim.emit_cue("alchemy.brewed", { "recipe_id": recipe_id, "item": out_item.get("name", ""), "rarity": out_item.get("rarity", "") })
+	progress_reveal("alchemy", sim)
+	return true
+
+func can_enter_torpor() -> bool:
+	return legend >= 650
+
+func enter_torpor(sim = null) -> bool:
+	if not can_enter_torpor():
+		return false
+	_ensure_bloodline()
+	var ledger: Array = bloodline.get("ledger", [])
+	ledger.append({
+		"title": legend_title().get("name", "Elder"),
+		"clan": clan_id,
+		"legend": legend,
+		"domains": owned_domain_count(),
+		"day": day,
+	})
+	while ledger.size() > 12:
+		ledger.pop_front()
+	bloodline["generation"] = int(bloodline.get("generation", 1)) + 1
+	bloodline["bonus"] = minf(0.6, float(bloodline.get("bonus", 0.0)) + 0.05)
+	bloodline["ledger"] = ledger
+	progress_reveal("prestige", sim)
+	recompute()
+	if sim != null:
+		apply_to_runtime(sim)
+		sim.emit_cue("legacy.torpor", { "generation": bloodline["generation"], "bonus": bloodline["bonus"], "ledger": ledger.duplicate(true) })
+	return true
+
 func trigger_event(event_id: String, sim) -> bool:
 	if sim == null or not EVENT_DEFS.has(event_id):
 		return false
@@ -1184,6 +1375,10 @@ func serialize(sim = null) -> Dictionary:
 		"active_events": active_events.duplicate(true),
 		"pending_raids": pending_raids.duplicate(true),
 		"next_event_id": next_event_id,
+		"mastery": mastery.duplicate(true),
+		"trophies": trophies.duplicate(true),
+		"codex": codex.duplicate(true),
+		"bloodline": bloodline.duplicate(true),
 		"runtime": runtime,
 	}
 
@@ -1233,9 +1428,16 @@ func restore(data: Dictionary, sim = null) -> bool:
 	active_events = _clean_events(data.get("active_events", []))
 	pending_raids = _clean_raids(data.get("pending_raids", []))
 	next_event_id = max(1, int(data.get("next_event_id", 1)))
+	mastery = _clean_mastery(data.get("mastery", {}))
+	trophies = _clean_trophies(data.get("trophies", {}))
+	codex = _clean_codex(data.get("codex", {}))
+	bloodline = _clean_bloodline(data.get("bloodline", {}))
 	_ensure_haven()
 	_ensure_reputation()
 	_ensure_domains()
+	_ensure_mastery()
+	_ensure_codex()
+	_ensure_bloodline()
 	recompute()
 	if sim != null:
 		var runtime: Dictionary = data.get("runtime", {})
@@ -1274,7 +1476,8 @@ func state_hash() -> int:
 		_hash_variant(mission_offers), _hash_variant(chain_progress),
 		_hash_variant(chain_titles), _hash_variant(achievements), _hash_variant(stats),
 		legend, _hash_variant(progress), _hash_variant(nemeses), snapped(event_timer, 0.001),
-		next_event_id, _hash_variant(active_events), _hash_variant(pending_raids)
+		next_event_id, _hash_variant(active_events), _hash_variant(pending_raids),
+		_hash_variant(mastery), _hash_variant(trophies), _hash_variant(codex), _hash_variant(bloodline)
 	])
 
 static func new_attributes() -> Dictionary:
@@ -1332,6 +1535,40 @@ func aggregate_reputation_mods() -> Dictionary:
 	out["pct"]["discount"] = minf(0.18, pos / 1000.0)
 	out["pct"]["xpMult"] = minf(0.10, pos / 2000.0)
 	return out
+
+func aggregate_mastery_mods() -> Dictionary:
+	_ensure_mastery()
+	var out := blank_mods()
+	for id in mastery:
+		var rank := int(mastery[id].get("rank", 0))
+		if rank <= 0:
+			continue
+		var track: Dictionary = MASTERY_TRACKS.get(String(id), {})
+		add_mods(out, _multiply_mods(track.get("per", {}), float(rank)))
+	return out
+
+func aggregate_trophy_mods() -> Dictionary:
+	var out := blank_mods()
+	for id in trophies:
+		var def: Dictionary = TROPHY_DEFS.get(String(id), {})
+		add_mods(out, def.get("mod", {}))
+	return out
+
+func aggregate_codex_mods() -> Dictionary:
+	_ensure_codex()
+	var out := blank_mods()
+	var complete: Dictionary = codex.get("complete", {})
+	for id in complete:
+		if bool(complete[id]):
+			add_mods(out, CODEX_MODS.get(String(id), {}))
+	return out
+
+func aggregate_bloodline_mods() -> Dictionary:
+	_ensure_bloodline()
+	var bonus := float(bloodline.get("bonus", 0.0))
+	if bonus <= 0.0:
+		return blank_mods()
+	return { "add": {}, "pct": { "meleeDmg": bonus, "spellPower": bonus, "maxHP": bonus, "maxBlood": bonus, "feedYield": bonus } }
 
 func resolve_dawn(sim) -> void:
 	var coterie_pay := collect_coterie_jobs()
@@ -1697,6 +1934,56 @@ func _has_any_coterie_job() -> bool:
 			return true
 	return false
 
+func _ensure_mastery() -> void:
+	for id in MASTERY_TRACKS:
+		if not mastery.has(id) or not (mastery[id] is Dictionary):
+			mastery[id] = { "xp": 0.0, "rank": 0 }
+		else:
+			mastery[id]["xp"] = maxf(0.0, float(mastery[id].get("xp", 0.0)))
+			mastery[id]["rank"] = clamp(int(mastery[id].get("rank", mastery_rank_for(float(mastery[id]["xp"])))), 0, MASTERY_CAP)
+
+func _ensure_codex() -> void:
+	for id in CODEX_TOTALS:
+		if not codex.has(id) or not (codex[id] is Dictionary):
+			codex[id] = {}
+	if not codex.has("complete") or not (codex["complete"] is Dictionary):
+		codex["complete"] = {}
+
+func _ensure_bloodline() -> void:
+	if bloodline.is_empty():
+		bloodline = { "generation": 1, "bonus": 0.0, "ledger": [] }
+	bloodline["generation"] = max(1, int(bloodline.get("generation", 1)))
+	bloodline["bonus"] = clamp(float(bloodline.get("bonus", 0.0)), 0.0, 0.6)
+	if not (bloodline.get("ledger", []) is Array):
+		bloodline["ledger"] = []
+
+func _codex_check_complete(category: String, sim = null) -> bool:
+	_ensure_codex()
+	var have: int = known_powers.size() if category == "powers" else codex[category].size()
+	if have < int(CODEX_TOTALS.get(category, 999999)):
+		return false
+	if bool(codex["complete"].get(category, false)):
+		return false
+	codex["complete"][category] = true
+	recompute()
+	if sim != null:
+		apply_to_runtime(sim)
+		sim.emit_cue("codex.complete", { "category": category, "mods": CODEX_MODS.get(category, {}) })
+	return true
+
+func _trophy_key_for(target: SimEntity) -> String:
+	if target == null:
+		return ""
+	if target.tags.has("baron_of"):
+		return "baron"
+	if target.tags.has("nemesis_name"):
+		return "nemesis"
+	if target.type_id == "elder":
+		return "elder"
+	if target.faction == "inquis":
+		return "inquis" if bool(target.tags.get("elite", false)) or target.type_id in ["swat", "elder"] else "hunter"
+	return ""
+
 func _active_coterie_count(sim) -> int:
 	if sim == null:
 		return 0
@@ -1844,6 +2131,74 @@ func _clean_nemeses(source) -> Array[Dictionary]:
 				"escaped_tick": max(0, int(rec.get("escaped_tick", 0))),
 				"returned_tick": max(0, int(rec.get("returned_tick", 0))),
 			})
+	return out
+
+func _clean_mastery(source) -> Dictionary:
+	var out := {}
+	for id in MASTERY_TRACKS:
+		out[id] = { "xp": 0.0, "rank": 0 }
+	if source is Dictionary:
+		for id in MASTERY_TRACKS:
+			var rec: Variant = (source as Dictionary).get(id, {})
+			if rec is Dictionary:
+				var xp_amount := maxf(0.0, float(rec.get("xp", 0.0)))
+				out[id] = { "xp": xp_amount, "rank": clamp(int(rec.get("rank", mastery_rank_for(xp_amount))), 0, MASTERY_CAP) }
+	return out
+
+func _clean_trophies(source) -> Dictionary:
+	var out := {}
+	if source is Dictionary:
+		for id in source:
+			var key := String(id)
+			if TROPHY_DEFS.has(key):
+				var def: Dictionary = TROPHY_DEFS[key]
+				out[key] = { "id": key, "name": def["name"], "desc": def["desc"] }
+	elif source is Array:
+		for item in source:
+			if item is Dictionary:
+				var key := String((item as Dictionary).get("id", ""))
+				if TROPHY_DEFS.has(key):
+					var def: Dictionary = TROPHY_DEFS[key]
+					out[key] = { "id": key, "name": def["name"], "desc": def["desc"] }
+	return out
+
+func _clean_codex(source) -> Dictionary:
+	var out := {}
+	for id in CODEX_TOTALS:
+		out[id] = {}
+	out["complete"] = {}
+	if source is Dictionary:
+		for id in CODEX_TOTALS:
+			var key := String(id)
+			var rec = (source as Dictionary).get(key, {})
+			if rec is Dictionary:
+				for entry in rec:
+					if bool(rec[entry]):
+						out[key][String(entry)] = true
+		var complete = (source as Dictionary).get("complete", {})
+		if complete is Dictionary:
+			for id in complete:
+				var key := String(id)
+				if CODEX_TOTALS.has(key) and bool(complete[id]):
+					out["complete"][key] = true
+	return out
+
+func _clean_bloodline(source) -> Dictionary:
+	var out := { "generation": 1, "bonus": 0.0, "ledger": [] }
+	if source is Dictionary:
+		out["generation"] = max(1, int((source as Dictionary).get("generation", 1)))
+		out["bonus"] = clamp(float((source as Dictionary).get("bonus", 0.0)), 0.0, 0.6)
+		var ledger = (source as Dictionary).get("ledger", [])
+		if ledger is Array:
+			for item in ledger:
+				if item is Dictionary and out["ledger"].size() < 12:
+					out["ledger"].append({
+						"title": String((item as Dictionary).get("title", "")),
+						"clan": _clean_clan(String((item as Dictionary).get("clan", clan_id))),
+						"legend": max(0, int((item as Dictionary).get("legend", 0))),
+						"domains": max(0, int((item as Dictionary).get("domains", 0))),
+						"day": max(1, int((item as Dictionary).get("day", 1))),
+					})
 	return out
 
 func _clean_events(source) -> Array[Dictionary]:

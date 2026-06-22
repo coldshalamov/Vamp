@@ -236,6 +236,8 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 			return dmg
 		target.dead = true
 		_on_entity_killed(attacker, target, opts)
+	elif target == player and meta != null:
+		meta.gain_mastery("survival", dmg * 0.18, self)
 	return dmg
 
 func _default_status_dps(status_id: String) -> float:
@@ -593,6 +595,10 @@ func _on_entity_killed(attacker: SimEntity, target: SimEntity, _opts: Dictionary
 		meta.claim_domain(String(target.tags["baron_of"]), self)
 	if attacker != null and attacker.tags.has("coterie_id") and meta != null:
 		meta.coterie_ally_kill(attacker, self)
+	if attacker == player and meta != null:
+		meta.gain_mastery("brawn", 5.0, self)
+		meta.award_trophy_for(target, self)
+		meta.codex_mark("killedKinds", target.faction if target.faction != "" else target.type_id, self)
 	if meta != null and target.faction in ["police", "gang", "inquis"]:
 		meta.change_reputation(target.faction, -2.0 if target.faction == "police" else -1.5, self)
 	if attacker == player and player.behaviour != null:
@@ -650,6 +656,7 @@ func _try_interact() -> bool:
 			behaviour.set("vehicle_id", vehicle.id)
 			if meta != null:
 				meta.stats["hijacks"] = int(meta.stats.get("hijacks", 0)) + 1
+				meta.gain_mastery("driving", 8.0, self)
 			return true
 	return false
 

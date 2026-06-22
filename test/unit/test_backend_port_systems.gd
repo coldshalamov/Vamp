@@ -269,6 +269,41 @@ func test_emergent_events_domain_raids_and_childer_backend() -> void:
 	assert_true(_has_cue(sim, "coterie.embraced"), "embrace cue missing")
 	sim.queue_free()
 
+func test_persistent_mastery_trophies_codex_alchemy_and_legacy() -> void:
+	var sim := VCSim.new()
+	sim.new_game(77701, "brujah")
+	var meta: SimMeta = sim.meta
+	var base_damage := sim.player.attack_damage
+	meta.gain_mastery("brawn", 2000.0, sim)
+	assert_true(sim.player.attack_damage > base_damage, "mastery rank did not modify derived melee damage")
+	var hunter: SimEntity = sim.spawn_npc("hunter", sim.player.pos + Vector2(120.0, 0.0), { "state": "guard", "hostile_to_player": true })
+	sim.damage_entity(sim.player, hunter, 9999.0, { "crit_chance": 0.0, "no_nemesis": true })
+	assert_true(meta.trophies.has("hunter"), "hunter trophy was not awarded from notable kill")
+	assert_true(_has_cue(sim, "trophy.awarded"), "trophy cue missing")
+	for vt in ["civilian", "junkie", "addict", "athlete", "noble", "thug"]:
+		meta.codex_mark("fedTypes", vt, sim)
+	assert_true(bool(meta.codex["complete"].get("fedTypes", false)), "codex fedTypes set did not complete")
+	var blood_after_codex := float(sim.player.behaviour.get("max_blood"))
+	meta.money = 5000
+	assert_true(meta.upgrade_haven("workshop", sim), "workshop upgrade failed")
+	for _i in range(3):
+		meta.add_item(meta.generate_item(1, "common", "", sim), sim)
+	assert_true(meta.alchemy_brew("refine", sim), "alchemy refine recipe failed")
+	assert_true(_inventory_has_rarity(meta, "uncommon"), "alchemy refine did not create an uncommon item")
+	var vitae_before := float(meta.haven.get("cellarVitae", 0.0))
+	assert_true(meta.alchemy_brew("extract", sim), "alchemy extract recipe failed")
+	assert_true(float(meta.haven.get("cellarVitae", 0.0)) > vitae_before, "alchemy extract did not deposit vitae")
+	meta.legend = 650
+	assert_true(meta.enter_torpor(sim), "Prince-level torpor did not enter bloodline legacy")
+	assert_eq(int(meta.bloodline.get("generation", 0)), 2, "bloodline generation did not advance")
+	assert_true(float(sim.player.behaviour.get("max_blood")) > blood_after_codex, "bloodline bonus did not modify derived max vitae")
+	var restored_meta := SimMeta.new()
+	assert_true(restored_meta.restore(meta.serialize()), "meta restore rejected persistent progression save data")
+	assert_true(restored_meta.trophies.has("hunter"), "trophy did not survive restore")
+	assert_true(bool(restored_meta.codex["complete"].get("fedTypes", false)), "codex completion did not survive restore")
+	assert_eq(int(restored_meta.bloodline.get("generation", 0)), 2, "bloodline did not survive restore")
+	sim.queue_free()
+
 func _apply_action(sim: VCSim, kind: int, vector: Vector2 = Vector2.ZERO, action_id: String = "", held: bool = false) -> void:
 	var action := InputAction.new(kind)
 	action.vector = vector
@@ -298,6 +333,12 @@ func _count_tagged_int(sim: VCSim, tag_id: String, tag_value: int) -> int:
 		if e != null and int(e.tags.get(tag_id, -1)) == tag_value:
 			count += 1
 	return count
+
+func _inventory_has_rarity(meta: SimMeta, rarity: String) -> bool:
+	for item in meta.inventory:
+		if String(item.get("rarity", "")) == rarity:
+			return true
+	return false
 
 func _feed_mission() -> Dictionary:
 	return {

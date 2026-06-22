@@ -57,7 +57,7 @@ func _run_policy(policy: String) -> float:
 	player.max_hp = 100000.0
 	player.hp = 100000.0
 	# spawn a dummy at origin
-	var dummy := SimEntity.new(sim.rng.randi(), "dummy")
+	var dummy := SimEntity.new(sim.next_entity_id(), "dummy")
 	dummy.pos = Vector2.ZERO
 	dummy.hp = DUMMY_HP
 	dummy.max_hp = DUMMY_HP
@@ -78,7 +78,7 @@ func _run_policy(policy: String) -> float:
 		var exposed: bool = player.action_phase() == "recovery"
 		var iframing: bool = (player.behaviour != null
 			and player.behaviour.get("iframes_remaining") != null
-			and player.behaviour.iframes_remaining > 0)
+			and int(player.behaviour.get("iframes_remaining")) > 0)
 		if t % 30 == 0 and exposed and not iframing:
 			player.hp -= DUMMY_DAMAGE_PER_HIT
 		sim.tick_sim(1.0 / 60.0)

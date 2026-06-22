@@ -1,170 +1,482 @@
-## Sim.gd — the deterministic authoritative game state.
+## Sim.gd -- deterministic authoritative game state.
 ##
-## This is the single source of truth for all gameplay. It is a pure-data/pure-logic
-## singleton: it must NOT touch Nodes, the scene tree, rendering, Input, OS time, or any
-## source of nondeterminism. The scene tree is a VIEW that reads Sim state each frame
-## and draws it. Render code never mutates Sim state.
-##
-## Determinism contract (HANDOFF §6 guardrail #6, REVAMP_SPEC §2.1):
-##   - All randomness routes through `rng` (a seeded RandomNumberGenerator).
-##   - ZERO calls to randf()/randi()/randf_range()/Time.get_ticks_usec()/etc. in src/sim/
-##     and src/entities/. A pre-commit grep enforces this.
-##   - Sim.tick(delta) is the only mutator of sim state. delta is the FIXED physics step
-##     (1/60s) — never wall-clock.
-##   - A recorded input sequence replays byte-stably across runs with the same seed.
-##
+## Scene nodes are views. This singleton owns state mutation, fixed-step simulation,
+## AI, collision, combat, blood economy, Heat, responders, and semantic cue events.
 extends Node
-# Registered as both: (1) the `Sim` autoload singleton at runtime (in-game), and
-# (2) the `VCSim` type so headless tests can instantiate it via VCSim.new() — Godot 4.7
-# removed GDScript.new(), but typed classes still support .new(). The two coexist: the
-# type name is VCSim, the singleton instance is Sim. GUT's CLI entry doesn't always load
-# project autoloads, so tests must use the type, not the global.
 class_name VCSim
 
-# --- the seeded RNG — every random roll in the game goes through this ---
-var rng := RandomNumberGenerator.new()
+const FIXED_DT := 1.0 / 60.0
+const SimNPCScript := preload("res://src/entities/SimNPC.gd")
+const SimPlayerScript := preload("res://src/entities/SimPlayer.gd")
 
-# --- world state (grown incrementally; fields added as systems land) ---
-var tick: int = 0                      # physics ticks since boot (the canonical clock)
+# Sim-owned deterministic draw state. Use draw_* helpers only.
+var rng: int = 1
+
+var tick: int = 0
 var seed_value: int = 0
-var time_scale: float = 1.0            # for slowmo; sim still advances in fixed steps
-var player: SimEntity = null           # the player entity (created on new_game)
-var entities: Array[SimEntity] = []    # all updatable entities
-var world: SimWorld = null             # the level/district
+var time_scale: float = 1.0
+var player: SimEntity = null
+var entities: Array[SimEntity] = []
+var world: SimWorld = null
 
-# --- recording/replay (for deterministic tests) ---
+var heat: float = 0.0
+var last_crime_tick: int = -999999
+var last_provoke_tick: int = -999999
+var last_seen_pos: Vector2 = Vector2.ZERO
+var responder_spawn_ticks: int = 0
+var player_last_attack_tick: int = -999999
+var escaped: bool = false
+var reached_haven: bool = false
+
+var cue_events: Array[Dictionary] = []
+var cue_events_this_tick: Array[Dictionary] = []
+var _last_vitals_emit_tick: int = -999999
+var _next_entity_seq: int = 1
+
 var _recorded_inputs: Array = []
 var _replay_queue: Array = []
 var _recording: bool = false
+var _input_seq: int = 0
 
-## Initialise a fresh game. Deterministic given the same seed.
-## Fully resets all sim state so repeated calls (e.g. in the determinism test) are clean.
-func new_game(seed_value: int, clan_id: String) -> void:
-	self.seed_value = seed_value
-	rng = RandomNumberGenerator.new()
-	rng.seed = seed_value
+func new_game(new_seed_value: int, clan_id: String) -> void:
+	seed_value = int(new_seed_value)
+	rng = _seed_to_state(seed_value)
 	tick = 0
 	time_scale = 1.0
+	heat = 0.0
+	last_crime_tick = -999999
+	last_provoke_tick = -999999
+	responder_spawn_ticks = 0
+	player_last_attack_tick = -999999
+	escaped = false
+	reached_haven = false
+	_next_entity_seq = 1
 	entities.clear()
+	cue_events.clear()
+	cue_events_this_tick.clear()
 	_recorded_inputs.clear()
 	_replay_queue.clear()
 	_recording = false
-	# Player entity always carries a SimPlayer behaviour (the verbs). TODO(spawn): later,
-	# construct from clan data + spawn the slice district; for now the slice is a void.
-	player = SimEntity.new(rng.randi(), "player")
-	player.pos = Vector2(400, 300)
-	player.behaviour = SimPlayer.new(player)
+	_input_seq = 0
+
+	world = SimWorld.new()
+	world.load_vertical_slice()
+	last_seen_pos = world.named_points.get("heat_search", Vector2.ZERO)
+
+	player = SimEntity.new(next_entity_id(), "player")
+	player.pos = world.named_points.get("player", Vector2(160, 576))
+	player.home_pos = player.pos
+	player.behaviour = SimPlayerScript.new(player)
+	player.tags["clan"] = clan_id
 	entities.append(player)
 
-## Advance the world by exactly one fixed step. The ONLY place sim state mutates per-frame.
-## delta must be the physics step (1.0/60.0). Do NOT pass wall-clock delta here.
-func tick_sim(delta: float) -> void:
-	assert(is_equal_approx(delta, 1.0 / 60.0), "Sim.tick_sim must receive the fixed step")
-	tick += 1
-	for e in entities:
-		if is_instance_valid(e):
-			e.step(delta, self)
-	# resolve combat: any entity in the active window of an action hits overlapping targets
-	tick_combat()
+	spawn_npc("ped", world.named_points.get("civilian", Vector2(245, 576)), { "state": "wander" })
+	spawn_npc("ped", world.named_points.get("witness", Vector2(330, 560)), { "state": "wander" })
+	spawn_npc("thug", world.named_points.get("enemy", Vector2(560, 560)), { "state": "wander", "hostile_to_player": true })
+	emit_cue("level.loaded", { "level_id": "vertical_slice_block", "player_spawn": player.pos, "lights": world.lights.size() })
 
-## Check active action windows against nearby targets and resolve hits.
+func tick_sim(delta: float) -> void:
+	assert(is_equal_approx(delta, FIXED_DT), "Sim.tick_sim must receive the fixed step")
+	cue_events_this_tick.clear()
+	replay_step()
+	tick += 1
+	var step_entities := entities.duplicate()
+	for e in step_entities:
+		if e != null:
+			e.step(delta, self)
+	tick_combat()
+	_update_heat(delta)
+	_check_escape()
+
+func apply_input(action: InputAction) -> void:
+	if _recording:
+		_recorded_inputs.append({ "tick": tick, "seq": _input_seq, "action": action.serialize() })
+		_input_seq += 1
+	if player != null and player.behaviour != null and player.behaviour.has_method("apply_action"):
+		player.behaviour.call("apply_action", action, self)
+
 func tick_combat() -> void:
 	for attacker in entities:
-		if not is_instance_valid(attacker) or attacker.dead or attacker.current_action == null:
+		if attacker == null or attacker.dead or attacker.current_action == null:
 			continue
 		if attacker.action_phase() != "active":
 			continue
 		var def: ActionDef = attacker.current_action.def
-		if def.damage <= 0.0:
-			continue   # non-damaging action (e.g. dash) — no hit resolution
-		# already-connected this active window? skip (prevents multi-hit per swing)
-		if attacker.current_action.has_connected:
+		if def == null or def.damage <= 0.0:
 			continue
-		attacker.current_action.has_connected = true
-		# query targets within the action's range in the facing direction
-		var hit_arc := 1.2   # ~69 degrees either side of facing
+		var hit_arc := 1.2
 		for target in entities:
 			if target == attacker or target.dead:
+				continue
+			if attacker.current_action.hit_targets.has(target.id):
 				continue
 			var to_target := target.pos - attacker.pos
 			var dist := to_target.length()
 			if dist > def.range + target.radius:
 				continue
 			if dist > 1.0:
-				var ang_to := to_target.angle()
-				# smallest signed angular difference, wrapped to [-PI, PI]
-				var da: float = fmod(ang_to - attacker.facing, TAU)
-				if da > PI:
-					da -= TAU
-				elif da < -PI:
-					da += TAU
-				da = abs(da)
+				var da: float = abs(_angle_diff(to_target.angle(), attacker.facing))
 				if da > hit_arc:
-					continue   # outside the attack arc
-			# hit! resolve damage inline (combat logic lives in the sim, not a separate
-			# class — premature abstraction created a circular ref between Sim and Combat).
-			var dmg := _resolve_hit(attacker, def, target)
-			if dmg > 0.0 and attacker.has_method("on_damage_dealt"):
-				attacker.on_damage_dealt(dmg)
-			if target.has_method("on_damage_taken"):
-				target.on_damage_taken(dmg)
+					continue
+			attacker.current_action.hit_targets.append(target.id)
+			attacker.current_action.has_connected = true
+			damage_entity(attacker, target, def.damage, {
+				"cue": def.cue_on_hit if def.cue_on_hit != "" else "hit.connect",
+				"knockback": def.knockback,
+				"lifesteal": def.lifesteal,
+				"hitstop": def.hitstop_ticks,
+				"status": _first_status(def.applies_status),
+				"status_ticks": _status_ticks(def.applies_status)
+			})
 
-## Resolve one action hitting one target. Returns damage dealt. Seeded crit, deterministic.
-func _resolve_hit(attacker: SimEntity, def: ActionDef, target: SimEntity) -> float:
-	if target.dead:
+func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, opts: Dictionary = {}) -> float:
+	if target == null or target.dead:
 		return 0.0
-	var crit: bool = rng.randf() < 0.15
-	var dmg: float = def.damage
-	if crit:
-		dmg *= 1.75
-	dmg = max(1.0, dmg)
-	target.hp -= dmg
-	# hitstop freezes both on connection — the "weight" of the hit
-	target.hitstop = max(target.hitstop, def.hitstop_ticks)
-	attacker.hitstop = max(attacker.hitstop, def.hitstop_ticks)
-	# knockback applies impulse along facing
-	if def.knockback > 0.0:
-		var dir := Vector2.RIGHT.rotated(attacker.facing)
-		target.vel += dir * def.knockback
-	# lifesteal
-	if def.lifesteal > 0.0 and attacker.has_method("heal_blood"):
-		attacker.heal_blood(dmg * def.lifesteal)
+	var dmg: float = maxf(0.0, base_damage)
+	if attacker == player and target.tags.has("damage_bonus"):
+		dmg *= 1.0 + float(target.tags.get("damage_bonus", 0.0))
+	if draw_float() < float(opts.get("crit_chance", 0.12)):
+		dmg *= 1.5
+	if target.armor > 0.0:
+		dmg *= max(0.15, 1.0 - target.armor)
+	if target == player and player.behaviour != null:
+		var player_buffs: Dictionary = player.behaviour.get("buffs")
+		if player_buffs.has("for_stone"):
+			dmg *= max(0.25, 1.0 - float(player_buffs["for_stone"].get("armor", 0.35)))
+	dmg = max(1.0, dmg) if base_damage > 0.0 else 0.0
+	target.hp = max(0.0, target.hp - dmg)
+	var hitstop := int(opts.get("hitstop", 2))
+	target.hitstop = max(target.hitstop, hitstop)
+	if attacker != null:
+		attacker.hitstop = max(attacker.hitstop, hitstop)
+		var knockback := float(opts.get("knockback", 0.0))
+		if knockback > 0.0:
+			target.vel += Vector2.RIGHT.rotated(attacker.facing) * knockback
+	var status_id := String(opts.get("status", ""))
+	if status_id != "":
+		target.apply_status(status_id, int(opts.get("status_ticks", 60)))
+	if attacker != null:
+		attacker.on_damage_dealt(dmg)
+		if float(opts.get("lifesteal", 0.0)) > 0.0:
+			attacker.heal_blood(dmg * float(opts.get("lifesteal", 0.0)))
+	target.on_damage_taken(dmg)
+	emit_cue(String(opts.get("cue", "damage.dealt")), {
+		"attacker_id": attacker.id if attacker != null else 0,
+		"target_id": target.id,
+		"amount": dmg,
+		"pos": target.pos
+	})
 	if target.hp <= 0.0:
-		target.hp = 0.0
 		target.dead = true
+		_on_entity_killed(attacker, target, opts)
 	return dmg
 
-## Apply a player input action. Recorded for replay if recording is on.
-## Routes through the player entity's behaviour delegate (SimPlayer) — SimEntity itself
-## has no apply_action, just as it has no step logic; behaviour owns the verbs.
-func apply_input(action: InputAction) -> void:
-	if _recording:
-		_recorded_inputs.append({ "tick": tick, "action": action.serialize() })
-	if player != null and is_instance_valid(player) and player.behaviour != null:
-		if player.behaviour.has_method("apply_action"):
-			player.behaviour.apply_action(action, self)
+func spawn_npc(type_id: String, pos: Vector2, opts: Dictionary = {}) -> SimEntity:
+	var e := SimEntity.new(next_entity_id(), "npc")
+	e.pos = pos
+	e.home_pos = pos
+	SimNPCScript.configure(e, type_id, self, opts)
+	entities.append(e)
+	emit_cue("npc.spawn", { "entity_id": e.id, "type": type_id, "faction": e.faction, "pos": e.pos, "responder": e.responder })
+	return e
 
-## Hash the full sim state — used by the determinism test (20 runs, same seed = same hash).
-func state_hash() -> int:
-	var h := hash(seed_value)
-	h = hash([h, tick])
+func get_entity(entity_id: int) -> SimEntity:
 	for e in entities:
-		if is_instance_valid(e):
+		if e != null and e.id == entity_id:
+			return e
+	return null
+
+func nearest_entity(origin: Vector2, radius: float, predicate: Callable) -> SimEntity:
+	var best: SimEntity = null
+	var best_d2 := radius * radius
+	for e in entities:
+		if e == null:
+			continue
+		if not predicate.call(e):
+			continue
+		var d2 := origin.distance_squared_to(e.pos)
+		if d2 <= best_d2:
+			best_d2 = d2
+			best = e
+	return best
+
+func entities_in_radius(origin: Vector2, radius: float, predicate: Callable) -> Array[SimEntity]:
+	var out: Array[SimEntity] = []
+	var r2 := radius * radius
+	for e in entities:
+		if e == null:
+			continue
+		if origin.distance_squared_to(e.pos) <= r2 and predicate.call(e):
+			out.append(e)
+	return out
+
+func witnessed_act(pos: Vector2, act_type: String, amount: float) -> void:
+	var witnesses := 0
+	var player_cloaked: bool = player != null and bool(player.tags.get("cloaked", false))
+	for e in entities:
+		if e == null or e.dead or e.downed or e == player:
+			continue
+		if e.faction in ["civ", "gang", "police", "inquis"] and e.pos.distance_to(pos) < 260.0 and not player_cloaked:
+			witnesses += 1
+			if e.kind == "npc" and e.faction == "civ":
+				e.ai_state = "flee"
+				e.perception_state = "afraid"
+	var always := act_type in ["kill", "explosion", "body", "combat"]
+	if witnesses <= 0 and not always:
+		return
+	var gain: float = minf(1.5, amount * (0.45 + minf(0.8, float(witnesses) * 0.22)))
+	add_heat(gain, act_type)
+	last_crime_tick = tick
+	last_provoke_tick = tick
+	last_seen_pos = pos
+	emit_cue("masquerade.broken", { "act": act_type, "witnesses": witnesses, "pos": pos, "heat": heat })
+
+func add_heat(amount: float, reason: String = "") -> void:
+	var before := heat_stars()
+	heat = clamp(heat + amount, 0.0, 6.0)
+	var after := heat_stars()
+	if after > before:
+		emit_cue("heat.rise", { "stars": after, "heat": heat, "reason": reason, "pos": last_seen_pos })
+	else:
+		emit_cue("heat.changed", { "stars": after, "heat": heat, "reason": reason })
+
+func reduce_heat(amount: float, reason: String = "") -> void:
+	var before := heat_stars()
+	heat = clamp(heat - amount, 0.0, 6.0)
+	var after := heat_stars()
+	if after < before:
+		emit_cue("heat.fall", { "stars": after, "heat": heat, "reason": reason })
+
+func heat_stars() -> int:
+	return min(6, int(floor(heat)))
+
+func break_responder_locks() -> void:
+	for e in entities:
+		if e != null and e.responder and not e.dead:
+			e.ai_state = "search"
+			e.perception_state = "searching"
+			e.search_ticks = min(e.search_ticks, 120)
+			e.hostile_to_player = false
+
+func clear_witness_panic() -> void:
+	for e in entities:
+		if e != null and e.kind == "npc" and e.faction == "civ" and e.ai_state == "flee":
+			e.ai_state = "wander"
+			e.perception_state = "calm"
+
+func emit_vitals_changed() -> void:
+	if tick - _last_vitals_emit_tick < 15 or player == null or player.behaviour == null:
+		return
+	_last_vitals_emit_tick = tick
+	emit_cue("blood.changed", {
+		"blood": player.behaviour.get("blood"),
+		"max_blood": player.behaviour.get("max_blood"),
+		"hunger": player.behaviour.get("hunger"),
+		"frenzied": player.behaviour.get("frenzied"),
+		"hp": player.hp,
+		"max_hp": player.max_hp
+	})
+
+func emit_cue(event_id: String, payload: Dictionary = {}) -> void:
+	var rec := { "tick": tick, "id": event_id, "payload": payload.duplicate(true) }
+	cue_events.append(rec)
+	cue_events_this_tick.append(rec)
+	if is_inside_tree():
+		var cue_bus := get_tree().root.get_node_or_null("CueBus")
+		if cue_bus != null and cue_bus.has_method("emit_cue"):
+			cue_bus.call_deferred("emit_cue", event_id, payload.duplicate(true))
+
+func next_entity_id() -> int:
+	var id := _next_entity_seq
+	_next_entity_seq += 1
+	return id
+
+func draw_u32() -> int:
+	rng = int((int(rng) * 1664525 + 1013904223) % 4294967296)
+	if rng < 0:
+		rng += 4294967296
+	return rng
+
+func draw_float() -> float:
+	return float(draw_u32()) / 4294967296.0
+
+func draw_index(count: int) -> int:
+	if count <= 0:
+		return 0
+	return int(draw_u32() % count)
+
+func state_hash() -> int:
+	var h := hash([
+		seed_value, rng, tick, _next_entity_seq, snapped(heat, 0.001), heat_stars(),
+		last_crime_tick, last_provoke_tick, snapped(last_seen_pos.x, 0.001),
+		snapped(last_seen_pos.y, 0.001), responder_spawn_ticks,
+		player_last_attack_tick, _last_vitals_emit_tick, time_scale,
+		escaped, reached_haven
+	])
+	for e in entities:
+		if e != null:
 			h = hash([h, e.state_hash()])
 	return h
 
-## Begin recording inputs for a deterministic replay capture.
 func start_recording() -> void:
 	_recording = true
 	_recorded_inputs.clear()
+	_input_seq = 0
 
-## Replay a previously captured input sequence. Returns true when the queue is exhausted.
+func recorded_inputs() -> Array:
+	return _recorded_inputs.duplicate(true)
+
 func replay_step() -> bool:
-	while not _replay_queue.is_empty() and _replay_queue[0]["tick"] <= tick:
-		var entry = _replay_queue.pop_front()
-		var action = InputAction.deserialize(entry["action"])
-		player.apply_action(action, self)
+	while not _replay_queue.is_empty() and int(_replay_queue[0]["tick"]) <= tick:
+		var entry: Dictionary = _replay_queue.pop_front()
+		var action := InputAction.deserialize(entry["action"])
+		if player != null and player.behaviour != null:
+			player.behaviour.call("apply_action", action, self)
 	return _replay_queue.is_empty()
 
 func load_replay(inputs: Array) -> void:
-	_replay_queue = inputs.duplicate()
+	_replay_queue = inputs.duplicate(true)
+	_replay_queue.sort_custom(func(a, b) -> bool:
+		var a_dict: Dictionary = a as Dictionary
+		var b_dict: Dictionary = b as Dictionary
+		var a_tick: int = int(a_dict.get("tick", 0))
+		var b_tick: int = int(b_dict.get("tick", 0))
+		if a_tick == b_tick:
+			return int(a_dict.get("seq", 0)) < int(b_dict.get("seq", 0))
+		return a_tick < b_tick
+	)
+
+func _update_heat(delta: float) -> void:
+	if heat <= 0.0:
+		return
+	var seen := false
+	var near_responder := false
+	for e in entities:
+		if e == null or e.dead or not e.responder:
+			continue
+		var d := e.pos.distance_to(player.pos)
+		if d < 720.0:
+			near_responder = true
+		if e.behaviour != null and e.behaviour.has_method("can_see_player") and d < 380.0 and bool(e.behaviour.call("can_see_player", self)):
+			seen = true
+			last_seen_pos = player.pos
+	var since_provoke := float(tick - last_provoke_tick) / 60.0
+	var decay := 0.0
+	if seen:
+		decay = 0.0
+	elif near_responder:
+		decay = 0.05
+	elif since_provoke < 6.0:
+		decay = 0.0
+	else:
+		decay = 0.30 + min(0.9, (since_provoke - 6.0) * 0.12)
+	if player != null and player.tags.get("cloaked", false):
+		decay += 0.20
+	if world != null and world.is_in_haven(player.pos):
+		decay += 0.8
+	if decay > 0.0:
+		reduce_heat(decay * delta, "evade")
+	if heat <= 0.0:
+		heat = 0.0
+		for e in entities:
+			if e != null and e.responder and not e.dead:
+				e.responder = false
+				e.hostile_to_player = false
+				e.ai_state = "wander"
+				e.perception_state = "calm"
+		emit_cue("heat.lost_them", { "pos": player.pos })
+		return
+	responder_spawn_ticks -= 1
+	var desired := _desired_responders()
+	var current := _responder_count()
+	var dispatching := seen or float(tick - last_provoke_tick) / 60.0 < 10.0
+	if responder_spawn_ticks <= 0 and current < desired and heat_stars() > 0 and dispatching:
+		_spawn_responder()
+		responder_spawn_ticks = max(48, 156 - heat_stars() * 15)
+
+func _spawn_responder() -> void:
+	var stars := heat_stars()
+	var type_id := "cop"
+	if stars >= 6 and draw_float() < 0.5:
+		type_id = "elder"
+	elif stars >= 5:
+		type_id = "hunter" if draw_float() < 0.6 else "swat"
+	elif stars >= 3:
+		type_id = "swat" if draw_float() < 0.5 else "cop"
+	var pos := world.nearest_open_around(last_seen_pos, 120.0, 520.0, draw_index(997) + _responder_count() * 13)
+	var e := spawn_npc(type_id, pos, { "responder": true, "hostile_to_player": true, "state": "chase" })
+	e.responder = true
+	e.hostile_to_player = true
+	e.last_seen_pos = last_seen_pos
+	e.search_ticks = 420
+
+func _desired_responders() -> int:
+	match heat_stars():
+		0:
+			return 0
+		1:
+			return 1
+		2:
+			return 3
+		3:
+			return 5
+		4:
+			return 7
+		5:
+			return 9
+	return 12
+
+func _responder_count() -> int:
+	var count := 0
+	for e in entities:
+		if e != null and e.responder and not e.dead:
+			count += 1
+	return count
+
+func _check_escape() -> void:
+	if player == null or world == null:
+		return
+	if world.is_in_haven(player.pos):
+		reached_haven = true
+	if not escaped and world.is_in_exit(player.pos) and heat <= 0.25:
+		escaped = true
+		emit_cue("player.escape", { "pos": player.pos, "tick": tick })
+
+func _on_entity_killed(attacker: SimEntity, target: SimEntity, _opts: Dictionary) -> void:
+	emit_cue("npc.death", { "entity_id": target.id, "type": target.type_id, "pos": target.pos })
+	if attacker == player and player.behaviour != null:
+		player.behaviour.set("kills", int(player.behaviour.get("kills")) + 1)
+		if target.innocent:
+			player.behaviour.set("innocent_kills", int(player.behaviour.get("innocent_kills")) + 1)
+			player.behaviour.set("humanity", max(0.0, float(player.behaviour.get("humanity")) - 0.25))
+			emit_cue("humanity.lost", { "humanity": player.behaviour.get("humanity"), "target_id": target.id })
+		if target.faction in ["gang", "police", "inquis"]:
+			witnessed_act(target.pos, "combat", 0.5)
+
+func _first_status(statuses: Dictionary) -> String:
+	var keys := statuses.keys()
+	keys.sort()
+	return String(keys[0]) if keys.size() > 0 else ""
+
+func _status_ticks(statuses: Dictionary) -> int:
+	var key := _first_status(statuses)
+	if key == "":
+		return 0
+	var rec = statuses[key]
+	if rec is Dictionary:
+		return int((rec as Dictionary).get("dur_ticks", 60))
+	return 60
+
+func _angle_diff(a: float, b: float) -> float:
+	var d := fmod(a - b, TAU)
+	if d > PI:
+		d -= TAU
+	elif d < -PI:
+		d += TAU
+	return d
+
+func _seed_to_state(value: int) -> int:
+	var state := int(value) % 4294967296
+	if state <= 0:
+		state += 1
+	return state

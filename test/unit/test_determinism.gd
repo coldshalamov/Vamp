@@ -43,6 +43,14 @@ func test_different_seeds_diverge() -> void:
 	assert_ne(h_a, h_b, "different seeds produced identical hashes — seed not driving sim")
 
 
+func test_recorded_inputs_replay_to_identical_state_and_cues() -> void:
+	var recorded := _run_replay_script(true, [])
+	var replayed := _run_replay_script(false, recorded["inputs"])
+	assert_true(recorded["inputs"].size() > 0, "script did not record any player inputs")
+	assert_eq(replayed["hash"], recorded["hash"], "recorded inputs replayed to a different state")
+	assert_eq(replayed["cues"], recorded["cues"], "recorded inputs replayed to different CueBus events")
+
+
 func _hash_for_seed(s: int) -> int:
 	var sim := VCSim.new()
 	sim.new_game(s, "brujah")
@@ -51,3 +59,54 @@ func _hash_for_seed(s: int) -> int:
 	var h: int = sim.state_hash()
 	sim.queue_free()
 	return h
+
+
+func _run_replay_script(recording: bool, replay_inputs: Array) -> Dictionary:
+	var sim := VCSim.new()
+	sim.new_game(1337, "brujah")
+	if recording:
+		sim.start_recording()
+	else:
+		sim.load_replay(replay_inputs)
+	for t in range(180):
+		if recording:
+			_apply_replay_script_input(sim, t)
+		sim.tick_sim(1.0 / 60.0)
+	var cue_ids: Array[String] = []
+	for rec in sim.cue_events:
+		cue_ids.append(String(rec["id"]))
+	var result := {
+		"hash": sim.state_hash(),
+		"inputs": sim.recorded_inputs(),
+		"cues": cue_ids
+	}
+	sim.queue_free()
+	return result
+
+
+func _apply_replay_script_input(sim: VCSim, tick_index: int) -> void:
+	match tick_index:
+		0:
+			_apply_action(sim, InputAction.Kind.MOVE, Vector2.RIGHT)
+		24:
+			_apply_action(sim, InputAction.Kind.SPRINT, Vector2.ZERO, "", true)
+		48:
+			_apply_action(sim, InputAction.Kind.SPRINT, Vector2.ZERO, "", false)
+		54:
+			_apply_action(sim, InputAction.Kind.AIM, sim.player.pos + Vector2.RIGHT * 220.0, "", true)
+		55:
+			_apply_action(sim, InputAction.Kind.POWER, Vector2.ZERO, "cel_haste", false)
+		96:
+			_apply_action(sim, InputAction.Kind.DASH, Vector2.RIGHT)
+		132:
+			_apply_action(sim, InputAction.Kind.MOVE, Vector2.ZERO)
+		_:
+			pass
+
+
+func _apply_action(sim: VCSim, kind: int, vector: Vector2 = Vector2.ZERO, action_id: String = "", held: bool = false) -> void:
+	var action := InputAction.new(kind)
+	action.vector = vector
+	action.action_id = action_id
+	action.held = held
+	sim.apply_input(action)

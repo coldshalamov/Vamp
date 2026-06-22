@@ -11,4 +11,4 @@ func _ready() -> void:
 	print("[boot] sim initialised, seed=42, tick=", Sim.tick, " state_hash=", Sim.state_hash())
 
 func _physics_process(_delta: float) -> void:
-	Sim.tick_sim(_delta)
+	Sim.tick_sim(1.0 / 60.0)

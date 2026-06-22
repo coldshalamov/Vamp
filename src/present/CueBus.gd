@@ -21,6 +21,8 @@
 extends Node
 # NOTE: no class_name — this script IS the `CueBus` autoload singleton.
 
+signal cue_emitted(event_id: String, payload: Dictionary)
+
 # --- priority tiers (higher preempts lower) ---
 enum Priority { AMBIENT = 0, GAMEPLAY = 10, COMBAT = 20, CRITICAL = 30 }
 
@@ -32,6 +34,7 @@ var _cue_defs: Dictionary = {}
 # --- runtime state ---
 var _active_high_priority: int = -1   # the highest-priority cue currently suppressing others
 var _concurrency: Dictionary = {}     # event_id -> active count, for rate-limiting
+var history: Array[Dictionary] = []   # semantic stream the frontend/tests can inspect
 var reduced_motion: bool = false      # accessibility: flatten shake/flash when true
 var captions_enabled: bool = true     # accessibility: show sound captions
 
@@ -42,8 +45,10 @@ func define(event_id: String, priority: int, cue: Dictionary) -> void:
 
 ## Emit a semantic cue from sim code. `payload` carries event-specific data (pos, magnitude...).
 func emit_cue(event_id: String, payload: Dictionary = {}) -> void:
+	var rec := { "event_id": event_id, "payload": payload.duplicate(true) }
+	history.append(rec)
+	cue_emitted.emit(event_id, payload)
 	if not _cue_defs.has(event_id):
-		push_warning("CueBus: undefined cue '" + event_id + "'")
 		return
 	var def: Dictionary = _cue_defs[event_id]
 	# concurrency limit — don't stack the same cue endlessly

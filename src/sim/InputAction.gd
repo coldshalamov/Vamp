@@ -10,13 +10,13 @@
 extends RefCounted
 class_name InputAction
 
-# intent enum — extend as verbs land
-enum Kind { MOVE, AIM, ATTACK, FEED, DASH, INTERACT, POWER, RELEASE }
+# Intent enum. Append new verbs so recorded replay integers stay stable.
+enum Kind { MOVE, AIM, ATTACK, FEED, DASH, INTERACT, POWER, RELEASE, SPRINT, SNEAK, POUNCE, FINISH }
 
 var kind: int = Kind.MOVE
 var vector: Vector2 = Vector2.ZERO   # MOVE: unit move dir; AIM: world-space aim point
-var action_id: String = ""           # POWER: which ActionDef to cast; others: ""
-var held: bool = false               # FEED/POWER: true while the key is held
+var action_id: String = ""           # POWER: which power id to cast; RELEASE: optional released verb
+var held: bool = false               # FEED/SPRINT/SNEAK/AIM: current held state
 
 func _init(k: int = Kind.MOVE) -> void:
 	kind = k

@@ -1,80 +1,99 @@
-## SimEntity.gd — base class for everything in the sim that ticks.
+## SimEntity.gd -- base sim object for player, NPCs, projectiles, and props.
 ##
-## Pure data + logic. NO Nodes, NO rendering. The scene tree mirrors these as sprites.
-## Subclasses (SimPlayer, SimNPC, SimProjectile, ...) add behaviour; this holds the
-## shared spatial/state/animation-track substrate.
-##
-## Determinism: all randomness must come from `sim.rng`. Never call global rand*().
-##
+## Pure data plus deterministic logic. Rendering mirrors these objects but never owns
+## their mutation. Behaviour delegates (SimPlayer, SimNPC, etc.) add per-kind brains.
 extends RefCounted
 class_name SimEntity
 
 var id: int
-var kind: String                  # "player" | "npc" | "projectile" | "prop" ...
+var kind: String
+var type_id: String = ""
+var faction: String = "neutral"
 var pos: Vector2 = Vector2.ZERO
 var vel: Vector2 = Vector2.ZERO
-var facing: float = 0.0           # radians
-var radius: float = 12.0          # for collision queries
+var facing: float = 0.0
+var radius: float = 12.0
 var dead: bool = false
+var downed: bool = false
 
-# --- action/animation state (the frame-data layer) ---
-var current_action: ActionState = null   # what we're doing right now (startup/active/recovery)
-var action_frame: int = 0                # ticks elapsed in current_action
-var cooldowns: Dictionary = {}           # action_id -> ticks remaining
-var stun: int = 0                        # ticks of hard CC (can't act)
-var hitstop: int = 0                     # ticks frozen on connection (handled in step)
+# Action/frame-data state.
+var current_action: ActionState = null
+var action_frame: int = 0
+var cooldowns: Dictionary = {}
+var stun: int = 0
+var hitstop: int = 0
 
-# --- health/damage (subclasses specialise) ---
+# Health, combat, and status state.
 var hp: float = 100.0
 var max_hp: float = 100.0
+var armor: float = 0.0
+var attack_damage: float = 8.0
+var attack_range: float = 44.0
+var attack_cooldown: int = 0
+var statuses: Dictionary = {}
+var tags: Dictionary = {}
 
-# Optional behaviour delegate (composition over inheritance). When set, step() forwards
-# to behaviour.step() so SimPlayer/SimNPC/etc. drive per-tick logic without SimEntity
-# knowing about them. Set to null for pure-dumb entities (target dummies, props).
+# AI/perception state.
+var ai_state: String = "idle"
+var perception_state: String = "calm"
+var hostile_to_player: bool = false
+var responder: bool = false
+var target_id: int = 0
+var home_pos: Vector2 = Vector2.ZERO
+var last_seen_pos: Vector2 = Vector2.ZERO
+var search_ticks: int = 0
+var idle_ticks: int = 0
+var exposure: float = 0.65
+
+# Feeding/victim data.
+var victim_type: String = ""
+var blood_yield: float = 22.0
+var blood_left: float = 34.0
+var innocent: bool = false
+
 var behaviour: RefCounted = null
 
-# damage-tracking hooks (Combat.resolve_hit calls these via has_method checks)
 signal damage_dealt(amount: float)
 signal damage_taken(amount: float)
 
 func _init(entity_id: int, entity_kind: String) -> void:
 	id = entity_id
 	kind = entity_kind
+	type_id = entity_kind
+	home_pos = pos
 
-## Advance this entity by one fixed tick. Calls behaviour.step() if a delegate is attached.
 func step(delta: float, sim) -> void:
 	if dead:
 		return
-	# hitstop freezes the entity in place (but the sim clock keeps ticking globally).
+	_tick_statuses()
 	if hitstop > 0:
 		hitstop -= 1
 		return
 	if stun > 0:
 		stun -= 1
-	# advance the active action's frame counter
+	if attack_cooldown > 0:
+		attack_cooldown -= 1
 	if current_action != null:
 		action_frame += 1
-		# when the action fully completes (past recovery), return to idle so we can act again
 		if action_frame >= current_action.def.total_ticks():
 			current_action = null
 			action_frame = 0
-	# tick down cooldowns
 	var expired: Array = []
 	for key in cooldowns:
-		cooldowns[key] -= 1
-		if cooldowns[key] <= 0:
+		cooldowns[key] = int(cooldowns[key]) - 1
+		if int(cooldowns[key]) <= 0:
 			expired.append(key)
 	for key in expired:
 		cooldowns.erase(key)
-	# integrate velocity (fixed step)
-	pos += vel * delta
-	# friction — tunable per entity
-	vel *= 0.86
-	# delegate per-tick behaviour (player input, AI, etc.)
+	if vel.length_squared() > 0.01:
+		var next_pos := pos + vel * delta
+		pos = sim.world.resolve_motion(pos, next_pos, radius) if sim != null and sim.world != null else next_pos
+		vel *= 0.86
+	else:
+		vel = Vector2.ZERO
 	if behaviour != null and behaviour.has_method("step"):
 		behaviour.step(delta, sim)
 
-# --- damage hooks (called by Combat via duck typing) ---
 func on_damage_dealt(amount: float) -> void:
 	damage_dealt.emit(amount)
 	if behaviour != null and behaviour.has_method("on_damage_dealt"):
@@ -86,22 +105,19 @@ func on_damage_taken(amount: float) -> void:
 		behaviour.on_damage_taken(amount)
 
 func heal_blood(amount: float) -> void:
-	# default: no-op. SimPlayer overrides via behaviour.
 	if behaviour != null and behaviour.has_method("heal_blood"):
 		behaviour.heal_blood(amount)
 
-## Begin an action defined by `def`. Returns false if we can't (cooldown/stun/recovery-lock).
-func begin_action(def: ActionDef, sim) -> bool:
-	if stun > 0 or hitstop > 0:
+func begin_action(def: ActionDef, _sim) -> bool:
+	if def == null or stun > 0 or hitstop > 0:
 		return false
-	if cooldowns.has(def.id) and cooldowns[def.id] > 0:
+	if cooldowns.has(def.id) and int(cooldowns[def.id]) > 0:
 		return false
 	current_action = ActionState.new(def)
 	action_frame = 0
 	cooldowns[def.id] = def.cooldown_ticks
 	return true
 
-## Which frame-phase of the current action are we in? null if none.
 func action_phase() -> String:
 	if current_action == null:
 		return ""
@@ -114,7 +130,6 @@ func action_phase() -> String:
 		return "recovery"
 	return "done"
 
-## Can we cancel the current action's recovery into `next_def`? (the combo system)
 func can_cancel_into(next_def: ActionDef) -> bool:
 	if current_action == null:
 		return true
@@ -122,6 +137,55 @@ func can_cancel_into(next_def: ActionDef) -> bool:
 		return false
 	return current_action.def.cancel_into.has(next_def.id)
 
-## Deterministic hash of this entity's state — feeds Sim.state_hash() for replay tests.
+func apply_status(status_id: String, ticks: int) -> void:
+	statuses[status_id] = max(int(statuses.get(status_id, 0)), ticks)
+	match status_id:
+		"stun", "mesmerized":
+			stun = max(stun, ticks)
+		"fear":
+			ai_state = "flee"
+			perception_state = "afraid"
+
+func has_status(status_id: String) -> bool:
+	return int(statuses.get(status_id, 0)) > 0
+
 func state_hash() -> int:
-	return hash([id, kind, pos, vel, facing, hp, action_phase(), stun, hitstop])
+	var action_id := ""
+	if current_action != null and current_action.def != null:
+		action_id = current_action.def.id
+	var h := hash([
+		id, kind, type_id, faction, snapped(pos.x, 0.001), snapped(pos.y, 0.001),
+		snapped(vel.x, 0.001), snapped(vel.y, 0.001), snapped(facing, 0.001),
+		snapped(hp, 0.001), snapped(max_hp, 0.001), snapped(armor, 0.001),
+		snapped(attack_damage, 0.001), snapped(attack_range, 0.001),
+		attack_cooldown, dead, downed, action_id, action_frame, stun, hitstop,
+		ai_state, perception_state, responder, hostile_to_player, target_id,
+		snapped(home_pos.x, 0.001), snapped(home_pos.y, 0.001),
+		snapped(last_seen_pos.x, 0.001), snapped(last_seen_pos.y, 0.001),
+		search_ticks, idle_ticks, snapped(exposure, 0.001),
+		victim_type, snapped(blood_yield, 0.001), snapped(blood_left, 0.001),
+		innocent
+	])
+	h = _hash_dict(h, cooldowns)
+	h = _hash_dict(h, statuses)
+	h = _hash_dict(h, tags)
+	if behaviour != null and behaviour.has_method("state_hash"):
+		h = hash([h, behaviour.state_hash()])
+	return h
+
+func _tick_statuses() -> void:
+	var expired: Array = []
+	for key in statuses:
+		statuses[key] = int(statuses[key]) - 1
+		if int(statuses[key]) <= 0:
+			expired.append(key)
+	for key in expired:
+		statuses.erase(key)
+
+func _hash_dict(seed_hash: int, dict: Dictionary) -> int:
+	var h := seed_hash
+	var keys := dict.keys()
+	keys.sort()
+	for key in keys:
+		h = hash([h, key, dict[key]])
+	return h

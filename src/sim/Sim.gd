@@ -155,19 +155,53 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 	if target == null or target.dead:
 		return 0.0
 	var dmg: float = maxf(0.0, base_damage)
+	var dot := bool(opts.get("dot", false))
 	if attacker == player and target.tags.has("damage_bonus"):
 		dmg *= 1.0 + float(target.tags.get("damage_bonus", 0.0))
-	if draw_float() < float(opts.get("crit_chance", 0.12)):
+	if target.has_status("mark"):
+		dmg *= 1.0 + float(target.status_data.get("mark", {}).get("amount", 0.25))
+	if target.has_status("shock"):
+		dmg *= 1.15
+	var crit_chance := float(opts.get("crit_chance", 0.0 if dot else 0.12))
+	var crit_mult := 1.5
+	if attacker == player and meta != null:
+		crit_chance = float(opts.get("crit_chance", meta.derived.get("critChance", crit_chance)))
+		crit_mult = float(meta.derived.get("critMult", crit_mult))
+	if bool(opts.get("no_crit", false)):
+		crit_chance = 0.0
+	var crit := false
+	if crit_chance > 0.0 and draw_float() < crit_chance:
 		dmg *= 1.5
-	if target.armor > 0.0:
-		dmg *= max(0.15, 1.0 - target.armor)
+		crit = true
+		dmg *= crit_mult / 1.5
+	var armor := target.armor
+	if target.has_status("weaken"):
+		armor = maxf(0.0, armor - float(target.status_data.get("weaken", {}).get("amount", 0.20)))
+	if target.tags.has("front_armor") and attacker != null and not dot:
+		var hit_angle := float(opts.get("angle", (target.pos - attacker.pos).angle()))
+		var da := absf(_angle_diff(hit_angle + PI, target.facing))
+		if da < 1.15:
+			armor = maxf(armor, float(target.tags["front_armor"]))
+	if target.tags.has("resist"):
+		var resist: Dictionary = target.tags["resist"]
+		var dtype := String(opts.get("damage_type", opts.get("dmgType", "")))
+		if dtype != "" and resist.has(dtype):
+			dmg *= maxf(0.0, 1.0 - float(resist[dtype]))
+	if armor > 0.0:
+		dmg *= max(0.15, 1.0 - armor)
 	if target == player and player.behaviour != null:
 		var player_buffs: Dictionary = player.behaviour.get("buffs")
 		if player_buffs.has("for_stone"):
 			dmg *= max(0.25, 1.0 - float(player_buffs["for_stone"].get("armor", 0.35)))
-	dmg = max(1.0, dmg) if base_damage > 0.0 else 0.0
+		if player_buffs.has("bs_ward"):
+			var ward: Dictionary = player_buffs["bs_ward"]
+			var absorb := minf(dmg, float(ward.get("shield", 0.0)))
+			dmg -= absorb
+			ward["shield"] = float(ward.get("shield", 0.0)) - absorb
+			player_buffs["bs_ward"] = ward
+	dmg = (max(0.0, dmg) if dot else (max(1.0, dmg) if base_damage > 0.0 else 0.0))
 	target.hp = max(0.0, target.hp - dmg)
-	var hitstop := int(opts.get("hitstop", 2))
+	var hitstop := int(opts.get("hitstop", 0 if dot else 2))
 	target.hitstop = max(target.hitstop, hitstop)
 	if attacker != null:
 		attacker.hitstop = max(attacker.hitstop, hitstop)
@@ -176,7 +210,13 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 			target.vel += Vector2.RIGHT.rotated(attacker.facing) * knockback
 	var status_id := String(opts.get("status", ""))
 	if status_id != "":
-		target.apply_status(status_id, int(opts.get("status_ticks", 60)))
+		target.apply_status(status_id, int(opts.get("status_ticks", 60)), {
+			"dps": float(opts.get("status_dps", _default_status_dps(status_id))),
+			"factor": float(opts.get("status_factor", 0.60)),
+			"amount": float(opts.get("status_amount", 0.25)),
+			"damage_type": String(opts.get("damage_type", status_id)),
+			"src_id": attacker.id if attacker != null else 0,
+		})
 	if attacker != null:
 		attacker.on_damage_dealt(dmg)
 		if float(opts.get("lifesteal", 0.0)) > 0.0:
@@ -186,12 +226,24 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 		"attacker_id": attacker.id if attacker != null else 0,
 		"target_id": target.id,
 		"amount": dmg,
-		"pos": target.pos
+		"pos": target.pos,
+		"crit": crit,
+		"damage_type": String(opts.get("damage_type", opts.get("dmgType", "physical"))),
 	})
 	if target.hp <= 0.0:
 		target.dead = true
 		_on_entity_killed(attacker, target, opts)
 	return dmg
+
+func _default_status_dps(status_id: String) -> float:
+	match status_id:
+		"burn":
+			return 4.0
+		"bleed":
+			return 2.4
+		"poison":
+			return 1.8
+	return 0.0
 
 func spawn_npc(type_id: String, pos: Vector2, opts: Dictionary = {}) -> SimEntity:
 	var e := SimEntity.new(next_entity_id(), "npc")

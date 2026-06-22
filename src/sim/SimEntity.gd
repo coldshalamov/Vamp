@@ -31,6 +31,7 @@ var attack_damage: float = 8.0
 var attack_range: float = 44.0
 var attack_cooldown: int = 0
 var statuses: Dictionary = {}
+var status_data: Dictionary = {}
 var tags: Dictionary = {}
 
 # AI/perception state.
@@ -65,7 +66,7 @@ func _init(entity_id: int, entity_kind: String) -> void:
 func step(delta: float, sim) -> void:
 	if dead:
 		return
-	_tick_statuses()
+	_tick_statuses(delta, sim)
 	if hitstop > 0:
 		hitstop -= 1
 		return
@@ -138,17 +139,36 @@ func can_cancel_into(next_def: ActionDef) -> bool:
 		return false
 	return current_action.def.cancel_into.has(next_def.id)
 
-func apply_status(status_id: String, ticks: int) -> void:
+func apply_status(status_id: String, ticks: int, data: Dictionary = {}) -> void:
+	if status_id == "" or ticks <= 0:
+		return
+	if bool(tags.get("warded_mind", false)) and status_id == "fear":
+		statuses["warded"] = max(int(statuses.get("warded", 0)), 30)
+		return
 	statuses[status_id] = max(int(statuses.get(status_id, 0)), ticks)
+	if not data.is_empty():
+		status_data[status_id] = data.duplicate(true)
 	match status_id:
 		"stun", "mesmerized":
 			stun = max(stun, ticks)
 		"fear":
 			ai_state = "flee"
 			perception_state = "afraid"
+		"root":
+			stun = max(stun, min(ticks, 12))
 
 func has_status(status_id: String) -> bool:
 	return int(statuses.get(status_id, 0)) > 0
+
+func speed_factor() -> float:
+	var factor := 1.0
+	if has_status("slow"):
+		factor *= float(status_data.get("slow", {}).get("factor", 0.60))
+	if has_status("shock"):
+		factor *= 0.80
+	if has_status("root") or has_status("stun"):
+		factor *= 0.0
+	return factor
 
 func state_hash() -> int:
 	var action_id := ""
@@ -169,19 +189,33 @@ func state_hash() -> int:
 	])
 	h = _hash_dict(h, cooldowns)
 	h = _hash_dict(h, statuses)
+	h = _hash_dict(h, status_data)
 	h = _hash_dict(h, tags)
 	if behaviour != null and behaviour.has_method("state_hash"):
 		h = hash([h, behaviour.state_hash()])
 	return h
 
-func _tick_statuses() -> void:
+func _tick_statuses(delta: float, sim) -> void:
 	var expired: Array = []
 	for key in statuses:
 		statuses[key] = int(statuses[key]) - 1
 		if int(statuses[key]) <= 0:
 			expired.append(key)
+			continue
+		if key in ["burn", "bleed", "poison"]:
+			var data: Dictionary = status_data.get(key, {})
+			var dps := float(data.get("dps", 0.0))
+			if dps > 0.0 and sim != null and sim.has_method("damage_entity"):
+				var src: SimEntity = sim.get_entity(int(data.get("src_id", 0))) if data.has("src_id") else null
+				sim.damage_entity(src, self, dps * delta, {
+					"cue": "status.%s" % key,
+					"crit_chance": 0.0,
+					"dot": true,
+					"damage_type": String(data.get("damage_type", key)),
+				})
 	for key in expired:
 		statuses.erase(key)
+		status_data.erase(key)
 
 func _hash_dict(seed_hash: int, dict: Dictionary) -> int:
 	var h := seed_hash

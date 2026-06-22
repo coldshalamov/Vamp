@@ -112,6 +112,45 @@ func test_projectiles_vehicles_day_night_and_save_restore_are_deterministic() ->
 	save_sim.queue_free()
 	restored.queue_free()
 
+func test_elite_affixes_combat_statuses_and_resists_are_deterministic() -> void:
+	var sim := VCSim.new()
+	sim.new_game(4444, "brujah")
+	var elite: SimEntity = sim.spawn_npc("swat", Vector2(520.0, 576.0), { "state": "guard", "elite": "juggernaut", "resist": { "blood": 0.50 } })
+	assert_eq(String(elite.tags.get("elite", "")), "juggernaut", "elite affix was not applied")
+	assert_true(elite.max_hp > 300.0, "elite HP multiplier missing")
+	elite.apply_status("fear", 90)
+	assert_false(elite.has_status("fear"), "warded elite accepted fear")
+	var physical_hp := elite.hp
+	var physical_damage: float = sim.damage_entity(sim.player, elite, 100.0, { "crit_chance": 0.0, "damage_type": "physical" })
+	elite.hp = physical_hp
+	var blood_damage: float = sim.damage_entity(sim.player, elite, 100.0, { "crit_chance": 0.0, "damage_type": "blood" })
+	assert_true(blood_damage < physical_damage, "damage-type resist did not reduce blood damage")
+	elite.apply_status("weaken", 120, { "amount": 0.50 })
+	var weakened_damage: float = sim.damage_entity(sim.player, elite, 100.0, { "crit_chance": 0.0, "damage_type": "physical" })
+	assert_true(weakened_damage > physical_damage, "weaken status did not shred armor")
+	var hp_after_hit: float = elite.hp
+	elite.apply_status("bleed", 90, { "dps": 12.0, "damage_type": "blood", "src_id": sim.player.id })
+	_tick_for(sim, 30)
+	assert_true(elite.hp < hp_after_hit, "bleed status did not tick deterministic DoT")
+	sim.queue_free()
+
+func test_ai_uses_pathfinding_and_thrall_follow_attacks() -> void:
+	var sim := VCSim.new()
+	sim.new_game(5150, "brujah")
+	var hunter: SimEntity = sim.spawn_npc("hunter", Vector2(704.0, 320.0), { "state": "chase", "hostile_to_player": true })
+	assert_false(sim.world.segment_clear(hunter.pos, sim.player.pos), "test setup needs an occluded route")
+	var start_dist: float = hunter.pos.distance_to(sim.player.pos)
+	_tick_for(sim, 90)
+	assert_true(hunter.pos.distance_to(sim.player.pos) < start_dist, "path-backed hunter did not close distance")
+	var hunter_path: Array = hunter.behaviour.get("path")
+	assert_true(hunter_path.size() > 0 or sim.world.segment_clear(hunter.pos, sim.player.pos), "hunter never built or completed a path")
+	var target: SimEntity = sim.spawn_npc("thug", sim.player.pos + Vector2(135.0, 0.0), { "state": "guard", "hostile_to_player": true })
+	var thrall: SimEntity = sim.spawn_npc("thrall", sim.player.pos + Vector2(-80.0, 0.0), { "state": "follow" })
+	thrall.faction = "player"
+	_tick_for(sim, 160)
+	assert_true(target.hp < target.max_hp, "follow-state thrall did not attack a hostile")
+	sim.queue_free()
+
 func _apply_action(sim: VCSim, kind: int, vector: Vector2 = Vector2.ZERO, action_id: String = "", held: bool = false) -> void:
 	var action := InputAction.new(kind)
 	action.vector = vector

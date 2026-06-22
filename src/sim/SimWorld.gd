@@ -15,6 +15,9 @@ var surfaces: PackedByteArray = PackedByteArray()
 var spawn_points: Array[Vector2] = []
 var named_points: Dictionary = {}
 var lights: Array[Dictionary] = []
+var roads: PackedByteArray = PackedByteArray()
+var districts: Array[Dictionary] = []
+var pois: Dictionary = {}
 var exit_zone: Rect2 = Rect2()
 var haven_zone: Rect2 = Rect2()
 
@@ -28,6 +31,13 @@ func load_vertical_slice() -> void:
 	spawn_points.clear()
 	named_points.clear()
 	lights.clear()
+	pois.clear()
+	districts = [
+		{ "id": "old_town", "name": "Old Town", "rect": Rect2(Vector2(0, 0), Vector2(1024, 640)), "danger": 0.2 },
+		{ "id": "docks", "name": "Docks", "rect": Rect2(Vector2(1024, 0), Vector2(1024, 640)), "danger": 0.45 },
+		{ "id": "red_row", "name": "Red Row", "rect": Rect2(Vector2(0, 640), Vector2(1024, 640)), "danger": 0.3 },
+		{ "id": "financial", "name": "Financial District", "rect": Rect2(Vector2(1024, 640), Vector2(1024, 640)), "danger": 0.55 },
+	]
 
 	# Outer bounds.
 	_set_wall_rect(0, 0, size.x, 1, true)
@@ -46,8 +56,12 @@ func load_vertical_slice() -> void:
 	_set_surface_rect(18, 7, 5, 10, Surface.SHADOW)
 	_set_surface_rect(33, 8, 7, 7, Surface.SHADOW)
 	_set_surface_rect(26, 30, 8, 5, Surface.HAVEN)
+	_set_road_rect(1, 17, 62, 6, true)
+	_set_road_rect(1, 34, 62, 4, true)
+	_set_road_rect(2, 1, 5, 38, true)
+	_set_road_rect(55, 1, 6, 38, true)
 	haven_zone = Rect2(Vector2(26 * tile_size, 30 * tile_size), Vector2(8 * tile_size, 5 * tile_size))
-	exit_zone = Rect2(Vector2(58 * tile_size, 18 * tile_size), Vector2(4 * tile_size, 6 * tile_size))
+	exit_zone = Rect2(Vector2(44 * tile_size, 18 * tile_size), Vector2(18 * tile_size, 6 * tile_size))
 
 	named_points = {
 		"player": Vector2(160, 576),
@@ -57,6 +71,12 @@ func load_vertical_slice() -> void:
 		"heat_search": Vector2(335, 560),
 		"exit": exit_zone.get_center(),
 		"haven": haven_zone.get_center()
+	}
+	pois = {
+		"bloodbank": Vector2(420, 640),
+		"shop": Vector2(735, 675),
+		"haven": haven_zone.get_center(),
+		"mission_board": Vector2(185, 640),
 	}
 	spawn_points = [
 		named_points["player"],
@@ -103,6 +123,21 @@ func is_blocked_world(world_pos: Vector2, radius: float = 0.0) -> bool:
 			return true
 	return false
 
+func is_road_world(world_pos: Vector2) -> bool:
+	var cell := world_to_cell(world_pos)
+	if cell.x < 0 or cell.y < 0 or cell.x >= size.x or cell.y >= size.y:
+		return false
+	return roads[_idx(cell)] != 0 and not is_solid(cell)
+
+func district_at(world_pos: Vector2) -> Dictionary:
+	for district in districts:
+		if (district["rect"] as Rect2).has_point(world_pos):
+			return district
+	return {}
+
+func poi_pos(poi_id: String) -> Vector2:
+	return pois.get(poi_id, named_points.get("player", Vector2.ZERO))
+
 func resolve_motion(from_pos: Vector2, to_pos: Vector2, radius: float) -> Vector2:
 	var bounds := world_size()
 	var clamped := Vector2(
@@ -128,6 +163,56 @@ func segment_clear(a: Vector2, b: Vector2) -> bool:
 			return false
 	return true
 
+func find_path(start_pos: Vector2, target_pos: Vector2, max_expand: int = 2500) -> Array[Vector2]:
+	var start := world_to_cell(start_pos)
+	var goal := world_to_cell(target_pos)
+	if is_solid(start):
+		return []
+	if is_solid(goal):
+		var snap := nearest_walkable_cell(goal, 4)
+		if snap == Vector2i(-1, -1):
+			return []
+		goal = snap
+	var open: Array[Vector2i] = [start]
+	var came: Dictionary = {}
+	var g_score: Dictionary = { start: 0.0 }
+	var closed: Dictionary = {}
+	var expanded := 0
+	while not open.is_empty() and expanded < max_expand:
+		open.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+			return float(g_score.get(a, 999999.0)) + _path_heuristic(a, goal) < float(g_score.get(b, 999999.0)) + _path_heuristic(b, goal)
+		)
+		var cur: Vector2i = open.pop_front()
+		if cur == goal:
+			return _reconstruct_path(came, cur)
+		closed[cur] = true
+		expanded += 1
+		for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
+			var next: Vector2i = cur + off
+			if next.x < 0 or next.y < 0 or next.x >= size.x or next.y >= size.y or is_solid(next) or closed.has(next):
+				continue
+			if off.x != 0 and off.y != 0 and (is_solid(Vector2i(cur.x + off.x, cur.y)) or is_solid(Vector2i(cur.x, cur.y + off.y))):
+				continue
+			var step := 1.414 if off.x != 0 and off.y != 0 else 1.0
+			var new_g: float = float(g_score.get(cur, 999999.0)) + step
+			if new_g < float(g_score.get(next, 999999.0)):
+				came[next] = cur
+				g_score[next] = new_g
+				if not open.has(next):
+					open.append(next)
+	return []
+
+func nearest_walkable_cell(cell: Vector2i, radius: int) -> Vector2i:
+	for d in range(1, radius + 1):
+		for y in range(cell.y - d, cell.y + d + 1):
+			for x in range(cell.x - d, cell.x + d + 1):
+				if abs(x - cell.x) != d and abs(y - cell.y) != d:
+					continue
+				var p := Vector2i(x, y)
+				if x >= 0 and y >= 0 and x < size.x and y < size.y and not is_solid(p):
+					return p
+	return Vector2i(-1, -1)
+
 func nearest_open_around(center: Vector2, min_radius: float, max_radius: float, ordinal: int) -> Vector2:
 	var tries := 32
 	for i in range(tries):
@@ -148,8 +233,10 @@ func is_in_haven(pos: Vector2) -> bool:
 func _reset_arrays() -> void:
 	walls = PackedByteArray()
 	surfaces = PackedByteArray()
+	roads = PackedByteArray()
 	walls.resize(size.x * size.y)
 	surfaces.resize(size.x * size.y)
+	roads.resize(size.x * size.y)
 
 func _idx(cell: Vector2i) -> int:
 	return cell.y * size.x + cell.x
@@ -165,3 +252,39 @@ func _set_surface_rect(x: int, y: int, w: int, h: int, surface: int) -> void:
 		for xx in range(x, x + w):
 			if xx >= 0 and yy >= 0 and xx < size.x and yy < size.y:
 				surfaces[_idx(Vector2i(xx, yy))] = surface
+
+func _set_road_rect(x: int, y: int, w: int, h: int, road: bool) -> void:
+	for yy in range(y, y + h):
+		for xx in range(x, x + w):
+			if xx >= 0 and yy >= 0 and xx < size.x and yy < size.y:
+				roads[_idx(Vector2i(xx, yy))] = 1 if road else 0
+
+func _path_heuristic(a: Vector2i, b: Vector2i) -> float:
+	var dx: int = abs(a.x - b.x)
+	var dy: int = abs(a.y - b.y)
+	return float(dx + dy) + (1.414 - 2.0) * float(min(dx, dy))
+
+func _cell_center(cell: Vector2i) -> Vector2:
+	return Vector2((float(cell.x) + 0.5) * float(tile_size), (float(cell.y) + 0.5) * float(tile_size))
+
+func _reconstruct_path(came: Dictionary, cur: Vector2i) -> Array[Vector2]:
+	var cells: Array[Vector2i] = [cur]
+	while came.has(cur):
+		cur = came[cur]
+		cells.append(cur)
+	cells.reverse()
+	var path: Array[Vector2] = []
+	for cell in cells:
+		path.append(_cell_center(cell))
+	if path.size() <= 2:
+		return path
+	var simplified: Array[Vector2] = [path[0]]
+	for i in range(1, path.size() - 1):
+		var a := simplified[simplified.size() - 1]
+		var b := path[i]
+		var c := path[i + 1]
+		var cross := (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)
+		if absf(cross) > 0.001:
+			simplified.append(b)
+	simplified.append(path[path.size() - 1])
+	return simplified

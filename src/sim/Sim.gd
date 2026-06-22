@@ -8,6 +8,9 @@ class_name VCSim
 const FIXED_DT := 1.0 / 60.0
 const SimNPCScript := preload("res://src/entities/SimNPC.gd")
 const SimPlayerScript := preload("res://src/entities/SimPlayer.gd")
+const SimProjectileScript := preload("res://src/entities/SimProjectile.gd")
+const SimVehicleScript := preload("res://src/entities/SimVehicle.gd")
+const SimMetaScript := preload("res://src/sim/SimMeta.gd")
 
 # Sim-owned deterministic draw state. Use draw_* helpers only.
 var rng: int = 1
@@ -18,6 +21,7 @@ var time_scale: float = 1.0
 var player: SimEntity = null
 var entities: Array[SimEntity] = []
 var world: SimWorld = null
+var meta = null
 
 var heat: float = 0.0
 var last_crime_tick: int = -999999
@@ -61,6 +65,8 @@ func new_game(new_seed_value: int, clan_id: String) -> void:
 
 	world = SimWorld.new()
 	world.load_vertical_slice()
+	meta = SimMetaScript.new()
+	meta.reset(clan_id)
 	last_seen_pos = world.named_points.get("heat_search", Vector2.ZERO)
 
 	player = SimEntity.new(next_entity_id(), "player")
@@ -72,7 +78,11 @@ func new_game(new_seed_value: int, clan_id: String) -> void:
 
 	spawn_npc("ped", world.named_points.get("civilian", Vector2(245, 576)), { "state": "wander" })
 	spawn_npc("ped", world.named_points.get("witness", Vector2(330, 560)), { "state": "wander" })
-	spawn_npc("thug", world.named_points.get("enemy", Vector2(560, 560)), { "state": "wander", "hostile_to_player": true })
+	spawn_npc("thug", world.named_points.get("enemy", Vector2(560, 560)), { "state": "guard", "hostile_to_player": true })
+	spawn_vehicle("sedan", Vector2(710, 620), { "angle": 0.0 })
+	spawn_vehicle("police", Vector2(960, 622), { "angle": PI, "ai": true, "siren": true })
+	meta.generate_mission_offers(self)
+	meta.apply_to_runtime(self)
 	emit_cue("level.loaded", { "level_id": "vertical_slice_block", "player_spawn": player.pos, "lights": world.lights.size() })
 
 func tick_sim(delta: float) -> void:
@@ -85,13 +95,25 @@ func tick_sim(delta: float) -> void:
 		if e != null:
 			e.step(delta, self)
 	tick_combat()
+	if meta != null:
+		meta.tick(delta, self)
 	_update_heat(delta)
 	_check_escape()
+	_cleanup_dead_transients()
 
 func apply_input(action: InputAction) -> void:
 	if _recording:
 		_recorded_inputs.append({ "tick": tick, "seq": _input_seq, "action": action.serialize() })
 		_input_seq += 1
+	if action.kind == InputAction.Kind.INTERACT:
+		_try_interact()
+		return
+	if action.kind == InputAction.Kind.POWER and action.action_id.begins_with("slot_") and meta != null:
+		var slot_idx := int(action.action_id.substr(5)) - 1
+		var power_id: String = meta.slot_power(slot_idx)
+		if power_id != "":
+			action = InputAction.new(InputAction.Kind.POWER)
+			action.action_id = power_id
 	if player != null and player.behaviour != null and player.behaviour.has_method("apply_action"):
 		player.behaviour.call("apply_action", action, self)
 
@@ -180,6 +202,25 @@ func spawn_npc(type_id: String, pos: Vector2, opts: Dictionary = {}) -> SimEntit
 	emit_cue("npc.spawn", { "entity_id": e.id, "type": type_id, "faction": e.faction, "pos": e.pos, "responder": e.responder })
 	return e
 
+func spawn_projectile(pos: Vector2, velocity: Vector2, opts: Dictionary = {}) -> SimEntity:
+	var e := SimEntity.new(next_entity_id(), "projectile")
+	e.pos = pos
+	var projectile_opts := opts.duplicate(true)
+	projectile_opts["vx"] = velocity.x
+	projectile_opts["vy"] = velocity.y
+	SimProjectileScript.configure(e, projectile_opts)
+	entities.append(e)
+	emit_cue("projectile.spawn", { "entity_id": e.id, "kind": e.type_id, "pos": e.pos, "velocity": velocity })
+	return e
+
+func spawn_vehicle(type_id: String, pos: Vector2, opts: Dictionary = {}) -> SimEntity:
+	var e := SimEntity.new(next_entity_id(), "vehicle")
+	e.pos = pos
+	SimVehicleScript.configure(e, type_id, opts)
+	entities.append(e)
+	emit_cue("vehicle.spawn", { "entity_id": e.id, "type": type_id, "pos": pos })
+	return e
+
 func get_entity(entity_id: int) -> SimEntity:
 	for e in entities:
 		if e != null and e.id == entity_id:
@@ -224,7 +265,8 @@ func witnessed_act(pos: Vector2, act_type: String, amount: float) -> void:
 	var always := act_type in ["kill", "explosion", "body", "combat"]
 	if witnesses <= 0 and not always:
 		return
-	var gain: float = minf(1.5, amount * (0.45 + minf(0.8, float(witnesses) * 0.22)))
+	var domain_mult: float = meta.heat_mult_at(pos) if meta != null else 1.0
+	var gain: float = minf(1.5, amount * (0.45 + minf(0.8, float(witnesses) * 0.22)) * domain_mult)
 	add_heat(gain, act_type)
 	last_crime_tick = tick
 	last_provoke_tick = tick
@@ -281,6 +323,8 @@ func emit_cue(event_id: String, payload: Dictionary = {}) -> void:
 	var rec := { "tick": tick, "id": event_id, "payload": payload.duplicate(true) }
 	cue_events.append(rec)
 	cue_events_this_tick.append(rec)
+	if meta != null:
+		meta.mission_event(event_id, payload, self)
 	if is_inside_tree():
 		var cue_bus := get_tree().root.get_node_or_null("CueBus")
 		if cue_bus != null and cue_bus.has_method("emit_cue"):
@@ -316,7 +360,48 @@ func state_hash() -> int:
 	for e in entities:
 		if e != null:
 			h = hash([h, e.state_hash()])
+	if meta != null:
+		h = hash([h, meta.state_hash()])
 	return h
+
+func serialize_run() -> Dictionary:
+	return {
+		"seed": seed_value,
+		"rng": rng,
+		"tick": tick,
+		"heat": heat,
+		"last_crime_tick": last_crime_tick,
+		"last_provoke_tick": last_provoke_tick,
+		"last_seen_pos": last_seen_pos,
+		"responder_spawn_ticks": responder_spawn_ticks,
+		"player_last_attack_tick": player_last_attack_tick,
+		"escaped": escaped,
+		"reached_haven": reached_haven,
+		"meta": meta.serialize(self) if meta != null else {},
+	}
+
+func restore_run(data: Dictionary) -> bool:
+	if data.is_empty():
+		return false
+	var clan := "brujah"
+	if data.has("meta") and data["meta"] is Dictionary:
+		clan = String((data["meta"] as Dictionary).get("clan", clan))
+	new_game(int(data.get("seed", seed_value)), clan)
+	rng = int(data.get("rng", rng))
+	tick = int(data.get("tick", tick))
+	heat = clamp(float(data.get("heat", heat)), 0.0, 6.0)
+	last_crime_tick = int(data.get("last_crime_tick", last_crime_tick))
+	last_provoke_tick = int(data.get("last_provoke_tick", last_provoke_tick))
+	if data.get("last_seen_pos", null) is Vector2:
+		last_seen_pos = data["last_seen_pos"]
+	responder_spawn_ticks = int(data.get("responder_spawn_ticks", responder_spawn_ticks))
+	player_last_attack_tick = int(data.get("player_last_attack_tick", player_last_attack_tick))
+	escaped = bool(data.get("escaped", escaped))
+	reached_haven = bool(data.get("reached_haven", reached_haven))
+	if data.has("meta") and data["meta"] is Dictionary and meta != null:
+		meta.restore(data["meta"], self)
+	emit_cue("save.restored", { "tick": tick, "day": meta.day if meta != null else 1 })
+	return true
 
 func start_recording() -> void:
 	_recording = true
@@ -444,6 +529,10 @@ func _check_escape() -> void:
 
 func _on_entity_killed(attacker: SimEntity, target: SimEntity, _opts: Dictionary) -> void:
 	emit_cue("npc.death", { "entity_id": target.id, "type": target.type_id, "pos": target.pos })
+	if target.tags.has("baron_of") and meta != null:
+		meta.claim_domain(String(target.tags["baron_of"]), self)
+	if meta != null and target.faction in ["police", "gang", "inquis"]:
+		meta.change_reputation(target.faction, -2.0 if target.faction == "police" else -1.5, self)
 	if attacker == player and player.behaviour != null:
 		player.behaviour.set("kills", int(player.behaviour.get("kills")) + 1)
 		if target.innocent:
@@ -480,3 +569,28 @@ func _seed_to_state(value: int) -> int:
 	if state <= 0:
 		state += 1
 	return state
+
+func _try_interact() -> bool:
+	if player == null:
+		return false
+	var behaviour = player.behaviour
+	if behaviour != null and int(behaviour.get("vehicle_id")) != 0:
+		var current := get_entity(int(behaviour.get("vehicle_id")))
+		if current != null and current.behaviour != null and current.behaviour.has_method("exit"):
+			current.behaviour.call("exit", player, self)
+			behaviour.set("vehicle_id", 0)
+			return true
+	var vehicle := nearest_entity(player.pos, 58.0, func(e: SimEntity) -> bool: return e.kind == "vehicle" and not e.dead) as SimEntity
+	if vehicle != null and vehicle.behaviour != null and vehicle.behaviour.has_method("enter"):
+		if bool(vehicle.behaviour.call("enter", player, self)):
+			behaviour.set("vehicle_id", vehicle.id)
+			if meta != null:
+				meta.stats["hijacks"] = int(meta.stats.get("hijacks", 0)) + 1
+			return true
+	return false
+
+func _cleanup_dead_transients() -> void:
+	for i in range(entities.size() - 1, -1, -1):
+		var e := entities[i]
+		if e != null and e.dead and e.kind in ["projectile"]:
+			entities.remove_at(i)

@@ -103,6 +103,8 @@ func step(delta: float, sim) -> void:
 			_move_toward(entity.last_seen_pos, delta, sim, 0.75)
 			if entity.pos.distance_to(entity.last_seen_pos) < 28.0 and not sees_player:
 				entity.search_ticks = max(0, entity.search_ticks - 6)
+		"guard":
+			pass
 		"chase":
 			_chase(delta, sim)
 		"attack":

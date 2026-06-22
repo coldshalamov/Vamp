@@ -85,12 +85,13 @@ func step(delta: float, sim) -> void:
 			expired.append(key)
 	for key in expired:
 		cooldowns.erase(key)
-	if vel.length_squared() > 0.01:
-		var next_pos := pos + vel * delta
-		pos = sim.world.resolve_motion(pos, next_pos, radius) if sim != null and sim.world != null else next_pos
-		vel *= 0.86
-	else:
-		vel = Vector2.ZERO
+	if kind != "projectile":
+		if vel.length_squared() > 0.01:
+			var next_pos := pos + vel * delta
+			pos = sim.world.resolve_motion(pos, next_pos, radius) if sim != null and sim.world != null else next_pos
+			vel *= 0.86
+		else:
+			vel = Vector2.ZERO
 	if behaviour != null and behaviour.has_method("step"):
 		behaviour.step(delta, sim)
 

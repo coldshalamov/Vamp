@@ -34,6 +34,7 @@ var feed_progress: float = 0.0
 var feed_drained: float = 0.0
 var feed_lethal: bool = false
 var iframes_remaining: int = 0
+var vehicle_id: int = 0
 
 var power_cooldowns: Dictionary = {}
 var buffs: Dictionary = {}
@@ -91,10 +92,19 @@ func apply_action(action: InputAction, sim) -> void:
 
 func step(delta: float, sim) -> void:
 	_tick_cooldowns()
-	_tick_buffs()
+	_tick_buffs(delta, sim)
 	_tick_blood(delta, sim)
 	if iframes_remaining > 0:
 		iframes_remaining -= 1
+	if vehicle_id != 0:
+		var vehicle: SimEntity = sim.get_entity(vehicle_id)
+		if vehicle == null or vehicle.dead:
+			vehicle_id = 0
+		else:
+			entity.pos = vehicle.pos
+			entity.facing = vehicle.facing
+			entity.exposure = 1.15
+			return
 	if feeding_target_id != 0:
 		_tick_feeding(delta, sim)
 	var phase := entity.action_phase()
@@ -121,38 +131,66 @@ func cast_power(power_id: String, sim) -> bool:
 	var def: Dictionary = PowerCatalogScript.get_def(power_id)
 	if def.is_empty():
 		return false
+	power_id = String(def.get("id", power_id))
+	if sim.meta != null and not sim.meta.knows_power(power_id):
+		sim.emit_cue("power.failed.unknown", { "power_id": power_id })
+		return false
+	if String(def.get("type", "active")) == "toggle" and buffs.has(power_id):
+		buffs.erase(power_id)
+		sim.emit_cue("power.toggle", { "power_id": power_id, "enabled": false, "pos": entity.pos })
+		return true
 	if int(power_cooldowns.get(power_id, 0)) > 0:
 		sim.emit_cue("power.cooldown", { "power_id": power_id, "remaining": int(power_cooldowns[power_id]) })
 		return false
-	var cost := float(def.get("cost", 0.0))
+	var cost: float = sim.meta.effective_power_cost(power_id) if sim.meta != null else float(def.get("cost", 0.0))
 	if blood < cost:
 		sim.emit_cue("power.failed.no_blood", { "power_id": power_id, "blood": blood })
 		return false
 	blood -= cost
-	power_cooldowns[power_id] = int(def.get("cooldown", 60))
+	power_cooldowns[power_id] = sim.meta.effective_power_cooldown(power_id) if sim.meta != null else int(def.get("cooldown", 60))
 	var ok := true
 	match power_id:
 		"cel_dash":
-			_try_dash(Vector2.RIGHT.rotated(entity.facing), sim, float(def.get("range", 150.0)), 18)
+			_try_dash(Vector2.RIGHT.rotated(entity.facing), sim, float(def.get("range", 150.0)), int(def.get("iframes", 18)))
 		"cel_haste":
-			_apply_buff("cel_haste", int(def.get("duration", 240)), { "move": 1.35 })
+			_apply_buff(power_id, int(def.get("duration", -1)), { "move": 1.40, "upkeep": float(def.get("upkeep", 0.0)), "toggle": true })
+		"cel_flurry":
+			_apply_buff(power_id, int(def.get("duration", 210)), { "attackSpeed": 1.40, "damage": 0.25 })
+		"cel_bullet":
+			_apply_buff(power_id, int(def.get("duration", 240)), { "slowmo": 0.32, "attackSpeed": 0.30 })
+			sim.time_scale = 0.32
 		"pot_slam":
-			_damage_radius(sim, float(def.get("radius", 100.0)), float(def.get("damage", 20.0)), int(def.get("stun", 0)), "power.potence.hit")
+			_damage_radius(sim, float(def.get("radius", 100.0)), _spell_damage(def), int(def.get("stun", 0)), "power.potence.hit")
 		"pot_charge":
 			_try_dash(Vector2.RIGHT.rotated(entity.facing), sim, float(def.get("range", 135.0)), 10)
-			_damage_radius(sim, float(def.get("radius", 34.0)), float(def.get("damage", 24.0)), int(def.get("stun", 0)), "power.potence.charge_hit")
+			_damage_radius(sim, float(def.get("radius", 34.0)), _spell_damage(def), int(def.get("stun", 0)), "power.potence.charge_hit")
+		"pot_quake":
+			_damage_radius(sim, float(def.get("radius", 185.0)), _spell_damage(def), int(def.get("stun", 0)), "power.potence.quake_hit")
 		"for_mend":
 			var heal := float(def.get("heal", 30.0))
+			if sim.meta != null:
+				heal *= 1.0 + float(sim.meta.derived.get("spellPower", 1.0)) * 0.35
 			entity.hp = min(entity.max_hp, entity.hp + heal)
 			sim.emit_cue("player.heal", { "amount": heal, "pos": entity.pos })
 		"for_stone":
 			_apply_buff("for_stone", int(def.get("duration", 240)), { "armor": float(def.get("armor", 0.3)) })
+		"for_unkill":
+			_apply_buff("for_unkill", int(def.get("duration", 156)), { "invulnerable": true })
+			iframes_remaining = max(iframes_remaining, int(def.get("duration", 156)))
 		"obf_cloak":
-			_apply_buff("obf_cloak", int(def.get("duration", 300)), {})
+			_apply_buff(power_id, int(def.get("duration", -1)), { "upkeep": float(def.get("upkeep", 0.0)), "toggle": true })
 		"obf_vanish":
 			_apply_buff("obf_vanish", int(def.get("duration", 180)), {})
-			sim.reduce_heat(float(def.get("heat_reduction", 0.8)), "power")
+			var drop: float = maxf(float(def.get("heat_reduction", 0.8)), sim.heat - 0.20)
+			sim.reduce_heat(drop, "power")
 			sim.break_responder_locks()
+		"obf_mask":
+			sim.reduce_heat(float(def.get("heat_reduction", 2.0)), "power")
+			sim.clear_witness_panic()
+		"aus_senses":
+			_apply_buff(power_id, int(def.get("duration", -1)), { "upkeep": float(def.get("upkeep", 0.0)), "crit": 0.10, "detect": 140.0, "toggle": true })
+		"aus_premon":
+			_apply_buff(power_id, int(def.get("duration", 360)), { "dodge": float(def.get("dodge", 0.4)) })
 		"aus_mark":
 			var target: SimEntity = sim.nearest_entity(entity.pos, float(def.get("range", 360.0)), func(e: SimEntity) -> bool: return _is_hostile_or_feedable(e)) as SimEntity
 			if target == null:
@@ -161,31 +199,117 @@ func cast_power(power_id: String, sim) -> bool:
 				target.tags["marked"] = int(def.get("duration", 360))
 				target.tags["damage_bonus"] = float(def.get("damage_bonus", 0.35))
 				sim.emit_cue("power.auspex.marked", { "target_id": target.id, "pos": target.pos })
-		"dom_mesmerize":
+		"dom_mesmer":
 			var any := false
-			for target in sim.entities_in_radius(entity.pos, float(def.get("range", 150.0)), func(e): return e != entity and not e.dead):
+			for target in sim.entities_in_radius(entity.pos, float(def.get("radius", def.get("range", 150.0))), func(e): return e != entity and not e.dead):
 				if abs(_angle_diff((target.pos - entity.pos).angle(), entity.facing)) <= float(def.get("arc", 1.35)):
 					target.apply_status("mesmerized", int(def.get("stun", 180)))
 					any = true
 			ok = any
+		"dom_command":
+			var command_target := _aim_target(sim, float(def.get("range", 220.0)))
+			if command_target == null:
+				ok = false
+			else:
+				command_target.apply_status("fear", int(def.get("fear", 300)))
+				sim.emit_cue("power.dominate.commanded", { "target_id": command_target.id, "pos": command_target.pos })
 		"dom_forget":
 			sim.reduce_heat(float(def.get("heat_reduction", 1.2)), "power")
 			sim.clear_witness_panic()
+		"dom_thrall":
+			var thrall_target: SimEntity = sim.nearest_entity(entity.pos, float(def.get("range", 95.0)), func(e: SimEntity) -> bool: return e.kind == "npc" and e.faction != "player" and not e.dead and (e.hp < e.max_hp * 0.5 or e.has_status("mesmerized") or e.faction == "civ")) as SimEntity
+			if thrall_target == null or sim.meta == null:
+				ok = false
+			else:
+				thrall_target.faction = "player"
+				thrall_target.hostile_to_player = false
+				thrall_target.ai_state = "follow"
+				var member: Dictionary = sim.meta.bind_coterie_member(thrall_target.victim_type if thrall_target.victim_type != "" else "thrall", sim)
+				thrall_target.tags["coterie_id"] = member.get("id", 0)
 		"pre_dread":
 			for target in sim.entities_in_radius(entity.pos, float(def.get("radius", 165.0)), func(e): return e.kind == "npc" and e.faction != "player" and not e.dead):
 				target.apply_status("fear", int(def.get("fear", 180)))
 				target.hostile_to_player = false
 			sim.witnessed_act(entity.pos, "panic", 0.25)
+		"pre_majesty":
+			_apply_buff(power_id, int(def.get("duration", 360)), { "majesty": true })
+		"pre_entr":
+			var charmed := false
+			for target in sim.entities_in_radius(entity.pos, float(def.get("radius", 185.0)), func(e): return e.kind == "npc" and e.faction == "civ" and not e.dead):
+				target.apply_status("mesmerized", int(def.get("stun", 480)))
+				charmed = true
+			ok = charmed
+		"pro_claws":
+			_apply_buff(power_id, int(def.get("duration", -1)), { "damage": float(def.get("damage_bonus", 0.5)), "lifesteal": float(def.get("lifesteal", 0.08)), "upkeep": float(def.get("upkeep", 0.0)), "toggle": true })
+		"pro_mist":
+			_apply_buff(power_id, int(def.get("duration", 180)), { "mist": true, "move": 1.30 })
+			iframes_remaining = max(iframes_remaining, int(def.get("duration", 180)))
+		"pro_beast":
+			_apply_buff(power_id, int(def.get("duration", 600)), { "move": 1.35, "damage": 0.60, "maxHP": 0.30 })
+			entity.hp = min(entity.max_hp, entity.hp + entity.max_hp * 0.30)
 		"bs_bolt":
 			var bolt_target := _aim_target(sim, float(def.get("range", 340.0)))
 			if bolt_target == null:
+				_fire_projectile(sim, def, Vector2.RIGHT.rotated(entity.facing), "blood")
+			else:
+				sim.damage_entity(entity, bolt_target, _spell_damage(def), {
+					"cue": "power.blood_sorcery.bolt",
+					"status": "bleed",
+					"status_ticks": int(def.get("bleed", 180)),
+					"damage_type": "blood",
+					"knockback": 0.0,
+				})
+		"bs_cauldron":
+			var cauldron_target := _aim_target(sim, float(def.get("range", 320.0)))
+			if cauldron_target == null:
 				ok = false
 			else:
-				sim.damage_entity(entity, bolt_target, float(def.get("damage", 24.0)), { "cue": "power.blood_bolt.hit", "status": "bleed", "status_ticks": int(def.get("bleed", 120)) })
+				sim.damage_entity(entity, cauldron_target, _spell_damage(def), { "cue": "power.blood.cauldron", "status": "bleed", "status_ticks": int(def.get("duration", 300)), "aoe_radius": float(def.get("splash", 70.0)) })
+				for spill in sim.entities_in_radius(cauldron_target.pos, float(def.get("splash", 70.0)), func(e): return e.kind == "npc" and e != cauldron_target and not e.dead):
+					spill.apply_status("bleed", int(def.get("duration", 300)) / 2)
+		"bs_ward":
+			_apply_buff(power_id, int(def.get("duration", 720)), { "shield": float(def.get("shield", 60.0)) })
+		"bs_theft":
+			var theft_target := _aim_target(sim, float(def.get("range", 300.0)))
+			if theft_target == null:
+				ok = false
+			else:
+				var dealt: float = sim.damage_entity(entity, theft_target, _spell_damage(def), { "cue": "power.blood.theft" })
+				heal_blood(dealt * float(def.get("steal", 0.6)))
+		"bs_storm":
+			var bolts := int(def.get("bolts", 14))
+			for i in range(bolts):
+				_fire_projectile(sim, def, Vector2.RIGHT.rotated(float(i) / float(bolts) * TAU), "blood")
+		"shd_tendril":
+			var tendril_target := _aim_target(sim, float(def.get("range", 280.0)))
+			var center := tendril_target.pos if tendril_target != null else entity.pos + Vector2.RIGHT.rotated(entity.facing) * 120.0
+			for target in sim.entities_in_radius(center, float(def.get("radius", 95.0)), func(e): return e.kind == "npc" and e.faction != "player" and not e.dead):
+				target.apply_status("root", int(def.get("duration", 180)))
+				sim.damage_entity(entity, target, _spell_damage(def), { "cue": "power.dark.tendril" })
+		"shd_arms":
+			var arms_target := _aim_target(sim, float(def.get("range", 340.0)))
+			if arms_target == null:
+				ok = false
+			else:
+				sim.damage_entity(entity, arms_target, _spell_damage(def), { "cue": "power.dark.arms", "status": "root", "status_ticks": 60 })
+				arms_target.pos = sim.world.resolve_motion(arms_target.pos, arms_target.pos.move_toward(entity.pos, float(def.get("pull", 130.0))), arms_target.radius)
+		"dem_confuse":
+			var any_confused := false
+			for target in sim.entities_in_radius(entity.pos, float(def.get("radius", 190.0)), func(e): return e.kind == "npc" and e.faction != "player" and not e.dead):
+				target.apply_status("confuse", int(def.get("duration", 360)))
+				target.tags["confused"] = int(def.get("duration", 360))
+				any_confused = true
+			ok = any_confused
+		"vic_horrid":
+			_apply_buff(power_id, int(def.get("duration", 720)), { "damage": 0.50, "armor": 0.30, "maxHP": 0.60, "move": 0.85 })
 		_:
 			ok = false
 	if ok:
 		sim.emit_cue("power.cast", { "power_id": power_id, "name": def.get("name", power_id), "pos": entity.pos, "cue": def.get("cue", "") })
+		if String(def.get("type", "active")) == "toggle":
+			sim.emit_cue("power.toggle", { "power_id": power_id, "enabled": true, "pos": entity.pos })
+		if sim.meta != null:
+			sim.meta.stats["castsTotal"] = int(sim.meta.stats.get("castsTotal", 0)) + 1
 	else:
 		blood = min(max_blood, blood + cost)
 		power_cooldowns.erase(power_id)
@@ -211,6 +335,7 @@ func state_hash() -> int:
 		snapped(hunger, 0.001), snapped(humanity, 0.001),
 		snapped(frenzy, 0.001), frenzied, feeding_target_id, snapped(feed_drained, 0.001),
 		snapped(feed_progress, 0.001), feed_lethal, iframes_remaining,
+		vehicle_id,
 		frenzy_cooldown, sprinting, sneaking, aiming, holding_feed,
 		fed_count, kills, innocent_kills, snapped(damage_dealt, 0.001),
 		snapped(damage_taken, 0.001)
@@ -221,6 +346,9 @@ func state_hash() -> int:
 
 func _try_attack(sim) -> void:
 	if feeding_target_id != 0:
+		return
+	if vehicle_id != 0:
+		_shoot_from_vehicle(sim)
 		return
 	if buffs.has("obf_cloak"):
 		buffs.erase("obf_cloak")
@@ -275,7 +403,7 @@ func _try_pounce(dir: Vector2, sim) -> bool:
 	return true
 
 func _try_finish(sim) -> bool:
-	var target: SimEntity = sim.nearest_entity(entity.pos, 68.0, func(e: SimEntity) -> bool: return e.kind == "npc" and e.faction != "player" and not e.dead and (e.downed or e.hp <= e.max_hp * 0.36 or e.has_status("mesmerized") or e.has_status("stun"))) as SimEntity
+	var target: SimEntity = sim.nearest_entity(entity.pos, 96.0, func(e: SimEntity) -> bool: return e.kind == "npc" and e.faction != "player" and not e.dead and (e.downed or e.hp <= e.max_hp * 0.36 or e.has_status("mesmerized") or e.has_status("stun"))) as SimEntity
 	if target == null:
 		return false
 	target.hp = 0.0
@@ -287,6 +415,8 @@ func _try_finish(sim) -> bool:
 		sim.emit_cue("humanity.lost", { "humanity": humanity, "target_id": target.id })
 	heal_blood(18.0)
 	sim.witnessed_act(target.pos, "kill", 1.5)
+	if sim.meta != null:
+		sim.meta.mission_event("npc.death", { "entity_id": target.id, "type": target.type_id, "pos": target.pos }, sim)
 	sim.emit_cue("finisher.start", { "target_id": target.id, "pos": target.pos })
 	return true
 
@@ -413,14 +543,24 @@ func _tick_cooldowns() -> void:
 	for key in expired:
 		power_cooldowns.erase(key)
 
-func _tick_buffs() -> void:
+func _tick_buffs(delta: float, sim) -> void:
 	var expired: Array = []
 	for key in buffs:
-		buffs[key]["ticks"] = int(buffs[key].get("ticks", 0)) - 1
-		if int(buffs[key].get("ticks", 0)) <= 0:
+		if float(buffs[key].get("upkeep", 0.0)) > 0.0:
+			blood -= float(buffs[key].get("upkeep", 0.0)) * delta
+			if blood <= 0.0:
+				blood = 0.0
+				expired.append(key)
+				continue
+		if int(buffs[key].get("ticks", 0)) > 0:
+			buffs[key]["ticks"] = int(buffs[key].get("ticks", 0)) - 1
+		if int(buffs[key].get("ticks", 0)) == 0:
 			expired.append(key)
 	for key in expired:
 		buffs.erase(key)
+		sim.emit_cue("power.toggle", { "power_id": key, "enabled": false, "pos": entity.pos })
+	if not buffs.has("cel_bullet") and sim.time_scale != 1.0:
+		sim.time_scale = 1.0
 
 func _apply_buff(buff_id: String, ticks: int, data: Dictionary) -> void:
 	var rec := data.duplicate(true)
@@ -479,6 +619,46 @@ func _compute_exposure(sim) -> float:
 	if sim.world != null and sim.world.surface_at(entity.pos) == SimWorld.Surface.SHADOW:
 		exposure -= 0.18
 	return clamp(exposure, 0.08, 1.35)
+
+func _spell_damage(def: Dictionary) -> float:
+	var amount := float(def.get("damage", def.get("dmg", 0.0)))
+	return amount
+
+func _fire_projectile(sim, def: Dictionary, dir: Vector2, kind: String) -> void:
+	var shot_dir := dir.normalized()
+	var speed := float(def.get("speed", 540.0))
+	var start := entity.pos + shot_dir * (entity.radius + 8.0)
+	sim.spawn_projectile(start, shot_dir * speed, {
+		"owner_id": entity.id,
+		"faction": "player",
+		"kind": kind,
+		"damage": _spell_damage(def),
+		"radius": 6.0,
+		"life_ticks": 96,
+		"pierce": int(def.get("pierce", 0)),
+		"status": "bleed" if def.has("bleed") else "",
+		"status_ticks": int(def.get("bleed", 0)),
+		"cue": "power.projectile.hit",
+		"damage_type": kind,
+	})
+
+func _shoot_from_vehicle(sim) -> void:
+	var vehicle: SimEntity = sim.get_entity(vehicle_id)
+	if vehicle == null:
+		vehicle_id = 0
+		return
+	var dir := Vector2.RIGHT.rotated(vehicle.facing)
+	sim.spawn_projectile(vehicle.pos + dir * (vehicle.radius + 8.0), dir * 720.0, {
+		"owner_id": entity.id,
+		"faction": "player",
+		"kind": "drive_by",
+		"damage": 14.0,
+		"radius": 4.0,
+		"life_ticks": 70,
+		"cue": "vehicle.drive_by.hit",
+	})
+	sim.emit_cue("vehicle.drive_by", { "vehicle_id": vehicle_id, "pos": vehicle.pos })
+	sim.witnessed_act(vehicle.pos, "combat", 0.45)
 
 func _angle_diff(a: float, b: float) -> float:
 	var d := fmod(a - b, TAU)

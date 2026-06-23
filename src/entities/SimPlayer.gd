@@ -594,7 +594,8 @@ func _finish_feed(sim, lethal: bool) -> void:
 		if target.innocent:
 			innocent_kills += 1
 			humanity = max(0.0, humanity - 0.4)
-			sim.emit_cue("humanity.lost", { "humanity": humanity, "target_id": target.id })
+			sim.emit_cue("humanity.lost", { "humanity": humanity, "target_id": target.id, "pos": target.pos })
+			_react_to_humanity_drop(sim, target.pos)
 		sim.witnessed_act(target.pos, "kill", 1.5)
 		sim.emit_cue("feed.kill", { "target_id": target.id, "pos": target.pos, "blood": feed_drained })
 	else:
@@ -609,6 +610,22 @@ func _finish_feed(sim, lethal: bool) -> void:
 		sim.emit_cue("feed.spare", { "target_id": target.id, "pos": target.pos, "blood": feed_drained, "gulp_bonus": gulp_bonus_vitae, "gulp_hits": gulp_hits })
 	feed_drained = 0.0
 	_reset_gulp(0)
+
+## The city feels the monster within a second of a lethal sin: nearby mortals recoil and flee.
+## Deterministic — iterates entities by distance, no RNG.
+func _react_to_humanity_drop(sim, pos: Vector2) -> void:
+	for e in sim.entities:
+		if e == null or e.dead or e == entity:
+			continue
+		if e.kind != "npc" or e.faction != "civ" or e.downed:
+			continue
+		if e.pos.distance_to(pos) > 200.0:
+			continue
+		e.ai_state = "flee"
+		e.perception_state = "alert"
+		e.tags["scared_ticks"] = 120
+		sim.emit_cue("npc.flinch", { "entity_id": e.id, "pos": e.pos })
+
 
 func _interrupt_feed(sim) -> void:
 	var target: SimEntity = sim.get_entity(feeding_target_id) as SimEntity
@@ -792,7 +809,11 @@ func _compute_exposure(sim) -> float:
 		exposure *= 0.25
 	if sim.world != null and sim.world.surface_at(entity.pos) == SimWorld.Surface.SHADOW:
 		exposure -= 0.18
-	return clamp(exposure, 0.08, 1.35)
+	# Humanity as lived state: the further you fall, the more the Beast shows — you read as a
+	# predator and become more conspicuous. Only bites below 5 so a fresh (humanity 7) hunt is calm.
+	if humanity < 5.0:
+		exposure += (5.0 - humanity) * 0.06   # up to +0.30 at Humanity 0
+	return clamp(exposure, 0.08, 1.45)
 
 func _spell_damage(def: Dictionary) -> float:
 	var amount := float(def.get("damage", def.get("dmg", 0.0)))

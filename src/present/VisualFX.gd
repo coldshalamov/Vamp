@@ -48,6 +48,11 @@ func _register_cues() -> void:
 		"vfx": _on_humanity_lost,
 		"duration_ms": 600,
 	})
+	CueBus.define("npc.flinch", CueBus.Priority.GAMEPLAY, {
+		"vfx": _on_npc_flinch,
+		"duration_ms": 300,
+		"max_concurrent": 6,
+	})
 	CueBus.define("masquerade.broken", CueBus.Priority.CRITICAL, {
 		"vfx": _on_masquerade_broken,
 		"duration_ms": 400,
@@ -197,7 +202,13 @@ func _on_frenzy_start(_payload: Dictionary) -> void:
 	set_time_scale(0.6, 0.3)
 
 func _on_humanity_lost(_payload: Dictionary) -> void:
-	flash_screen(Color("#9c8cc8"), 0.2)
+	# The world cools when something human dies in you — a desaturated blue-grey wash.
+	flash_screen(Color("#243240"), 0.38)
+
+
+func _on_npc_flinch(payload: Dictionary) -> void:
+	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
+	spawn_floating_text(pos + Vector2(0, -26), "!", Color("#cfe6ff"), false)
 
 func _on_masquerade_broken(payload: Dictionary) -> void:
 	var stars: int = payload.get("stars", 0)

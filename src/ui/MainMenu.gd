@@ -7,7 +7,7 @@
 extends BaseScreen
 
 const BG_PATH := "res://assets/images/title_bg.jpg"
-const PORTRAIT_PATH := "res://assets/images/player_vampire.jpg"
+const PORTRAIT_PATH := "res://assets/images/menu_portrait.png"
 const CHROMA_SHADER := "res://art/shaders/chroma_key.gdshader"
 const SCAN_SHADER := "res://art/shaders/scanlines.gdshader"
 
@@ -67,7 +67,7 @@ func _build() -> void:
 	portrait.offset_right = -30
 	portrait.offset_bottom = -10
 	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	portrait.material = _chroma_material(Color(0.93, 0.22, 0.58))  # the concept art's hot-pink
+	# Modern-urban-predator portrait is pre-feathered (alpha), so no chroma key needed.
 	add_child(portrait)
 	_reveal.append(portrait)
 

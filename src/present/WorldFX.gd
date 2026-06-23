@@ -70,6 +70,20 @@ func _add(fx: Dictionary) -> void:
 		_fx.pop_front()
 
 
+## A proper aim reticle at the cursor + a faint line from the predator, so aiming reads clearly
+## (replaces the lone "cartoony dot").
+func _draw_reticle() -> void:
+	var m := get_global_mouse_position()
+	var col := Color(0.88, 0.16, 0.22, 0.85)
+	if Sim != null and Sim.player != null and not Sim.player.dead:
+		draw_line(Sim.player.pos, m, Color(0.88, 0.16, 0.22, 0.12), 1.0)
+	draw_arc(m, 9.0, 0, TAU, 24, col, 1.6, true)
+	for k in range(4):
+		var ang := TAU * float(k) / 4.0
+		draw_line(m + Vector2.RIGHT.rotated(ang) * 5.0, m + Vector2.RIGHT.rotated(ang) * 12.0, col, 1.4)
+	draw_circle(m, 1.6, col)
+
+
 func _facing_of(id: int) -> float:
 	if Sim == null or id == 0:
 		return 0.0
@@ -78,16 +92,15 @@ func _facing_of(id: int) -> float:
 
 
 func _process(delta: float) -> void:
-	if _fx.is_empty():
-		return
 	for i in range(_fx.size() - 1, -1, -1):
 		_fx[i]["t"] += delta
 		if _fx[i]["t"] >= _fx[i]["dur"]:
 			_fx.remove_at(i)
-	queue_redraw()
+	queue_redraw()   # always, so the aim reticle tracks the cursor
 
 
 func _draw() -> void:
+	_draw_reticle()
 	for fx in _fx:
 		var p: float = clampf(fx["t"] / fx["dur"], 0.0, 1.0)
 		var a: float = 1.0 - p

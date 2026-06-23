@@ -64,6 +64,9 @@ static func configure(e: SimEntity, type_id: String, sim, opts: Dictionary = {})
 	e.perception_state = "alert" if e.hostile_to_player else "calm"
 	e.tags["weapon"] = String(preset.get("weapon", ""))
 	e.tags["threat"] = float(preset.get("threat", 0.0))
+	# Blood Grammar resonance — deterministic from id (NOT the RNG stream, so the slice stays stable).
+	const HUMOURS := ["sanguine", "choleric", "melancholic", "phlegmatic"]
+	e.resonance = HUMOURS[absi(hash([e.id, "resonance"])) % HUMOURS.size()]
 	if bool(preset.get("boss", false)):
 		e.tags["boss"] = true
 		e.tags["warded_mind"] = true

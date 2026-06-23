@@ -182,6 +182,12 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 		dmg *= 1.5
 		crit = true
 		dmg *= crit_mult / 1.5
+	# Choleric resonance: +melee while the buff lasts (the "feed-on-rage" combat build).
+	if attacker == player and player.behaviour != null and not dot:
+		var atk_buffs: Dictionary = player.behaviour.get("buffs")
+		var dt0 := String(opts.get("damage_type", "physical"))
+		if atk_buffs.has("res_choleric") and (dt0 == "physical" or dt0 == ""):
+			dmg *= 1.0 + float(atk_buffs["res_choleric"].get("melee", 0.25))
 	var armor := target.armor
 	if target.has_status("weaken"):
 		armor = maxf(0.0, armor - float(target.status_data.get("weaken", {}).get("amount", 0.20)))
@@ -201,6 +207,8 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 		var player_buffs: Dictionary = player.behaviour.get("buffs")
 		if player_buffs.has("for_stone"):
 			dmg *= max(0.25, 1.0 - float(player_buffs["for_stone"].get("armor", 0.35)))
+		if player_buffs.has("res_phlegmatic"):
+			dmg *= max(0.4, 1.0 - float(player_buffs["res_phlegmatic"].get("armor", 0.20)))
 		if player_buffs.has("bs_ward"):
 			var ward: Dictionary = player_buffs["bs_ward"]
 			var absorb := minf(dmg, float(ward.get("shield", 0.0)))

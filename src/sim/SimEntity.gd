@@ -23,6 +23,7 @@ var cooldowns: Dictionary = {}
 var stun: int = 0
 var hitstop: int = 0
 var knockback_vel: Vector2 = Vector2.ZERO   # impulse channel the AI can't erase (real hit shoves)
+var resonance: String = ""   # Blood Grammar: victim's humour (sanguine/choleric/melancholic/phlegmatic)
 
 # Health, combat, and status state.
 var hp: float = 100.0
@@ -183,7 +184,7 @@ func state_hash() -> int:
 	if current_action != null and current_action.def != null:
 		action_id = current_action.def.id
 	var h := hash([
-		id, kind, type_id, faction, snapped(pos.x, 0.001), snapped(pos.y, 0.001),
+		id, kind, type_id, faction, resonance, snapped(pos.x, 0.001), snapped(pos.y, 0.001),
 		snapped(vel.x, 0.001), snapped(vel.y, 0.001),
 		snapped(knockback_vel.x, 0.001), snapped(knockback_vel.y, 0.001), snapped(facing, 0.001),
 		snapped(hp, 0.001), snapped(max_hp, 0.001), snapped(armor, 0.001),

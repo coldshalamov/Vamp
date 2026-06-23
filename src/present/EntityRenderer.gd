@@ -92,6 +92,7 @@ func _w(origin: Vector2, facing: float, lx: float, ly: float) -> Vector2:
 
 
 func _draw_rig(e: SimEntity) -> void:
+	_draw_resonance(e)
 	var id: int = e.id
 	var r: float = e.radius
 	var f: float = e.facing
@@ -212,6 +213,28 @@ func _draw_dodge(e: SimEntity, origin: Vector2, pal: Dictionary, dodge: float) -
 	# spinning rim to read the roll
 	var spin: float = (1.0 - dp) * TAU * 2.0
 	draw_arc(origin, r * 0.62, spin, spin + 1.7, 12, Color(1, 1, 1, 0.5 * dp), 2.5, true)
+
+
+## Resonance aura (Blood Grammar): a pulsing ground-ring under feedable prey, coloured by humour, so
+## the predator can READ who to feed on for which buff (procedural, since our actors aren't sprites).
+func _draw_resonance(e: SimEntity) -> void:
+	if e.resonance == "" or not (e.faction == "civ" or e.downed):
+		return
+	var col := _resonance_color(e.resonance)
+	var pulse: float = 0.62 + 0.38 * sin(_t * 2.2 + float(e.id))
+	var rr: float = e.radius * (1.55 + 0.12 * sin(_t * 2.2 + float(e.id)))
+	var c := e.pos + Vector2(0, e.radius * 0.3)
+	draw_arc(c, rr, 0, TAU, 26, Color(col.r, col.g, col.b, 0.45 * pulse), 2.2, true)
+	draw_arc(c, rr * 0.7, 0, TAU, 22, Color(col.r, col.g, col.b, 0.20 * pulse), 1.4, true)
+
+
+func _resonance_color(humour: String) -> Color:
+	match humour:
+		"sanguine": return Color("#d23a52")
+		"choleric": return Color("#e08838")
+		"melancholic": return Color("#6f8ce0")
+		"phlegmatic": return Color("#6fd6a0")
+	return Color("#a0a0a8")
 
 
 func _draw_shadow(e: SimEntity, scale: float) -> void:

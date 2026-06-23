@@ -630,8 +630,28 @@ func _finish_feed(sim, lethal: bool) -> void:
 		var fxp: int = 14 if lethal else 8
 		sim.meta.gain_xp(fxp, sim)
 		sim.emit_cue("player.xp", { "amount": fxp, "pos": entity.pos, "reason": "feed" })
+	if target.resonance != "":
+		_apply_resonance(sim, target.resonance, target.blood_yield)
 	feed_drained = 0.0
 	_reset_gulp(0)
+
+
+## Resonance (Blood Grammar): the victim's humour grants a matching 30s buff — so WHO you feed on,
+## not just whether, is a build decision. Buffs are read in combat (choleric melee, phlegmatic armor,
+## melancholic spell) and economy (sanguine vitae).
+func _apply_resonance(sim, humour: String, yield_amount: float) -> void:
+	const DUR := 1800
+	match humour:
+		"sanguine":
+			heal_blood(yield_amount * 0.30)
+			buffs["res_sanguine"] = { "ticks": DUR }
+		"choleric":
+			buffs["res_choleric"] = { "ticks": DUR, "melee": 0.25 }
+		"melancholic":
+			buffs["res_melancholic"] = { "ticks": DUR, "spell": 0.25 }
+		"phlegmatic":
+			buffs["res_phlegmatic"] = { "ticks": DUR, "armor": 0.20 }
+	sim.emit_cue("feed.resonance", { "humour": humour, "pos": entity.pos })
 
 ## The city feels the monster within a second of a lethal sin: nearby mortals recoil and flee.
 ## Deterministic — iterates entities by distance, no RNG.
@@ -839,6 +859,8 @@ func _compute_exposure(sim) -> float:
 
 func _spell_damage(def: Dictionary) -> float:
 	var amount := float(def.get("damage", def.get("dmg", 0.0)))
+	if buffs.has("res_melancholic"):
+		amount *= 1.0 + float(buffs["res_melancholic"].get("spell", 0.25))
 	return amount
 
 func _fire_projectile(sim, def: Dictionary, dir: Vector2, kind: String) -> void:

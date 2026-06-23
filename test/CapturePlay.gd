@@ -60,8 +60,11 @@ func _run() -> void:
 	# Real combat: stand next to the thug, aim at it, attack → impact sparks + damage numbers.
 	var thug := _find_hostile()
 	if thug != null and Sim != null and Sim.player != null:
-		Sim.player.pos = thug.pos - Vector2(30, 0)
+		Sim.player.pos = thug.pos - Vector2(64, 0)
 		_aim(thug.pos)
+		await _settle(10)            # let the hostile enter its chase/attack state
+		await _shot("play_14z_alert")   # capture the "!" alert indicator on a LIVE enemy
+		Sim.player.pos = thug.pos - Vector2(30, 0)
 		for i in range(20):
 			_attack()
 			await get_tree().process_frame

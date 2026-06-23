@@ -175,6 +175,26 @@ func _draw_rig(e: SimEntity) -> void:
 			draw_line(handR, _w(origin, f, armFwdR + r * 0.28, -r * 0.58 * build + s * r * 0.12), claw, 1.4)
 
 	_draw_status(e)
+	_draw_alert(e)
+
+
+## Stealth legibility: a "!" over alerted enemies, a "?" over searching ones. Makes detection readable
+## so stealth is an actual, visible game (was invisible before).
+func _draw_alert(e: SimEntity) -> void:
+	if e.kind != "npc":
+		return
+	var st := String(e.ai_state)
+	var ps := String(e.perception_state)
+	var p := e.pos + Vector2(0, -e.radius * 2.4)
+	if st == "chase" or st == "attack" or ps == "alert":
+		var c := Color("#ff3a44")
+		draw_line(p, p + Vector2(0, 8), c, 2.6)
+		draw_circle(p + Vector2(0, 12), 1.9, c)
+	elif st == "search" or int(e.search_ticks) > 0:
+		var c := Color("#f0c040")
+		draw_arc(p + Vector2(0, 4), 4.0, -2.3, 1.3, 12, c, 2.2)
+		draw_line(p + Vector2(0, 4), p + Vector2(0, 8), c, 2.2)
+		draw_circle(p + Vector2(0, 12), 1.8, c)
 
 
 func _draw_dodge(e: SimEntity, origin: Vector2, pal: Dictionary, dodge: float) -> void:

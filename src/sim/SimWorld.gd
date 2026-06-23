@@ -17,6 +17,10 @@ var surfaces: PackedByteArray = PackedByteArray()
 # Blood Grammar (command/react/drink) will read. Integer-only, no RNG, so replay stays bit-exact.
 var blood: PackedByteArray = PackedByteArray()
 var _wet: Dictionary = {}   # cell index -> true, so decay/render touch only wet cells
+# Blood Grammar REACT atom: a FIRE layer (burn-ticks per cell). Fire spreads through spilled blood,
+# burns whoever stands in it, and consumes the blood as fuel. Integer-only, deterministic.
+var fire: PackedByteArray = PackedByteArray()
+var _burning: Dictionary = {}   # cell index -> true
 var spawn_points: Array[Vector2] = []
 var named_points: Dictionary = {}
 var lights: Array[Dictionary] = []
@@ -241,10 +245,42 @@ func _reset_arrays() -> void:
 	roads = PackedByteArray()
 	blood = PackedByteArray()
 	_wet = {}
+	fire = PackedByteArray()
+	_burning = {}
 	walls.resize(size.x * size.y)
 	surfaces.resize(size.x * size.y)
 	roads.resize(size.x * size.y)
 	blood.resize(size.x * size.y)
+	fire.resize(size.x * size.y)
+
+
+## REACT: ignite spilled blood within a radius (only cells that actually have blood to burn).
+func ignite_radius(world_pos: Vector2, radius: float) -> int:
+	var c0 := world_to_cell(world_pos)
+	var cr: int = int(ceil(radius / float(tile_size)))
+	var lit := 0
+	for dy in range(-cr, cr + 1):
+		for dx in range(-cr, cr + 1):
+			var c := c0 + Vector2i(dx, dy)
+			if c.x < 0 or c.y < 0 or c.x >= size.x or c.y >= size.y:
+				continue
+			var i := _idx(c)
+			if walls[i] == 0 and blood[i] > 8:
+				fire[i] = maxi(fire[i], 45 + blood[i] / 3)
+				_burning[i] = true
+				lit += 1
+	return lit
+
+
+func fire_at(world_pos: Vector2) -> int:
+	var c := world_to_cell(world_pos)
+	if c.x < 0 or c.y < 0 or c.x >= size.x or c.y >= size.y:
+		return 0
+	return fire[_idx(c)]
+
+
+func cell_index(world_pos: Vector2) -> int:
+	return _idx(world_to_cell(world_pos))
 
 
 ## SPILL: deposit blood at a world position (a small pool: centre cell + 4-neighbours).

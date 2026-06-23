@@ -6,13 +6,15 @@ extends Node2D
 class_name BloodRenderer
 
 var _world: SimWorld = null
+var _t: float = 0.0
 
 
 func setup(world: SimWorld) -> void:
 	_world = world
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_t += delta
 	queue_redraw()
 
 
@@ -35,3 +37,17 @@ func _draw() -> void:
 		draw_circle(c, ts * 0.34, Color(0.24, 0.015, 0.035, a))
 		if bd > 150:
 			draw_circle(c - Vector2(ts * 0.1, ts * 0.1), ts * 0.12, Color(0.45, 0.06, 0.1, a * 0.45))
+	# REACT — burning blood: flickering flames on top of the pools
+	for key in _world._burning:
+		var fi: int = int(key)
+		var ft: int = _world.fire[fi]
+		if ft <= 0:
+			continue
+		var fx: int = fi % sx
+		var fy: int = fi / sx
+		var fc := Vector2((float(fx) + 0.5) * ts, (float(fy) + 0.5) * ts)
+		var flick: float = 0.7 + 0.3 * sin(_t * 13.0 + float(fi))
+		var life: float = clampf(float(ft) / 50.0, 0.3, 1.0)
+		draw_circle(fc, ts * 0.5 * flick, Color(0.85, 0.30, 0.06, 0.42 * life))
+		draw_circle(fc + Vector2(0, -ts * 0.08), ts * 0.32 * flick, Color(1.0, 0.62, 0.16, 0.55 * life))
+		draw_circle(fc + Vector2(0, -ts * 0.18 * flick), ts * 0.16 * flick, Color(1.0, 0.92, 0.55, 0.7 * life))

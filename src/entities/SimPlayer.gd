@@ -201,12 +201,18 @@ func cast_power(power_id: String, sim) -> bool:
 			_apply_buff(power_id, int(def.get("duration", 240)), { "slowmo": 0.32, "attackSpeed": 0.30 })
 			sim.time_scale = 0.32
 		"pot_slam":
-			_damage_radius(sim, float(def.get("radius", 100.0)), _spell_damage(def), int(def.get("stun", 0)), "power.potence.hit")
+			var slam_r := float(def.get("radius", 100.0))
+			_damage_radius(sim, slam_r, _spell_damage(def), int(def.get("stun", 0)), "power.potence.hit")
+			if sim.world != null:
+				sim.world.ignite_radius(entity.pos, slam_r)   # REACT: spark the spilled blood alight
 		"pot_charge":
 			_try_dash(Vector2.RIGHT.rotated(entity.facing), sim, float(def.get("range", 135.0)), 10)
 			_damage_radius(sim, float(def.get("radius", 34.0)), _spell_damage(def), int(def.get("stun", 0)), "power.potence.charge_hit")
 		"pot_quake":
-			_damage_radius(sim, float(def.get("radius", 185.0)), _spell_damage(def), int(def.get("stun", 0)), "power.potence.quake_hit")
+			var quake_r := float(def.get("radius", 185.0))
+			_damage_radius(sim, quake_r, _spell_damage(def), int(def.get("stun", 0)), "power.potence.quake_hit")
+			if sim.world != null:
+				sim.world.ignite_radius(entity.pos, quake_r)   # REACT: spark the spilled blood alight
 		"for_mend":
 			var heal := float(def.get("heal", 30.0))
 			if sim.meta != null:

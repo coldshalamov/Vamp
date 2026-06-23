@@ -101,6 +101,8 @@ func tick_sim(delta: float) -> void:
 	tick_combat()
 	if world != null and tick % 18 == 0:
 		world.decay_blood()
+	if world != null and tick % 5 == 0:
+		_tick_fire()
 	if meta != null:
 		meta.tick(delta, self)
 	_update_body_witnesses()
@@ -642,6 +644,44 @@ func _check_escape() -> void:
 	if not escaped and world.is_in_exit(player.pos) and heat <= 0.25:
 		escaped = true
 		emit_cue("player.escape", { "pos": player.pos, "tick": tick })
+
+## REACT: burning blood damages whoever stands in it (via the burn DoT) and spreads to adjacent
+## spilled blood, consuming it as fuel. Deterministic — fixed iteration, no RNG.
+func _tick_fire() -> void:
+	if world == null or world._burning.is_empty():
+		return
+	var sx: int = world.size.x
+	var sy: int = world.size.y
+	for e in entities:
+		if e == null or e.dead or (e.kind != "player" and e.kind != "npc"):
+			continue
+		if world.fire_at(e.pos) > 0:
+			e.apply_status("burn", 50, { "dps": 5.0, "damage_type": "fire" })
+	var newly: Array = []
+	for key in world._burning.keys():
+		var i: int = int(key)
+		var ft: int = world.fire[i]
+		if ft <= 0:
+			world._burning.erase(i)
+			continue
+		var cx: int = i % sx
+		var cy: int = i / sx
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var nx: int = cx + d.x
+			var ny: int = cy + d.y
+			if nx < 0 or ny < 0 or nx >= sx or ny >= sy:
+				continue
+			var ni: int = ny * sx + nx
+			if world.fire[ni] == 0 and world.walls[ni] == 0 and world.blood[ni] > 10:
+				newly.append(ni)
+		world.fire[i] = maxi(0, ft - 5)
+		if world.fire[i] == 0:
+			world._burning.erase(i)
+	for ni in newly:
+		world.fire[ni] = maxi(world.fire[ni], 40)
+		world.blood[ni] = maxi(0, world.blood[ni] - 25)   # fire consumes the blood fuel
+		world._burning[ni] = true
+
 
 func _kill_xp(target: SimEntity) -> int:
 	match target.faction:

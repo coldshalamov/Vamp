@@ -73,6 +73,15 @@ func _run() -> void:
 				await _shot("play_14a_hit")   # early: thug flashing + starting to fly
 	await _shot("play_14_combat")             # later: thug shoved back
 
+	# REACT: ignite the spilled blood -> spreading flames
+	if Sim != null and Sim.player != null:
+		Sim.world.spill_blood(Sim.player.pos, 220)
+		Sim.world.spill_blood(Sim.player.pos + Vector2(28, 0), 200)
+		Sim.world.spill_blood(Sim.player.pos + Vector2(56, 0), 180)
+		Sim.world.ignite_radius(Sim.player.pos, 70.0)
+	await _settle(14)
+	await _shot("play_react_fire")
+
 	# Death → the torpor screen (was: world froze, character vanished, no recovery).
 	if Sim != null and Sim.player != null:
 		Sim.player.hp = 0.0

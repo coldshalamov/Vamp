@@ -174,6 +174,9 @@ func _build_stat_lines() -> Array[String]:
 		lines.append("-- CITY MODEL --")
 		lines.append("style  %s %.0f%%" % [String(dom.get("axis", "—")).to_upper(), float(dom.get("share", 0.0)) * 100.0])
 		lines.append("hybrid %.2f" % float(dom.get("entropy", 0.0)))
+		if ds.has_method("rumor_belief"):
+			var belief: Dictionary = ds.rumor_belief()
+			lines.append("rumors %d  aware %.2f fear %.2f" % [ds.rumor_claims(), float(belief.get("awareness", 0.0)), float(belief.get("fear", 0.0))])
 	return lines
 
 

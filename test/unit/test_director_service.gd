@@ -4,11 +4,13 @@ extends GutTest
 
 const DS := preload("res://src/present/DirectorService.gd")
 const SP := preload("res://glowup_2026/reference/PlayerStyleProfile.gd")
+const RG := preload("res://glowup_2026/reference/RumorGraph.gd")
 
 
 func _service():
 	var d = DS.new()
 	d.style = SP.new()   # bypass _ready/autoload; test the cue->style mapping directly
+	d.rumor = RG.new()
 	return d
 
 
@@ -24,6 +26,19 @@ func test_stealth_powers_make_stealth_dominant() -> void:
 	for i in range(6):
 		d._on_cue("power.cast", { "power_id": "obf_cloak" })
 	assert_eq(String(d.dominant_style()["axis"]), "stealth", "cloaking reads as STEALTH")
+
+
+func test_witnesses_build_the_citys_belief() -> void:
+	var d = _service()
+	var ev := {
+		"event_id": "e1", "actor_id": "player", "district_id": "old_town",
+		"visibility": 0.9, "method": "feed", "identity_key": "the_predator",
+		"identity_ambiguity": 0.1, "tags": [],
+	}
+	for i in range(4):
+		d.rumor.observe_event(ev, { "id": "npc_%d" % i, "attention": 0.7, "stress": 0.1, "fear": 0.1 }, 100)
+	assert_true(d.rumor_claims() > 0, "witnesses formed claims about the predator")
+	assert_true(float(d.rumor_belief().get("awareness", 0.0)) > 0.0, "the city is now aware")
 
 
 func test_observer_is_deterministic() -> void:

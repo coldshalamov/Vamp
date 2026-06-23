@@ -69,6 +69,15 @@ func _register_cues() -> void:
 		"vfx": _on_feed_gulp_miss,
 		"duration_ms": 200,
 	})
+	CueBus.define("player.xp", CueBus.Priority.GAMEPLAY, {
+		"vfx": _on_player_xp,
+		"duration_ms": 300,
+		"max_concurrent": 6,
+	})
+	CueBus.define("player.level_up", CueBus.Priority.CRITICAL, {
+		"vfx": _on_level_up,
+		"duration_ms": 900,
+	})
 
 func _create_flash_overlay() -> void:
 	flash_overlay = ColorRect.new()
@@ -232,3 +241,15 @@ func _on_feed_gulp_perfect(payload: Dictionary) -> void:
 func _on_feed_gulp_miss(payload: Dictionary) -> void:
 	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
 	spawn_floating_text(pos + Vector2(0, -20), "miss", Color("#7a4a4a"), false)
+
+
+func _on_player_xp(payload: Dictionary) -> void:
+	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
+	var amt: int = int(payload.get("amount", 0))
+	spawn_floating_text(pos + Vector2(0, -42), "+%d XP" % amt, Color("#f0c040"), false)
+
+
+func _on_level_up(payload: Dictionary) -> void:
+	var lvl: int = int(payload.get("level", 0))
+	flash_screen(Color("#3a2e08"), 0.4)
+	show_caption("LEVEL %d" % lvl)

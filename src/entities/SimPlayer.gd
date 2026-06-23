@@ -626,6 +626,10 @@ func _finish_feed(sim, lethal: bool) -> void:
 		humanity = min(10.0, humanity + 0.03)
 		sim.witnessed_act(target.pos, "feed", 1.0)
 		sim.emit_cue("feed.spare", { "target_id": target.id, "pos": target.pos, "blood": feed_drained, "gulp_bonus": gulp_bonus_vitae, "gulp_hits": gulp_hits })
+	if sim.meta != null:
+		var fxp: int = 14 if lethal else 8
+		sim.meta.gain_xp(fxp, sim)
+		sim.emit_cue("player.xp", { "amount": fxp, "pos": entity.pos, "reason": "feed" })
 	feed_drained = 0.0
 	_reset_gulp(0)
 

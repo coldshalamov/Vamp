@@ -635,6 +635,15 @@ func _check_escape() -> void:
 		escaped = true
 		emit_cue("player.escape", { "pos": player.pos, "tick": tick })
 
+func _kill_xp(target: SimEntity) -> int:
+	match target.faction:
+		"inquis": return 30
+		"police": return 22
+		"gang": return 16
+		"civ": return 6
+	return 10
+
+
 func _on_entity_killed(attacker: SimEntity, target: SimEntity, _opts: Dictionary) -> void:
 	if world != null:
 		world.spill_blood(target.pos, 75)   # a death leaves a real pool
@@ -654,6 +663,9 @@ func _on_entity_killed(attacker: SimEntity, target: SimEntity, _opts: Dictionary
 		meta.gain_mastery("brawn", 5.0, self)
 		meta.award_trophy_for(target, self)
 		meta.codex_mark("killedKinds", target.faction if target.faction != "" else target.type_id, self)
+		var kxp := _kill_xp(target)
+		meta.gain_xp(kxp, self)
+		emit_cue("player.xp", { "amount": kxp, "pos": target.pos, "reason": "kill" })
 	if meta != null and target.faction in ["police", "gang", "inquis"]:
 		meta.change_reputation(target.faction, -2.0 if target.faction == "police" else -1.5, self)
 	if attacker == player and player.behaviour != null:

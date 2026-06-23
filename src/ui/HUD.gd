@@ -27,6 +27,7 @@ var _vitae_bar: TextureProgressBar = null
 var _hp_bar: TextureProgressBar = null
 var _vitae_label: Label = null
 var _hp_label: Label = null
+var _level_label: Label = null
 var _hunger_row: HBoxContainer = null
 var _heat_row: HBoxContainer = null
 var _hotbar: HBoxContainer = null
@@ -86,6 +87,8 @@ func _build_layout() -> void:
 	card.add_child(top_left)
 
 	top_left.add_child(_tag(tr("MENU_KICKER"), _accent("moon"), 12))
+	_level_label = _tag("LVL 1", _accent("gold"), 14)
+	top_left.add_child(_level_label)
 	_vitae_label = _data_label("%s ---" % tr("HUD_VITAE"))
 	top_left.add_child(_vitae_label)
 	_vitae_bar = _tex_bar(TEX_BAR_VITAE)
@@ -356,6 +359,8 @@ func _refresh_vitals() -> void:
 	_hp_bar.max_value = Sim.player.max_hp
 	_hp_bar.value = Sim.player.hp
 	_hp_label.text = "%s %d/%d" % [tr("HUD_HP"), int(Sim.player.hp), int(Sim.player.max_hp)]
+	if _level_label != null and Sim.meta != null:
+		_level_label.text = "LVL %d   XP %d/%d" % [Sim.meta.level, Sim.meta.xp, Sim.meta.xp_to_next(Sim.meta.level)]
 
 
 func _refresh_hunger() -> void:

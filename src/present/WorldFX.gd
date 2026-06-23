@@ -39,6 +39,10 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 			_add({ "type": "ring", "pos": pos, "t": 0.0, "dur": 0.32, "rmax": 22.0, "col": Color("#c0304a") })
 		"player.respawn":
 			_add({ "type": "shock", "pos": pos, "t": 0.0, "dur": 0.6, "rmax": 90.0, "col": Color("#9a6fff") })
+		"player.level_up":
+			if Sim != null and Sim.player != null:
+				_add({ "type": "shock", "pos": Sim.player.pos, "t": 0.0, "dur": 0.7, "rmax": 95.0, "col": Color("#f0c040") })
+				_add({ "type": "ring", "pos": Sim.player.pos, "t": 0.0, "dur": 0.5, "rmax": 60.0, "col": Color("#ffe080") })
 
 
 func _on_power_cast(power_id: String, pos: Vector2) -> void:

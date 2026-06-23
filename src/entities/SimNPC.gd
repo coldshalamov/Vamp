@@ -90,6 +90,10 @@ func _init(e: SimEntity, npc_speed: float = 80.0, npc_threat: float = 0.0) -> vo
 func step(delta: float, sim) -> void:
 	if entity.dead:
 		return
+	# Being shoved: let the knockback fly instead of immediately pursuing through it (hit-reaction feel).
+	if entity.knockback_vel.length_squared() > 900.0:
+		entity.vel = Vector2.ZERO
+		return
 	if bool(entity.tags.get("carried", false)):
 		entity.ai_state = "carried"
 		entity.perception_state = "hidden"

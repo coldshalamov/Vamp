@@ -22,6 +22,7 @@ var action_frame: int = 0
 var cooldowns: Dictionary = {}
 var stun: int = 0
 var hitstop: int = 0
+var knockback_vel: Vector2 = Vector2.ZERO   # impulse channel the AI can't erase (real hit shoves)
 
 # Health, combat, and status state.
 var hp: float = 100.0
@@ -93,6 +94,13 @@ func step(delta: float, sim) -> void:
 			vel *= 0.86
 		else:
 			vel = Vector2.ZERO
+		# Knockback impulse: integrated separately so AI velocity-zeroing can't erase a real shove.
+		if knockback_vel.length_squared() > 4.0:
+			var kn := pos + knockback_vel * delta
+			pos = sim.world.resolve_motion(pos, kn, radius) if sim != null and sim.world != null else kn
+			knockback_vel *= 0.80
+		else:
+			knockback_vel = Vector2.ZERO
 	if behaviour != null and behaviour.has_method("step"):
 		behaviour.step(delta, sim)
 
@@ -176,7 +184,8 @@ func state_hash() -> int:
 		action_id = current_action.def.id
 	var h := hash([
 		id, kind, type_id, faction, snapped(pos.x, 0.001), snapped(pos.y, 0.001),
-		snapped(vel.x, 0.001), snapped(vel.y, 0.001), snapped(facing, 0.001),
+		snapped(vel.x, 0.001), snapped(vel.y, 0.001),
+		snapped(knockback_vel.x, 0.001), snapped(knockback_vel.y, 0.001), snapped(facing, 0.001),
 		snapped(hp, 0.001), snapped(max_hp, 0.001), snapped(armor, 0.001),
 		snapped(attack_damage, 0.001), snapped(attack_range, 0.001),
 		attack_cooldown, dead, downed, action_id, action_frame, stun, hitstop,

@@ -213,7 +213,10 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 		attacker.hitstop = max(attacker.hitstop, hitstop)
 		var knockback := float(opts.get("knockback", 0.0))
 		if knockback > 0.0:
-			target.vel += Vector2.RIGHT.rotated(attacker.facing) * knockback
+			# Shove direction: radially out from the attacker (works for melee + AoE blasts).
+			var kdir := (target.pos - attacker.pos)
+			kdir = kdir.normalized() if kdir.length() > 0.01 else Vector2.RIGHT.rotated(attacker.facing)
+			target.knockback_vel += kdir * knockback
 	var status_id := String(opts.get("status", ""))
 	if status_id != "":
 		target.apply_status(status_id, int(opts.get("status_ticks", 60)), {

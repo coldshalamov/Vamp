@@ -44,21 +44,6 @@ func _run() -> void:
 	await _settle(4)
 	await _shot("play_11d_dodge")
 
-	# Clean SOLO hero close-up: clear the area, face diagonally, idle, let the camera centre.
-	if Sim != null and Sim.player != null:
-		Sim.player.pos = Vector2(480, 600)
-		Sim.player.facing = 0.6
-		for e in Sim.entities:
-			if e != null and e != Sim.player and e.kind != "vehicle":
-				e.pos = e.pos + Vector2(0, -4000)   # park them far offscreen for the portrait
-	await _settle(18)
-	await _shot("play_11_hero")
-	# and a walking solo frame
-	for i in range(16):
-		_move(Vector2(0.7, 0.7))
-		await get_tree().process_frame
-	await _shot("play_11_hero_walk")
-
 	# Aim + attack into empty space → a visible swing arc (was: click did nothing).
 	_aim(Sim.player.pos + Vector2(90, -20))
 	_attack()
@@ -75,13 +60,15 @@ func _run() -> void:
 	# Real combat: stand next to the thug, aim at it, attack → impact sparks + damage numbers.
 	var thug := _find_hostile()
 	if thug != null and Sim != null and Sim.player != null:
-		Sim.player.pos = thug.pos - Vector2(34, 0)
+		Sim.player.pos = thug.pos - Vector2(30, 0)
 		_aim(thug.pos)
 		for i in range(20):
 			_attack()
 			await get_tree().process_frame
 			await get_tree().process_frame
-	await _shot("play_14_combat")
+			if i == 2:
+				await _shot("play_14a_hit")   # early: thug flashing + starting to fly
+	await _shot("play_14_combat")             # later: thug shoved back
 
 	# Death → the torpor screen (was: world froze, character vanished, no recovery).
 	if Sim != null and Sim.player != null:
@@ -98,6 +85,20 @@ func _run() -> void:
 	_move(Vector2.RIGHT)
 	await _settle(10)
 	await _shot("play_16_respawned")
+
+	# Clean SOLO hero portrait LAST (parking entities here can't break anything downstream).
+	if Sim != null and Sim.player != null:
+		Sim.player.pos = Vector2(480, 600)
+		Sim.player.facing = 0.6
+		for e in Sim.entities:
+			if e != null and e != Sim.player and e.kind != "vehicle":
+				e.pos = e.pos + Vector2(0, -4000)
+	await _settle(18)
+	await _shot("play_11_hero")
+	for i in range(16):
+		_move(Vector2(0.7, 0.7))
+		await get_tree().process_frame
+	await _shot("play_11_hero_walk")
 
 	print("[CAPTURE-PLAY] done")
 	await get_tree().create_timer(0.2).timeout

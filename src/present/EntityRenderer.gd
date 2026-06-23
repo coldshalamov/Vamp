@@ -18,7 +18,9 @@ var _moving: Dictionary = {}
 var _phase: Dictionary = {}   # gait phase, advanced by distance travelled
 var _atk: Dictionary = {}     # attack-lunge timer per entity
 var _dodge: Dictionary = {}   # dodge-roll timer per entity
+var _hitflash: Dictionary = {}   # white impact-flash timer per entity
 var _t: float = 0.0
+const FLASH_DUR := 0.13
 
 
 func setup(entities: Array[SimEntity]) -> void:
@@ -38,6 +40,10 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 		_atk[id] = ATK_DUR
 	elif event_id == "move.dash":
 		_dodge[id] = DODGE_DUR
+	elif event_id == "damage.dealt" or event_id == "damage.player":
+		var tid: int = int(payload.get("target_id", 0))
+		if tid > 0:
+			_hitflash[tid] = FLASH_DUR
 
 
 func _process(delta: float) -> void:
@@ -55,6 +61,8 @@ func _process(delta: float) -> void:
 			_atk[e.id] = maxf(0.0, float(_atk[e.id]) - delta)
 		if float(_dodge.get(e.id, 0.0)) > 0.0:
 			_dodge[e.id] = maxf(0.0, float(_dodge[e.id]) - delta)
+		if float(_hitflash.get(e.id, 0.0)) > 0.0:
+			_hitflash[e.id] = maxf(0.0, float(_hitflash[e.id]) - delta)
 	queue_redraw()
 
 
@@ -112,8 +120,12 @@ func _draw_rig(e: SimEntity) -> void:
 	var leg_amp: float = r * 0.5 * build
 	var arm_amp: float = r * 0.45 * build
 	var rim := Color(0.66, 0.74, 0.92, 0.55)   # cool moonlight rim along the top edge
-	var coat: Color = pal["coat"]
-	var coat2: Color = pal["coat2"]
+	var flash: float = clampf(float(_hitflash.get(id, 0.0)) / FLASH_DUR, 0.0, 1.0) * 0.8
+	var hot := Color(1.0, 0.93, 0.93)
+	var coat: Color = pal["coat"].lerp(hot, flash)
+	var coat2: Color = pal["coat2"].lerp(hot, flash)
+	var hood: Color = pal["hood"].lerp(hot, flash)
+	var skin: Color = pal["skin"].lerp(hot, flash)
 
 	# LEGS (only the swing shows past the coat hem)
 	draw_circle(_w(origin, f, ls * leg_amp - r * 0.30, r * 0.24 * build), r * 0.22 * build, pal["pants"])
@@ -140,12 +152,12 @@ func _draw_rig(e: SimEntity) -> void:
 		draw_colored_polygon([
 			_w(origin, f, -r * 0.05 + lunge * 0.3, 0), _w(origin, f, r * 0.46 + lunge * 0.4, -r * 0.34),
 			_w(origin, f, r * 0.46 + lunge * 0.4, r * 0.34),
-		], pal["hood"])
+		], hood)
 	var head := _w(origin, f, r * 0.50 + lunge * 0.4, 0)
-	draw_circle(head, r * 0.42 * build, pal["hood"])
+	draw_circle(head, r * 0.42 * build, hood)
 	# only a small face shows past the cowl, shadowed under the hood
 	var face_shadow: float = 0.5 if pal["hooded"] else 0.22
-	draw_circle(_w(origin, f, r * 0.62 + lunge * 0.4, 0), r * 0.17 * build, pal["skin"].darkened(face_shadow))
+	draw_circle(_w(origin, f, r * 0.62 + lunge * 0.4, 0), r * 0.17 * build, skin.darkened(face_shadow))
 	draw_arc(head, r * 0.42 * build, PI * 1.05, PI * 1.95, 12, rim, 1.6, true)
 	if pal["eyes"]:
 		var ec := Color("#ff3a4a")

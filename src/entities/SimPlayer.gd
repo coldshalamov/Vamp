@@ -758,9 +758,9 @@ func _apply_buff(buff_id: String, ticks: int, data: Dictionary) -> void:
 	rec["ticks"] = ticks
 	buffs[buff_id] = rec
 
-func _damage_radius(sim, radius: float, amount: float, stun_ticks: int, cue: String) -> void:
+func _damage_radius(sim, radius: float, amount: float, stun_ticks: int, cue: String, knockback: float = 360.0) -> void:
 	for target in sim.entities_in_radius(entity.pos, radius, func(e): return e.kind == "npc" and e.faction != "player" and not e.dead):
-		sim.damage_entity(entity, target, amount, { "cue": cue, "status": "stun", "status_ticks": stun_ticks })
+		sim.damage_entity(entity, target, amount, { "cue": cue, "status": "stun", "status_ticks": stun_ticks, "knockback": knockback, "hitstop": 3 })
 
 func _aim_target(sim, max_range: float) -> SimEntity:
 	var best: SimEntity = null

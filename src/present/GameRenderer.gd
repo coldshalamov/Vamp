@@ -9,12 +9,14 @@ class_name GameRenderer
 const FIXED_DT := 1.0 / 60.0
 
 const WorldRendererScript := preload("res://src/present/WorldRenderer.gd")
+const PropRendererScript := preload("res://src/present/PropRenderer.gd")
 const EntityRendererScript := preload("res://src/present/EntityRenderer.gd")
 const LightingDirectorScript := preload("res://src/present/LightingDirector.gd")
 const CameraDirectorScript := preload("res://src/present/CameraDirector.gd")
 const VisualFXScript := preload("res://src/present/VisualFX.gd")
 
 var _world_renderer: Node2D = null
+var _prop_renderer: Node2D = null
 var _entity_renderer: Node2D = null
 var _lighting: Node2D = null
 var _camera: Camera2D = null
@@ -35,6 +37,12 @@ func _ready() -> void:
 	_world_renderer.name = "WorldRenderer"
 	_world_renderer.setup(Sim.world)
 	add_child(_world_renderer)
+
+	# Upright billboard props (lamps/trees/neon) above the floor, below entities.
+	_prop_renderer = PropRendererScript.new()
+	_prop_renderer.name = "PropRenderer"
+	_prop_renderer.setup(Sim.world)
+	add_child(_prop_renderer)
 
 	_lighting = LightingDirectorScript.new()
 	_lighting.name = "LightingDirector"

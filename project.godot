@@ -20,7 +20,7 @@ config/name="Vampire City"
 config/description="A top-down vampire action-RPG. Predator, rise, cost, continuous."
 run/main_scene="res://scenes/Boot.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
-config/icon="res://art/icon.png"
+config/icon="res://art/ui/icon_placeholder.png"
 
 [autoload]
 

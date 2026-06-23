@@ -62,10 +62,10 @@ func test_hunger_pips_render_count() -> void:
 	var b: SimPlayer = _sim.player.behaviour
 	b.hunger = 3.0
 	_hud._refresh_hunger()
-	# 3 of 5 pips should be lit (non-dim) after refresh.
+	# 3 of 5 fang pips should show the FILLED texture after refresh.
 	var lit := 0
 	for pip in _hud._hunger_pips:
-		if pip.color.r > 0.5 and pip.color.g > 0.5:   # gold-ish, not the dim darkened fill
+		if pip.texture != null and pip.texture.resource_path.find("filled") != -1:
 			lit += 1
 	assert_eq(lit, 3, "expected 3 hunger pips lit, got %d" % lit)
 
@@ -78,8 +78,7 @@ func test_heat_stars_render_count() -> void:
 	_hud._refresh_heat()
 	var lit := 0
 	for star in _hud._heat_stars:
-		# moonlight accent is bluish (b dominant); dim is darkened.
-		if star.color.b > 0.5 and star.color.b >= star.color.r:
+		if star.texture != null and star.texture.resource_path.find("filled") != -1:
 			lit += 1
 	assert_eq(lit, 4, "expected 4 heat stars lit, got %d" % lit)
 

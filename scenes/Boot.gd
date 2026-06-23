@@ -89,9 +89,10 @@ func _enter_gameplay() -> void:
 	if _in_gameplay:
 		return
 	_in_gameplay = true
-	# Close the title screen stack (New Game / Continue started from there).
-	while UIManager.is_menu_open():
-		UIManager.close_menu()
+	# Close the title screen stack (New Game / Continue started from there). Must be synchronous:
+	# close() is animated by default and pops on a later tween frame, so a `while is_menu_open():
+	# close_menu()` loop would spin forever in this frame and hang. close_all_menus() pops now.
+	UIManager.close_all_menus()
 	# Spawn the gameplay view. GameRenderer builds world/entities/camera and ticks Sim.
 	_game_view = GAME_VIEW_SCENE.instantiate()
 	add_child(_game_view)

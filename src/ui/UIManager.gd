@@ -132,6 +132,27 @@ func close_menu() -> void:
 	_screen_stack.back().close()
 
 
+## Tear down the entire screen stack SYNCHRONOUSLY (this frame). The host calls this when
+## entering gameplay. Do NOT use `while is_menu_open(): close_menu()` for that — close() is
+## animated by default and pops on a later tween frame, so that loop spins forever (it hung the
+## New Game button). force_close() pops immediately; the guard guarantees termination even if a
+## screen fails to pop itself.
+func close_all_menus() -> void:
+	var guard := 0
+	while not _screen_stack.is_empty() and guard < 64:
+		guard += 1
+		var screen: BaseScreen = _screen_stack.back()
+		if is_instance_valid(screen):
+			screen.force_close()
+		# If force_close didn't remove it (unexpected), force removal to guarantee progress.
+		if not _screen_stack.is_empty() and _screen_stack.back() == screen:
+			_screen_stack.pop_back()
+			if is_instance_valid(screen):
+				screen.queue_free()
+	_update_input_block()
+	screen_stack_changed.emit()
+
+
 ## Replace the top screen (e.g. open settings from pause without stacking both).
 func replace_top(name: String) -> BaseScreen:
 	if _screen_stack.is_empty():
@@ -149,6 +170,12 @@ func pop_screen(screen: BaseScreen) -> void:
 	if idx == -1:
 		return
 	_screen_stack.remove_at(idx)
+	# Free the node — screens are instantiated fresh on each open(); a popped screen is never
+	# reused. Without this they stay parented under ScreensLayer (visible=false) and accumulate
+	# every time a menu is opened/closed. queue_free is deferred, so any in-flight close callback
+	# on this same screen completes safely first.
+	if is_instance_valid(screen):
+		screen.queue_free()
 	# Restore focus to whatever is now on top.
 	if not _screen_stack.is_empty():
 		_screen_stack.back().restore_focus()

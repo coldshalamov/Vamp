@@ -16,6 +16,7 @@ const LightingDirectorScript := preload("res://src/present/LightingDirector.gd")
 const CameraDirectorScript := preload("res://src/present/CameraDirector.gd")
 const VisualFXScript := preload("res://src/present/VisualFX.gd")
 const WorldFXScript := preload("res://src/present/WorldFX.gd")
+const NocturneGradeScript := preload("res://src/present/NocturneGrade.gd")
 const DebugOverlayScript := preload("res://src/present/DebugOverlay.gd")
 const DeathScreenScript := preload("res://src/ui/DeathScreen.gd")
 
@@ -27,6 +28,7 @@ var _world_fx: Node2D = null
 var _lighting: Node2D = null
 var _camera: Camera2D = null
 var _visual_fx: CanvasLayer = null
+var _nocturne: CanvasLayer = null
 var _debug_overlay: CanvasLayer = null
 var _death_screen: CanvasLayer = null
 var _game_active: bool = true
@@ -77,6 +79,11 @@ func _ready() -> void:
 	_camera = CameraDirectorScript.new()
 	_camera.name = "CameraDirector"
 	add_child(_camera)
+
+	# Unified screen-space mood grade (merged glowup shader), above the world, below the HUD.
+	_nocturne = NocturneGradeScript.new()
+	_nocturne.name = "NocturneGrade"
+	add_child(_nocturne)
 
 	_visual_fx = VisualFXScript.new()
 	_visual_fx.name = "VisualFX"

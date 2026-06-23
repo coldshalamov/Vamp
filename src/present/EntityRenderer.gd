@@ -183,6 +183,8 @@ func _draw_rig(e: SimEntity) -> void:
 func _draw_alert(e: SimEntity) -> void:
 	if e.kind != "npc":
 		return
+	if not (e.hostile_to_player or e.responder):
+		return   # only threats show alert/search indicators, not neutral civilians
 	var st := String(e.ai_state)
 	var ps := String(e.perception_state)
 	var p := e.pos + Vector2(0, -e.radius * 2.4)

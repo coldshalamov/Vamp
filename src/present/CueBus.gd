@@ -93,9 +93,13 @@ func emit_cue(event_id: String, payload: Dictionary = {}) -> void:
 
 # --- internals ---
 func _play_audio(sample_id: String, payload: Dictionary, priority: int) -> void:
-	# TODO(audio): route through Audio buses with ducking per priority. Stub for now;
-	# wired when the AudioServer bus layout lands.
-	pass
+	# Route to AudioDirector (an autoload that owns the bus graph + procedural synth). Null-guarded
+	# so headless boots and any load-order edge case stay silent instead of crashing.
+	if sample_id == "":
+		return
+	if AudioDirector == null:
+		return
+	AudioDirector.play_cue_audio(sample_id, payload, priority)
 
 func _show_caption(text: String, payload: Dictionary) -> void:
 	# TODO(a11y): push to the caption overlay. Stub for now.

@@ -34,7 +34,8 @@ func push_caption(text: String, direction: String = "") -> void:
 	while _box.get_child_count() >= MAX_LINES:
 		_box.get_child(0).queue_free()
 	var label := Label.new()
-	var prefix := "[%s] " % direction if direction != "" else ""
+	# Only annotate OFF-CENTRE sounds with a direction (a center "[center]" tag is just noise).
+	var prefix := "[%s] " % direction if direction == "left" or direction == "right" else ""
 	label.text = prefix + text
 	label.add_theme_font_size_override("font_size", _size())
 	label.add_theme_color_override("font_color", Color(0.95, 0.95, 0.98, 1.0))
@@ -96,8 +97,7 @@ func _caption_for(event_id: String, payload: Dictionary) -> String:
 		"dawn.warning": return tr("CAP_DAWN_WARNING")
 		"player.torpor": return tr("CAP_TORPOR")
 		"power.cast":
-			var name := String(payload.get("name", ""))
-			return tr("CAP_POWER_CAST") if name == "" else "%s: %s" % [tr("CAP_POWER_CAST"), name]
+			return ""   # the player's own cast is shown by VisualFX; captioning it is redundant clutter
 	return ""
 
 

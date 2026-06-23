@@ -8,7 +8,8 @@ class_name CameraDirector
 const TRAUMA_DECAY := 0.9
 const MAX_OFFSET := 12.0
 const MAX_ROTATION := 2.5
-const FOLLOW_SPEED := 0.12
+const FOLLOW_SPEED := 0.17
+const BASE_ZOOM := 2.4   # pull the camera in so the character reads as a character, not a speck
 
 @export var trauma: float = 0.0
 @export var push_scale: float = 1.0
@@ -74,7 +75,7 @@ func _process(delta: float) -> void:
 
 	# Push-in recovery
 	push_scale = lerpf(push_scale, 1.0, 5.0 * delta)
-	zoom = Vector2.ONE * push_scale
+	zoom = Vector2.ONE * (BASE_ZOOM * push_scale)
 
 func _shake_offset(amount: float) -> Vector2:
 	var t: float = Time.get_ticks_msec() / 1000.0

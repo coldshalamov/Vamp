@@ -26,11 +26,38 @@ func _run() -> void:
 	await _settle(30)
 	await _shot("play_10_spawn")               # grounded directional character (not a floating portrait)
 
-	# Walk right — camera follow + walk bob + facing.
+	# Walk right — capture 3 consecutive gait frames to prove the legs/arms actually animate.
 	for i in range(45):
 		_move(Vector2.RIGHT)
 		await get_tree().process_frame
-	await _shot("play_11_walk")
+		if i == 14:
+			await _shot("play_11a_walk")
+		elif i == 20:
+			await _shot("play_11b_walk")
+		elif i == 26:
+			await _shot("play_11c_walk")
+
+	# Dodge-roll (the dash) — tucked roll + motion trail.
+	var d := InputAction.new(InputAction.Kind.DASH)
+	d.vector = Vector2.RIGHT
+	Sim.apply_input(d)
+	await _settle(4)
+	await _shot("play_11d_dodge")
+
+	# Clean SOLO hero close-up: clear the area, face diagonally, idle, let the camera centre.
+	if Sim != null and Sim.player != null:
+		Sim.player.pos = Vector2(480, 600)
+		Sim.player.facing = 0.6
+		for e in Sim.entities:
+			if e != null and e != Sim.player and e.kind != "vehicle":
+				e.pos = e.pos + Vector2(0, -4000)   # park them far offscreen for the portrait
+	await _settle(18)
+	await _shot("play_11_hero")
+	# and a walking solo frame
+	for i in range(16):
+		_move(Vector2(0.7, 0.7))
+		await get_tree().process_frame
+	await _shot("play_11_hero_walk")
 
 	# Aim + attack into empty space → a visible swing arc (was: click did nothing).
 	_aim(Sim.player.pos + Vector2(90, -20))

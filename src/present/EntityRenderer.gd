@@ -40,8 +40,22 @@ func _draw() -> void:
 			continue
 		if e.kind == "vehicle":
 			_draw_vehicle(e)
+		elif e.kind == "projectile":
+			_draw_projectile(e)
 		else:
 			_draw_actor(e)
+
+
+func _draw_projectile(e: SimEntity) -> void:
+	var tex := _tex_projectile()
+	if tex == null:
+		draw_circle(e.pos, maxf(e.radius, 4.0), Color("#c8102a"))
+		return
+	var s := maxf(e.radius * 2.2, 12.0) / float(tex.get_height())
+	var size := tex.get_size() * s
+	draw_set_transform(e.pos, e.facing, Vector2.ONE)
+	draw_texture_rect(tex, Rect2(-size * 0.5, size), false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _draw_actor(e: SimEntity) -> void:
@@ -126,6 +140,15 @@ func _sprite_for(e: SimEntity) -> Texture2D:
 	var tex: Texture2D = load(path) as Texture2D if ResourceLoader.exists(path) else null
 	_tex_cache[key] = tex
 	return tex
+
+
+func _tex_projectile() -> Texture2D:
+	const P := "res://assets/sprites/projectile.png"
+	if _tex_cache.has(P):
+		return _tex_cache[P]
+	var t: Texture2D = load(P) as Texture2D if ResourceLoader.exists(P) else null
+	_tex_cache[P] = t
+	return t
 
 
 func _entity_is_police(e: SimEntity) -> bool:

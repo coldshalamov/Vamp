@@ -36,6 +36,7 @@ var _active_high_priority: int = -1   # the highest-priority cue currently suppr
 var _concurrency: Dictionary = {}     # event_id -> active count, for rate-limiting
 var history: Array[Dictionary] = []   # semantic stream the frontend/tests can inspect
 var reduced_motion: bool = false      # accessibility: flatten shake/flash when true
+var reduced_flash: bool = false       # accessibility: suppress full-screen flashes when true
 var captions_enabled: bool = true     # accessibility: show sound captions
 
 ## Register how a semantic event should be presented. Called by presentation systems at boot.

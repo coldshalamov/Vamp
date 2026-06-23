@@ -14,16 +14,21 @@ const EntityRendererScript := preload("res://src/present/EntityRenderer.gd")
 const LightingDirectorScript := preload("res://src/present/LightingDirector.gd")
 const CameraDirectorScript := preload("res://src/present/CameraDirector.gd")
 const VisualFXScript := preload("res://src/present/VisualFX.gd")
+const WorldFXScript := preload("res://src/present/WorldFX.gd")
 const DebugOverlayScript := preload("res://src/present/DebugOverlay.gd")
+const DeathScreenScript := preload("res://src/ui/DeathScreen.gd")
 
 var _world_renderer: Node2D = null
 var _prop_renderer: Node2D = null
 var _entity_renderer: Node2D = null
+var _world_fx: Node2D = null
 var _lighting: Node2D = null
 var _camera: Camera2D = null
 var _visual_fx: CanvasLayer = null
 var _debug_overlay: CanvasLayer = null
+var _death_screen: CanvasLayer = null
 var _game_active: bool = true
+var _dead_shown: bool = false
 
 func _ready() -> void:
 	# Ensure a sim game is running. If Sim was already initialised (e.g. by Boot),
@@ -56,6 +61,11 @@ func _ready() -> void:
 	_entity_renderer.setup(Sim.entities)
 	add_child(_entity_renderer)
 
+	# World-space combat/spell FX (swings, impacts, shockwaves) — above actors, under UI.
+	_world_fx = WorldFXScript.new()
+	_world_fx.name = "WorldFX"
+	add_child(_world_fx)
+
 	_camera = CameraDirectorScript.new()
 	_camera.name = "CameraDirector"
 	add_child(_camera)
@@ -69,18 +79,48 @@ func _ready() -> void:
 	_debug_overlay.name = "DebugOverlay"
 	add_child(_debug_overlay)
 
+	# Death/torpor overlay — without it, player death froze the world with no recovery.
+	_death_screen = DeathScreenScript.new()
+	_death_screen.name = "DeathScreen"
+	add_child(_death_screen)
+
 func _physics_process(_delta: float) -> void:
-	if not _game_active or Sim == null:
+	if Sim == null:
+		return
+	# Catch player death the moment it happens and stop the world cleanly.
+	if not _dead_shown and Sim.player != null and Sim.player.dead:
+		_dead_shown = true
+		_game_active = false
+		if _death_screen != null:
+			_death_screen.show_death()
+		return
+	if not _game_active:
 		return
 	Sim.tick_sim(FIXED_DT)
 
 func _input(event: InputEvent) -> void:
+	# While dead, any key/click rises the player from torpor.
+	if _dead_shown:
+		var pressed: bool = (event is InputEventKey and event.pressed and not event.echo) \
+			or (event is InputEventMouseButton and event.pressed)
+		if pressed:
+			_respawn()
+			get_viewport().set_input_as_handled()
+		return
 	if not _game_active or Rebind == null:
 		return
 	var action := Rebind.capture(event)
 	if action != null:
 		Sim.apply_input(action)
 		get_viewport().set_input_as_handled()
+
+func _respawn() -> void:
+	if Sim != null:
+		Sim.revive_player()
+	_dead_shown = false
+	_game_active = true
+	if _death_screen != null:
+		_death_screen.hide_death()
 
 func set_game_active(active: bool) -> void:
 	_game_active = active

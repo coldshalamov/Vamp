@@ -241,6 +241,8 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 			return dmg
 		target.dead = true
 		_on_entity_killed(attacker, target, opts)
+		if target == player:
+			emit_cue("player.died", { "pos": target.pos, "killer_id": attacker.id if attacker != null else 0 })
 	elif target == player and meta != null:
 		meta.gain_mastery("survival", dmg * 0.18, self)
 	return dmg
@@ -254,6 +256,30 @@ func _default_status_dps(status_id: String) -> float:
 		"poison":
 			return 1.8
 	return 0.0
+
+## Wake from torpor: revive the player at their haven/spawn instead of leaving a dead, frozen world.
+## Costs Humanity (the Beast claws you back). Called by the death screen on "rise again".
+func revive_player() -> void:
+	if player == null:
+		return
+	player.dead = false
+	player.downed = false
+	player.hp = player.max_hp
+	if player.behaviour != null:
+		player.behaviour.set("blood", maxf(35.0, float(player.behaviour.get("blood"))))
+		player.behaviour.set("frenzied", false)
+		player.behaviour.set("humanity", maxf(0.0, float(player.behaviour.get("humanity")) - 0.5))
+		player.behaviour.set("feeding_target_id", 0)
+	player.pos = player.home_pos
+	player.vel = Vector2.ZERO
+	heat = maxf(0.0, heat - 2.0)
+	# Disperse anyone actively hunting so you don't wake into the same death.
+	for e in entities:
+		if e != null and e.kind == "npc" and e.hostile_to_player:
+			e.ai_state = "wander"
+			e.perception_state = "unaware"
+	emit_cue("player.respawn", { "pos": player.pos })
+
 
 func spawn_npc(type_id: String, pos: Vector2, opts: Dictionary = {}) -> SimEntity:
 	var e := SimEntity.new(next_entity_id(), "npc")

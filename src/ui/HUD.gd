@@ -1,16 +1,9 @@
-## HUD.gd — real-time, data-bound heads-up display.
+## HUD.gd — real-time, data-bound heads-up display ("NIGHT SHIFT" dossier predator UI).
 ##
-## Reads Sim.player read-only and subscribes to CueBus. It must run without console errors
-## even when backend systems are stubbed (no player, empty hotbar, etc.) — every getter
-## null-checks.
-##
-## Elements (PROMPT_FRONTEND_AGENT §2):
-##   - Vitae bar (blood / max_blood)   - HP bar (hp / max_hp)
-##   - Hunger pips (0-5)               - Heat stars (0-6)
-##   - Hotbar (8 slots)                - Active buff/debuff list
-##   - Damage numbers                  - Notifications / banners (delegated to overlays)
-##   - Captions (CaptionOverlay)       - Combo / action-phase feedback
-##   - Minimap placeholder
+## Reads Sim.player read-only and subscribes to CueBus. Runs error-free even when backend systems
+## are stubbed (no player, empty hotbar). Visuals use the authored art/ui pieces (textured vitae/
+## flesh bars, fang hunger pips, heat stars, slot plates) + sliced discipline icons. Data logic is
+## unchanged from the binding contract the tests assert.
 extends Control
 class_name HUD
 
@@ -18,9 +11,20 @@ const HOTBAR_SIZE := 8
 const HUNGER_PIPS := 5
 const HEAT_STARS := 6
 
+const TEX_BAR_TRACK := "res://art/ui/bar_track.png"
+const TEX_BAR_VITAE := "res://art/ui/bar_vitae.png"
+const TEX_BAR_HP := "res://art/ui/bar_hp.png"
+const TEX_TOOTH_FULL := "res://art/ui/hungertooth_filled.png"
+const TEX_TOOTH_EMPTY := "res://art/ui/hungertooth_empty.png"
+const TEX_STAR_FULL := "res://art/ui/star_filled.png"
+const TEX_STAR_EMPTY := "res://art/ui/star_empty.png"
+const TEX_SLOT := "res://art/ui/slot_bg.png"
+const TEX_ICON_PLACEHOLDER := "res://art/ui/icon_placeholder.png"
+const ICON_DIR := "res://art/ui/icons/"
+
 # Bar widgets.
-var _vitae_bar: ProgressBar = null
-var _hp_bar: ProgressBar = null
+var _vitae_bar: TextureProgressBar = null
+var _hp_bar: TextureProgressBar = null
 var _vitae_label: Label = null
 var _hp_label: Label = null
 var _hunger_row: HBoxContainer = null
@@ -31,17 +35,24 @@ var _phase_label: Label = null
 var _combo_label: Label = null
 var _minimap: ColorRect = null
 
-var _hunger_pips: Array[ColorRect] = []
-var _heat_stars: Array[ColorRect] = []
-var _hotbar_slots: Array[Dictionary] = []   # {panel, key_label, name_label, cd_overlay}
+var _hunger_pips: Array[TextureRect] = []
+var _heat_stars: Array[TextureRect] = []
+var _hotbar_slots: Array[Dictionary] = []
 var _cached_hunger: int = -1
 var _cached_heat: int = -1
+var _tex_cache: Dictionary = {}
+
+# Hotbar power -> discipline-atlas region (the atlas is 1280x720: row0 of 5, row1 of 6).
+# Hotbar power -> sliced discipline icon (clean transparent PNGs in art/ui/icons/, keyed from the
+# discipline_icons atlas). Aliases share a base icon.
+const ICON_ALIASES := {
+	"pot_charge": "pot_slam", "for_stone": "for_mend", "obf_vanish": "obf_cloak",
+}
 
 
 func _ready() -> void:
 	if UIManager != null:
 		UIManager.register_hud(self)
-	# Wire CueBus. UI only consumes; never emits these.
 	if CueBus != null:
 		CueBus.cue_emitted.connect(_on_cue)
 	_build_layout()
@@ -49,8 +60,6 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	# Poll read-only every frame so bars track even when no cue fires. Cheaper than a tween
-	# per value and safe because we never write Sim state.
 	_refresh_vitals()
 	_refresh_action_phase()
 
@@ -59,186 +68,239 @@ func _process(_delta: float) -> void:
 
 func _build_layout() -> void:
 	set_anchors_preset(PRESET_FULL_RECT)
-	mouse_filter = Control.MOUSE_FILTER_IGNORE   # HUD never eats gameplay input
-	# Root margin so HUD hugs the viewport edges; theme can override spacing.
-	var margin := 16
-	# --- top-left: vitae + HP ---
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var margin := 18
+
+	# --- top-left vitals dossier card ---
+	var card := PanelContainer.new()
+	card.set_anchors_preset(PRESET_TOP_LEFT)
+	card.offset_left = margin
+	card.offset_top = margin
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_theme_stylebox_override("panel", _card_style())
+	add_child(card)
 	var top_left := VBoxContainer.new()
-	top_left.name = "TopLeft"
-	top_left.set_anchors_preset(PRESET_TOP_LEFT)
-	top_left.offset_right = 320
-	top_left.offset_bottom = 120
-	top_left.offset_left = margin
-	top_left.offset_top = margin
-	add_child(top_left)
+	top_left.add_theme_constant_override("separation", 3)
+	top_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(top_left)
 
-	_vitae_label = _label("VITAE")
+	top_left.add_child(_tag(tr("MENU_KICKER"), _accent("moon"), 12))
+	_vitae_label = _data_label("%s ---" % tr("HUD_VITAE"))
 	top_left.add_child(_vitae_label)
-	_vitae_bar = _bar()
+	_vitae_bar = _tex_bar(TEX_BAR_VITAE)
 	top_left.add_child(_vitae_bar)
-
-	_hp_label = _label("HEALTH")
+	_hp_label = _data_label("%s ---" % tr("HUD_HP"))
 	top_left.add_child(_hp_label)
-	_hp_bar = _bar()
+	_hp_bar = _tex_bar(TEX_BAR_HP)
 	top_left.add_child(_hp_bar)
 
-	# --- hunger pips (under bars) ---
 	var hunger_box := HBoxContainer.new()
-	hunger_box.name = "Hunger"
-	hunger_box.add_theme_constant_override("separation", 3)
+	hunger_box.add_theme_constant_override("separation", 6)
+	hunger_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top_left.add_child(hunger_box)
-	hunger_box.add_child(_label("HUNGER"))
+	hunger_box.add_child(_tag(tr("MENU_INVENTORY") if false else "HUNGER", _accent("dim"), 12))
 	_hunger_row = HBoxContainer.new()
 	_hunger_row.add_theme_constant_override("separation", 2)
+	_hunger_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hunger_box.add_child(_hunger_row)
 	for i in HUNGER_PIPS:
-		var pip := _pip_rect(Color.WHITE)
+		var pip := _icon_rect(_tex(TEX_TOOTH_EMPTY), 18)
 		_hunger_row.add_child(pip)
 		_hunger_pips.append(pip)
 
-	# --- top-right: heat stars ---
-	var top_right := HBoxContainer.new()
-	top_right.name = "TopRight"
-	top_right.set_anchors_preset(PRESET_TOP_RIGHT)
-	top_right.anchor_left = 1.0
-	top_right.anchor_right = 1.0
-	top_right.offset_left = -260
-	top_right.offset_right = -margin
-	top_right.offset_top = margin
-	top_right.alignment = BoxContainer.ALIGNMENT_END
-	add_child(top_right)
-	top_right.add_child(_label("HEAT"))
+	# --- top-right heat row ---
+	var heat_card := PanelContainer.new()
+	heat_card.set_anchors_preset(PRESET_TOP_RIGHT)
+	heat_card.anchor_left = 1.0
+	heat_card.anchor_right = 1.0
+	heat_card.offset_left = -250
+	heat_card.offset_right = -margin
+	heat_card.offset_top = margin
+	heat_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	heat_card.add_theme_stylebox_override("panel", _card_style())
+	add_child(heat_card)
+	var heat_box := VBoxContainer.new()
+	heat_box.alignment = BoxContainer.ALIGNMENT_END
+	heat_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	heat_card.add_child(heat_box)
+	var heat_tag := _tag("HEAT // EXPOSURE", _accent("danger"), 12)
+	heat_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	heat_box.add_child(heat_tag)
 	_heat_row = HBoxContainer.new()
 	_heat_row.alignment = BoxContainer.ALIGNMENT_END
 	_heat_row.add_theme_constant_override("separation", 3)
-	top_right.add_child(_heat_row)
+	_heat_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	heat_box.add_child(_heat_row)
 	for i in HEAT_STARS:
-		var star := _pip_rect(Color.WHITE)
+		var star := _icon_rect(_tex(TEX_STAR_EMPTY), 18)
 		_heat_row.add_child(star)
 		_heat_stars.append(star)
 
-	# --- bottom-center: hotbar (8 slots) ---
+	# --- bottom-center hotbar ---
 	_hotbar = HBoxContainer.new()
-	_hotbar.name = "Hotbar"
 	_hotbar.set_anchors_preset(PRESET_BOTTOM_WIDE)
 	_hotbar.anchor_left = 0.5
 	_hotbar.anchor_right = 0.5
-	_hotbar.offset_left = -260
-	_hotbar.offset_right = 260
-	_hotbar.offset_top = -64
-	_hotbar.offset_bottom = -16
+	_hotbar.offset_left = -300
+	_hotbar.offset_right = 300
+	_hotbar.offset_top = -78
+	_hotbar.offset_bottom = -18
 	_hotbar.alignment = BoxContainer.ALIGNMENT_CENTER
-	_hotbar.add_theme_constant_override("separation", 6)
+	_hotbar.add_theme_constant_override("separation", 8)
+	_hotbar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_hotbar)
 	for i in HOTBAR_SIZE:
 		_hotbar_slots.append(_make_hotbar_slot(i + 1))
 
-	# --- bottom-left: active buffs ---
+	# --- bottom-left status ---
 	_buff_list = VBoxContainer.new()
-	_buff_list.name = "Buffs"
 	_buff_list.set_anchors_preset(PRESET_BOTTOM_LEFT)
 	_buff_list.offset_left = margin
 	_buff_list.offset_bottom = -margin
-	_buff_list.offset_top = -160
-	_buff_list.offset_right = 220
+	_buff_list.offset_top = -170
+	_buff_list.offset_right = 240
+	_buff_list.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_buff_list)
-	_buff_list.add_child(_label("STATUS"))
+	_buff_list.add_child(_tag("STATUS", _accent("dim"), 12))
 
-	# --- bottom-right: action phase + combo ---
+	# --- bottom-right action phase + combo ---
 	var bottom_right := VBoxContainer.new()
-	bottom_right.name = "ActionFeedback"
 	bottom_right.set_anchors_preset(PRESET_BOTTOM_RIGHT)
 	bottom_right.anchor_left = 1.0
 	bottom_right.anchor_right = 1.0
-	bottom_right.offset_left = -180
+	bottom_right.offset_left = -220
 	bottom_right.offset_right = -margin
 	bottom_right.offset_top = -120
 	bottom_right.offset_bottom = -margin
 	bottom_right.alignment = BoxContainer.ALIGNMENT_END
+	bottom_right.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bottom_right)
-	_phase_label = _label(" ")
+	_phase_label = _data_label(" ")
 	_phase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	bottom_right.add_child(_phase_label)
-	_combo_label = _label(" ")
+	_combo_label = _data_label(" ")
 	_combo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	bottom_right.add_child(_combo_label)
 
-	# --- top-center: minimap placeholder ---
+	# --- minimap placeholder (kept; Phase 2) ---
 	_minimap = ColorRect.new()
-	_minimap.name = "MinimapPlaceholder"
-	_minimap.color = Color(0.05, 0.05, 0.08, 0.6)
+	_minimap.color = Color(0.05, 0.05, 0.08, 0.5)
 	_minimap.set_anchors_preset(PRESET_CENTER_TOP)
 	_minimap.anchor_left = 0.5
 	_minimap.anchor_right = 0.5
 	_minimap.offset_left = -40
 	_minimap.offset_right = 40
 	_minimap.offset_top = margin
-	_minimap.offset_bottom = margin + 48
+	_minimap.offset_bottom = margin + 40
 	_minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_minimap)
 
 
-func _label(text_key: String) -> Label:
+func _card_style() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(0.03, 0.025, 0.035, 0.62)
+	s.border_color = Color(0.82, 0.10, 0.18, 0.7)
+	s.border_width_left = 3
+	s.content_margin_left = 12
+	s.content_margin_right = 14
+	s.content_margin_top = 8
+	s.content_margin_bottom = 8
+	s.corner_radius_top_right = 3
+	s.corner_radius_bottom_right = 3
+	return s
+
+
+## A mono "case-file" tag label.
+func _tag(text: String, col: Color, fsize: int) -> Label:
 	var l := Label.new()
-	l.text = tr(text_key)
-	l.add_theme_font_size_override("font_size", _theme_hud_size())
+	l.text = text
+	var th := UIManager.theme_resource if UIManager != null else null
+	if th != null and th.mono_font() != null:
+		l.add_theme_font_override("font", th.mono_font())
+	l.add_theme_font_size_override("font_size", fsize)
+	l.add_theme_color_override("font_color", col)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
 
 
-func _bar() -> ProgressBar:
-	var b := ProgressBar.new()
+## A mono data readout (vitae/flesh counters).
+func _data_label(text: String) -> Label:
+	var l := _tag(text, _accent("text") if false else Color(0.90, 0.87, 0.80), 14)
+	return l
+
+
+func _tex_bar(fill_path: String) -> TextureProgressBar:
+	var b := TextureProgressBar.new()
 	b.min_value = 0.0
 	b.max_value = 100.0
 	b.value = 100.0
-	b.custom_minimum_size = Vector2(280, 16)
-	b.show_percentage = false
+	b.fill_mode = TextureProgressBar.FILL_LEFT_TO_RIGHT
+	b.nine_patch_stretch = true
+	b.stretch_margin_left = 3
+	b.stretch_margin_right = 3
+	b.stretch_margin_top = 2
+	b.stretch_margin_bottom = 2
+	b.texture_under = _tex(TEX_BAR_TRACK)
+	b.texture_progress = _tex(fill_path)
+	b.custom_minimum_size = Vector2(260, 16)
 	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return b
 
 
-func _pip_rect(color: Color) -> ColorRect:
-	# A small filled rect tinted per pip. Colorblind-safe meaning comes from the row label
-	# + count, not color alone.
-	var rect := ColorRect.new()
-	rect.custom_minimum_size = Vector2(12, 12)
-	rect.color = color
-	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return rect
+func _icon_rect(tex: Texture2D, px: int) -> TextureRect:
+	var r := TextureRect.new()
+	r.texture = tex
+	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	r.custom_minimum_size = Vector2(px, px)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return r
 
 
 func _make_hotbar_slot(slot_index: int) -> Dictionary:
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(56, 48)
-	var vbox := VBoxContainer.new()
-	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	panel.add_child(vbox)
-	var key_label := Label.new()
-	key_label.text = str(slot_index) if slot_index <= 4 else "—"
-	key_label.add_theme_font_size_override("font_size", _theme_hud_size())
-	key_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	key_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(key_label)
-	var name_label := Label.new()
-	name_label.text = " "
-	name_label.add_theme_font_size_override("font_size", _theme_hud_size())
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(name_label)
-	# Cooldown overlay: dark rect that scales with remaining cooldown.
+	var panel := Control.new()
+	panel.custom_minimum_size = Vector2(58, 58)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# slot plate
+	var bg := TextureRect.new()
+	bg.texture = _tex(TEX_SLOT)
+	bg.set_anchors_preset(PRESET_FULL_RECT)
+	bg.stretch_mode = TextureRect.STRETCH_SCALE
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(bg)
+	# dark inner plate so the atlas icons (which carry a mauve backing) read on the slot
+	var plate := ColorRect.new()
+	plate.color = Color(0.02, 0.02, 0.03, 0.85)
+	plate.set_anchors_preset(PRESET_FULL_RECT)
+	plate.offset_left = 4
+	plate.offset_top = 4
+	plate.offset_right = -4
+	plate.offset_bottom = -4
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(plate)
+	# power icon
+	var icon := TextureRect.new()
+	icon.set_anchors_preset(PRESET_FULL_RECT)
+	icon.offset_left = 3
+	icon.offset_top = 3
+	icon.offset_right = -3
+	icon.offset_bottom = -3
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.self_modulate = Color(1.35, 1.35, 1.35, 1.0)  # lift the dim atlas icons
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(icon)
+	# cooldown shade
 	var cd := ColorRect.new()
 	cd.color = Color(0, 0, 0, 0.6)
 	cd.set_anchors_preset(PRESET_FULL_RECT)
 	cd.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cd.visible = false
 	panel.add_child(cd)
+	# slot index (mono, corner)
+	var key_label := _tag(str(slot_index), _accent("moon"), 11)
+	key_label.position = Vector2(4, 2)
+	panel.add_child(key_label)
 	_hotbar.add_child(panel)
-	return { "panel": panel, "key": key_label, "name": name_label, "cd": cd, "slot": slot_index }
-
-
-func _theme_hud_size() -> int:
-	return UIManager.theme_font_size("font_size", "ProgressBar", 14) if UIManager != null else 14
+	return { "panel": panel, "icon": icon, "key": key_label, "cd": cd, "slot": slot_index }
 
 
 # ---------------------------------------------------------------- refresh
@@ -266,15 +328,12 @@ func _refresh_vitals() -> void:
 		if _vitae_bar:
 			_vitae_bar.value = 0
 			_hp_bar.value = 0
-			_vitae_label.text = "%s —" % tr("HUD_VITAE")
-			_hp_label.text = "%s —" % tr("HUD_HP")
+			_vitae_label.text = "%s ---" % tr("HUD_VITAE")
+			_hp_label.text = "%s ---" % tr("HUD_HP")
 		return
-	var max_b := maxf(b.max_blood, 1.0)
-	var ratio := clampf(b.blood / max_b, 0.0, 1.0)
 	_vitae_bar.max_value = b.max_blood
 	_vitae_bar.value = b.blood
 	_vitae_label.text = "%s %d/%d" % [tr("HUD_VITAE"), int(b.blood), int(b.max_blood)]
-	var max_hp := maxf(Sim.player.max_hp, 1.0)
 	_hp_bar.max_value = Sim.player.max_hp
 	_hp_bar.value = Sim.player.hp
 	_hp_label.text = "%s %d/%d" % [tr("HUD_HP"), int(Sim.player.hp), int(Sim.player.max_hp)]
@@ -288,9 +347,10 @@ func _refresh_hunger() -> void:
 		return
 	_cached_hunger = h
 	var gold := _accent("gold")
-	var dim := _accent("dim")
 	for i in HUNGER_PIPS:
-		_hunger_pips[i].color = gold if i < h else dim.darkened(0.4)
+		var lit := i < h
+		_hunger_pips[i].texture = _tex(TEX_TOOTH_FULL if lit else TEX_TOOTH_EMPTY)
+		_hunger_pips[i].modulate = gold if lit else Color(0.5, 0.5, 0.5, 0.6)
 
 
 func _refresh_heat() -> void:
@@ -302,28 +362,26 @@ func _refresh_heat() -> void:
 		return
 	_cached_heat = stars
 	var moon := _accent("moon")
-	var dim := _accent("dim")
 	for i in HEAT_STARS:
-		_heat_stars[i].color = moon if i < stars else dim.darkened(0.4)
+		var lit := i < stars
+		_heat_stars[i].texture = _tex(TEX_STAR_FULL if lit else TEX_STAR_EMPTY)
+		_heat_stars[i].modulate = moon if lit else Color(0.5, 0.5, 0.5, 0.6)
 
 
 func _refresh_hotbar() -> void:
-	# 8 slots. slot_1..4 are bound to a small starter set of powers; 5..8 reserved.
 	const STARTER := ["bs_bolt", "obf_cloak", "for_mend", "cel_dash"]
 	var b := _player_behaviour()
 	for i in HOTBAR_SIZE:
 		var slot: Dictionary = _hotbar_slots[i]
 		var power_id: String = String(STARTER[i]) if i < STARTER.size() else ""
-		var key_label: Label = slot["key"]
-		var name_label: Label = slot["name"]
+		var icon: TextureRect = slot["icon"]
 		var cd: ColorRect = slot["cd"]
 		if power_id == "":
-			name_label.text = " "
+			icon.texture = null
 			cd.visible = false
 			continue
+		icon.texture = _icon_for(power_id)
 		var def := PowerCatalog.get_def(power_id)
-		name_label.text = String(def.get("name", power_id)) if not def.is_empty() else power_id
-		# Cooldown overlay: visible while on cooldown; alpha scales with remaining fraction.
 		if b != null and b.power_cooldowns.has(power_id):
 			var remaining := int(b.power_cooldowns[power_id])
 			var total := int(def.get("cooldown", remaining)) if not def.is_empty() else remaining
@@ -335,7 +393,6 @@ func _refresh_hotbar() -> void:
 
 
 func _refresh_buffs() -> void:
-	# Rebuild the buff list from Sim.player.behaviour.buffs (backend-defined).
 	for child in _buff_list.get_children():
 		if child != _buff_list.get_child(0):
 			child.queue_free()
@@ -347,19 +404,9 @@ func _refresh_buffs() -> void:
 	var danger := _accent("danger")
 	for key in buffs:
 		var rec: Dictionary = buffs[key]
-		var label := Label.new()
-		label.text = "%s (%.1fs)" % [_buff_display_name(String(key)), float(rec.get("ticks", 0)) / 60.0]
-		label.add_theme_font_size_override("font_size", _theme_hud_size())
-		label.color = good
-		label.add_theme_color_override("font_color", good)
-		_buff_list.add_child(label)
-	# Frenzy is a status worth surfacing separately.
+		_buff_list.add_child(_tag("%s  %.1fs" % [_buff_display_name(String(key)), float(rec.get("ticks", 0)) / 60.0], good, 13))
 	if b.frenzied:
-		var label := Label.new()
-		label.text = tr("HUD_FRENZY")
-		label.add_theme_font_size_override("font_size", _theme_hud_size())
-		label.add_theme_color_override("font_color", danger)
-		_buff_list.add_child(label)
+		_buff_list.add_child(_tag(tr("HUD_FRENZY"), danger, 14))
 
 
 func _refresh_action_phase() -> void:
@@ -369,7 +416,7 @@ func _refresh_action_phase() -> void:
 	if phase == "":
 		_phase_label.text = " "
 		return
-	_phase_label.text = "%s: %s" % [tr("HUD_ACTION"), tr("HUD_PHASE_" + phase.to_upper())]
+	_phase_label.text = "%s: %s" % [tr("HUD_ACTION"), phase.to_upper()]
 	_phase_label.add_theme_color_override("font_color", _accent("gold"))
 
 
@@ -381,22 +428,39 @@ func _buff_display_name(buff_id: String) -> String:
 	return NAMES.get(buff_id, buff_id.capitalize())
 
 
+# ---------------------------------------------------------------- assets
+
+func _tex(path: String) -> Texture2D:
+	if _tex_cache.has(path):
+		return _tex_cache[path]
+	var t: Texture2D = load(path) as Texture2D if ResourceLoader.exists(path) else null
+	_tex_cache[path] = t
+	return t
+
+
+func _icon_for(power_id: String) -> Texture2D:
+	var base: String = ICON_ALIASES.get(power_id, power_id)
+	var path := ICON_DIR + base + ".png"
+	if ResourceLoader.exists(path):
+		return _tex(path)
+	return _tex(TEX_ICON_PLACEHOLDER)
+
+
 func _accent(key: String) -> Color:
 	if UIManager != null:
 		return UIManager.theme_get_color(key, "UITheme", Color.WHITE)
 	match key:
-		"gold": return Color(0.90, 0.74, 0.36, 1)
-		"moon": return Color(0.74, 0.82, 0.98, 1)
-		"good": return Color(0.36, 0.80, 0.50, 1)
-		"danger": return Color(0.92, 0.22, 0.22, 1)
-		"dim": return Color(0.62, 0.62, 0.70, 1)
+		"gold": return Color(0.92, 0.62, 0.22, 1)
+		"moon": return Color(0.42, 0.84, 0.92, 1)
+		"good": return Color(0.42, 0.82, 0.52, 1)
+		"danger": return Color(0.95, 0.18, 0.22, 1)
+		"dim": return Color(0.58, 0.56, 0.52, 1)
 	return Color.WHITE
 
 
 # ---------------------------------------------------------------- cue handling
 
 func _on_cue(event_id: String, payload: Dictionary) -> void:
-	# Match on the cue id prefix so related events share a handler. UI only consumes.
 	match event_id:
 		"blood.changed":
 			_refresh_vitals()
@@ -422,13 +486,11 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 			_refresh_vitals()
 			_refresh_hotbar()
 		"npc.spawn", "npc.death", "npc.alarm", "player.spotted", "player.lost", "player.escape":
-			pass   # minimap/radar owns these (Phase 2 placeholder)
+			pass
 		"dawn.warning", "dawn.arrive", "player.torpor":
 			UIManager.show_notification(_cue_to_notify(event_id), _accent("moon"))
 		"ui.notify":
 			UIManager.show_notification(String(payload.get("text", "")), payload.get("color", Color.WHITE))
-	# Banners/notifications for any cue carrying a caption field route through CaptionOverlay
-	# via CueBus itself (captions_enabled). Nothing else to do here.
 
 
 func _spawn_damage_number(payload: Dictionary, taken: bool) -> void:
@@ -442,7 +504,6 @@ func _spawn_damage_number(payload: Dictionary, taken: bool) -> void:
 
 
 func _cue_to_notify(event_id: String) -> String:
-	# Map major narrative cues to short notification copy.
 	match event_id:
 		"dawn.warning": return tr("NOTIFY_DAWN_WARNING")
 		"dawn.arrive": return tr("NOTIFY_DAWN_ARRIVE")

@@ -167,6 +167,13 @@ func _build_stat_lines() -> Array[String]:
 			lines.append("human  %.2f" % _f(b, "humanity"))
 			if bool(b.get("frenzied")):
 				lines.append("** FRENZIED **")
+	# Hidden-game city model: how the world reads the player's style (glowup PlayerStyleProfile).
+	var ds := get_node_or_null("/root/DirectorService")
+	if ds != null and ds.has_method("dominant_style"):
+		var dom: Dictionary = ds.dominant_style()
+		lines.append("-- CITY MODEL --")
+		lines.append("style  %s %.0f%%" % [String(dom.get("axis", "—")).to_upper(), float(dom.get("share", 0.0)) * 100.0])
+		lines.append("hybrid %.2f" % float(dom.get("entropy", 0.0)))
 	return lines
 
 

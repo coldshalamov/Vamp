@@ -99,6 +99,8 @@ func tick_sim(delta: float) -> void:
 		if e != null:
 			e.step(delta, self)
 	tick_combat()
+	if world != null and tick % 18 == 0:
+		world.decay_blood()
 	if meta != null:
 		meta.tick(delta, self)
 	_update_body_witnesses()
@@ -207,6 +209,9 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 			player_buffs["bs_ward"] = ward
 	dmg = (max(0.0, dmg) if dot else (max(1.0, dmg) if base_damage > 0.0 else 0.0))
 	target.hp = max(0.0, target.hp - dmg)
+	# SPILL (Blood Grammar): a real wound bleeds onto the ground, scaled by the blow.
+	if world != null and not dot and dmg > 0.0 and base_damage > 0.0:
+		world.spill_blood(target.pos, clampi(int(dmg * 0.5), 2, 26))
 	var hitstop := int(opts.get("hitstop", 0 if dot else 2))
 	target.hitstop = max(target.hitstop, hitstop)
 	if attacker != null:
@@ -631,6 +636,8 @@ func _check_escape() -> void:
 		emit_cue("player.escape", { "pos": player.pos, "tick": tick })
 
 func _on_entity_killed(attacker: SimEntity, target: SimEntity, _opts: Dictionary) -> void:
+	if world != null:
+		world.spill_blood(target.pos, 75)   # a death leaves a real pool
 	if attacker == player and target.kind == "npc" and not bool(target.tags.get("no_body", false)) and (target.innocent or bool(target.tags.get("fed_on", false))):
 		target.tags["player_body"] = true
 		target.tags["body_discovered"] = false

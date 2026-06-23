@@ -12,6 +12,11 @@ var size: Vector2i = Vector2i(64, 40)
 var tile_size: int = 32
 var walls: PackedByteArray = PackedByteArray()
 var surfaces: PackedByteArray = PackedByteArray()
+# Blood Grammar — the SPILL atom: a mutable, deterministic blood-depth layer (0-255 per cell).
+# Spilled when blood is shed (hits, kills, feeds); dries over time. The substrate the rest of the
+# Blood Grammar (command/react/drink) will read. Integer-only, no RNG, so replay stays bit-exact.
+var blood: PackedByteArray = PackedByteArray()
+var _wet: Dictionary = {}   # cell index -> true, so decay/render touch only wet cells
 var spawn_points: Array[Vector2] = []
 var named_points: Dictionary = {}
 var lights: Array[Dictionary] = []
@@ -234,9 +239,52 @@ func _reset_arrays() -> void:
 	walls = PackedByteArray()
 	surfaces = PackedByteArray()
 	roads = PackedByteArray()
+	blood = PackedByteArray()
+	_wet = {}
 	walls.resize(size.x * size.y)
 	surfaces.resize(size.x * size.y)
 	roads.resize(size.x * size.y)
+	blood.resize(size.x * size.y)
+
+
+## SPILL: deposit blood at a world position (a small pool: centre cell + 4-neighbours).
+func spill_blood(world_pos: Vector2, amount: int) -> void:
+	var c := world_to_cell(world_pos)
+	_add_blood(c, amount)
+	_add_blood(c + Vector2i(1, 0), amount / 3)
+	_add_blood(c + Vector2i(-1, 0), amount / 3)
+	_add_blood(c + Vector2i(0, 1), amount / 3)
+	_add_blood(c + Vector2i(0, -1), amount / 3)
+
+
+func _add_blood(c: Vector2i, amt: int) -> void:
+	if amt <= 0 or c.x < 0 or c.y < 0 or c.x >= size.x or c.y >= size.y:
+		return
+	var i := _idx(c)
+	if walls[i] != 0:
+		return
+	blood[i] = mini(255, blood[i] + amt)
+	_wet[i] = true
+
+
+func blood_at(world_pos: Vector2) -> int:
+	var c := world_to_cell(world_pos)
+	if c.x < 0 or c.y < 0 or c.x >= size.x or c.y >= size.y:
+		return 0
+	return blood[_idx(c)]
+
+
+## Dry the wet cells a notch (deterministic; iterates only wet cells). Call on a slow cadence.
+func decay_blood() -> void:
+	var dried: Array = []
+	for i in _wet:
+		var v: int = blood[i] - 1
+		if v <= 0:
+			v = 0
+			dried.append(i)
+		blood[i] = v
+	for i in dried:
+		_wet.erase(i)
 
 func _idx(cell: Vector2i) -> int:
 	return cell.y * size.x + cell.x

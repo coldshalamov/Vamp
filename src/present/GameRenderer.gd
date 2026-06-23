@@ -9,6 +9,7 @@ class_name GameRenderer
 const FIXED_DT := 1.0 / 60.0
 
 const WorldRendererScript := preload("res://src/present/WorldRenderer.gd")
+const BloodRendererScript := preload("res://src/present/BloodRenderer.gd")
 const PropRendererScript := preload("res://src/present/PropRenderer.gd")
 const EntityRendererScript := preload("res://src/present/EntityRenderer.gd")
 const LightingDirectorScript := preload("res://src/present/LightingDirector.gd")
@@ -19,6 +20,7 @@ const DebugOverlayScript := preload("res://src/present/DebugOverlay.gd")
 const DeathScreenScript := preload("res://src/ui/DeathScreen.gd")
 
 var _world_renderer: Node2D = null
+var _blood_renderer: Node2D = null
 var _prop_renderer: Node2D = null
 var _entity_renderer: Node2D = null
 var _world_fx: Node2D = null
@@ -44,6 +46,12 @@ func _ready() -> void:
 	_world_renderer.name = "WorldRenderer"
 	_world_renderer.setup(Sim.world)
 	add_child(_world_renderer)
+
+	# Dynamic blood pools (the SPILL layer), under props/actors.
+	_blood_renderer = BloodRendererScript.new()
+	_blood_renderer.name = "BloodRenderer"
+	_blood_renderer.setup(Sim.world)
+	add_child(_blood_renderer)
 
 	# Upright billboard props (lamps/trees/neon) above the floor, below entities.
 	_prop_renderer = PropRendererScript.new()

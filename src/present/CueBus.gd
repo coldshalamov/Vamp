@@ -39,9 +39,23 @@ var reduced_motion: bool = false      # accessibility: flatten shake/flash when 
 var captions_enabled: bool = true     # accessibility: show sound captions
 
 ## Register how a semantic event should be presented. Called by presentation systems at boot.
+##
+## A single event is meant to carry MULTIPLE coordinated modalities (camera + audio + vfx + hud).
+## Different presentation systems each own one modality and register independently — e.g.
+## CameraDirector defines `hit.connect` with a `camera` callable, while VisualFX defines the same
+## event with a `vfx` callable. So we MERGE modality keys instead of replacing the whole def;
+## otherwise whichever system registers last silently clobbers the others (this dropped camera
+## shake on hit.connect / frenzy.start / masquerade.broken — see GODOT_WIRING_AUDIT.md P0-1).
+## Scalars (priority, duration_ms, max_concurrent) take the latest writer; in practice colliding
+## registrations supply matching scalars, so this is lossless.
 func define(event_id: String, priority: int, cue: Dictionary) -> void:
 	cue["priority"] = priority
-	_cue_defs[event_id] = cue
+	if _cue_defs.has(event_id):
+		var existing: Dictionary = _cue_defs[event_id]
+		for k in cue:
+			existing[k] = cue[k]
+	else:
+		_cue_defs[event_id] = cue
 
 ## Emit a semantic cue from sim code. `payload` carries event-specific data (pos, magnitude...).
 func emit_cue(event_id: String, payload: Dictionary = {}) -> void:

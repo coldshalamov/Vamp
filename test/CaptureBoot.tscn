@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bvampcaptureboot01"]
+
+[ext_resource type="Script" path="res://test/CaptureBoot.gd" id="1_capb"]
+
+[node name="CaptureBoot" type="Node"]
+script = ExtResource("1_capb")

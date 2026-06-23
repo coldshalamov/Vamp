@@ -78,6 +78,22 @@ func close() -> void:
 		UIManager.pop_screen(self))
 
 
+## Synchronous close — no animation, pops THIS FRAME. Used when entering gameplay so the host
+## never busy-waits on a close tween. The animated close() defers the stack pop to a tween
+## callback; a caller that loops `while is_menu_open(): close_menu()` would spin forever waiting
+## for a pop that can't happen inside one frame (this hung the New Game button — see
+## UIManager.close_all_menus / Boot._enter_gameplay).
+func force_close() -> void:
+	_is_open = false
+	_cancel_tween()
+	_on_about_to_close()
+	visible = false
+	modulate.a = 1.0
+	closed.emit(self)
+	if UIManager != null:
+		UIManager.pop_screen(self)
+
+
 ## Remember the current focus so a nested screen can restore it when it closes.
 func save_focus() -> void:
 	_saved_focus = get_viewport().gui_get_focus_owner() if is_inside_tree() else null

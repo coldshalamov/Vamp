@@ -19,6 +19,13 @@ func _ready() -> void:
 	_build()
 
 
+## Add a section as a tab. _section() returns the populated VBox; its parent is the named
+## ScrollContainer that should be the actual TabContainer child (the tab title comes from its name).
+func _add_tab(section_box: Control) -> void:
+	var root: Node = section_box.get_parent()
+	_tab_bar.add_child(root if root != null else section_box)
+
+
 func _build() -> void:
 	set_anchors_preset(PRESET_FULL_RECT)
 	var margin := MarginContainer.new()
@@ -32,10 +39,13 @@ func _build() -> void:
 	_tab_bar = TabContainer.new()
 	margin.add_child(_tab_bar)
 
-	_tab_bar.add_child(_build_video())
-	_tab_bar.add_child(_build_audio())
-	_tab_bar.add_child(_build_gameplay())
-	_tab_bar.add_child(_build_accessibility())
+	# _section() returns the inner VBox (so the _toggle/_option helpers can populate it), but the
+	# tab root is its parent ScrollContainer (named after the tab). Add the ROOT to the tab — adding
+	# the already-parented VBox fails ("already has a parent") and silently drops the tab.
+	_add_tab(_build_video())
+	_add_tab(_build_audio())
+	_add_tab(_build_gameplay())
+	_add_tab(_build_accessibility())
 	# Controls tab hosts the full remap panel.
 	_remap_panel = preload("res://src/ui/InputRemapPanel.gd").new()
 	_remap_panel.build(self)

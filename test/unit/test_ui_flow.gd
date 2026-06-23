@@ -40,6 +40,50 @@ func test_ui_code_does_not_mutate_gameplay_state() -> void:
 	assert_eq(Sim.player.behaviour.blood, before_blood, "blood unchanged after UI cue routing")
 
 
+func test_close_all_menus_is_synchronous_and_does_not_hang() -> void:
+	# Regression for the New Game hang: with animations ON (reduced_motion off), close() defers the
+	# stack pop to a tween callback. Boot._enter_gameplay used to `while is_menu_open(): close_menu()`
+	# which spins forever waiting for a pop that can't happen inside one frame. close_all_menus()
+	# must empty the stack THIS frame, with NO await.
+	UIManager.theme_resource.reduced_motion = false
+	# Two animated screens on the stack (main_menu is proven-clean; keeps this regression focused
+	# on the teardown contract, not on any one menu's internals).
+	UIManager.open_menu("main_menu")
+	UIManager.open_menu("main_menu")
+	assert_true(UIManager.is_menu_open(), "menus pushed onto the stack")
+	UIManager.close_all_menus()
+	assert_false(UIManager.is_menu_open(), "stack emptied synchronously (the old loop would hang here)")
+
+
+func test_closed_screens_do_not_accumulate_in_the_tree() -> void:
+	# Regression: pop_screen used to remove from the stack array only, leaving closed screens
+	# parented under ScreensLayer (visible=false). Opening/closing menus then leaked nodes forever.
+	# pop_screen now queue_free()s the popped screen.
+	UIManager.theme_resource.reduced_motion = true  # synchronous open/close for a deterministic count
+	var layer: Node = UIManager.get_node("ScreensLayer")
+	var baseline := layer.get_child_count()
+	for i in range(6):
+		UIManager.open_menu("main_menu")
+		UIManager.close_all_menus()
+		await get_tree().process_frame
+	await get_tree().process_frame
+	assert_lte(layer.get_child_count(), baseline + 1, "closed screens are freed, not accumulated")
+
+
+func test_settings_menu_builds_all_tabs_without_errors() -> void:
+	# Regression: _section() returns the inner VBox (already parented to its ScrollContainer), so
+	# _build() must add the ScrollContainer root to the TabContainer, not the VBox. Adding the VBox
+	# threw "already has a parent" x4 and silently dropped the Video/Audio/Gameplay/Accessibility
+	# tabs (only Controls survived). GUT fails this test on the pushed engine error if it regresses.
+	var screen := UIManager.open_menu("settings")
+	assert_not_null(screen, "settings menu opened")
+	var tab_bar: TabContainer = screen.get("_tab_bar")
+	assert_not_null(tab_bar, "tab bar exists")
+	# 4 _section tabs + the remap/Controls panel = 5.
+	assert_eq(tab_bar.get_child_count(), 5, "all 5 settings tabs present (4 sections + controls)")
+	UIManager.close_all_menus()
+
+
 func test_settings_persist_round_trip() -> void:
 	# Accessibility flags written via UIManager should survive a save/load cycle.
 	UIManager.set_reduced_motion(true)

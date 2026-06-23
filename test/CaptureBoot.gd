@@ -24,7 +24,7 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	await _settle(20)
+	await _settle(95)
 	await _shot("10_main_menu")
 
 	# Drive the wired New Game intent exactly as the menu button would.

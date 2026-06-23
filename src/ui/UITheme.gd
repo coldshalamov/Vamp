@@ -19,17 +19,18 @@ class_name UITheme
 @export var colorblind_mode: String = "off"   # off | protanopia | deuteranopia | tritanopia
 @export var captions_enabled: bool = true
 
-# --- palette (placeholder gothic tokens; vision agent overrides) ---
-@export var color_bg: Color = Color(0.03, 0.03, 0.05, 0.92)
-@export var color_panel: Color = Color(0.07, 0.06, 0.10, 0.96)
-@export var color_blood: Color = Color(0.75, 0.08, 0.16, 1.0)      # vitae / HP
-@export var color_gold: Color = Color(0.90, 0.74, 0.36, 1.0)      # hunger / accents
-@export var color_moon: Color = Color(0.74, 0.82, 0.98, 1.0)      # heat / moonlight
-@export var color_text: Color = Color(0.90, 0.90, 0.94, 1.0)
-@export var color_text_dim: Color = Color(0.62, 0.62, 0.70, 1.0)
-@export var color_focus: Color = Color(0.90, 0.74, 0.36, 1.0)
-@export var color_danger: Color = Color(0.92, 0.22, 0.22, 1.0)
-@export var color_good: Color = Color(0.36, 0.80, 0.50, 1.0)
+# --- palette: "NIGHT SHIFT" — occult police-scanner / crime-dossier predator UI ---
+# Charcoal base, blood-crimson + sodium-amber accents, cold scanner-cyan for system text.
+@export var color_bg: Color = Color(0.035, 0.030, 0.042, 0.95)    # charcoal void
+@export var color_panel: Color = Color(0.06, 0.05, 0.065, 0.97)   # dossier card
+@export var color_blood: Color = Color(0.82, 0.10, 0.18, 1.0)     # vitae / HP — crimson
+@export var color_gold: Color = Color(0.92, 0.62, 0.22, 1.0)      # hunger / sodium amber
+@export var color_moon: Color = Color(0.42, 0.84, 0.92, 1.0)      # heat / scanner cyan
+@export var color_text: Color = Color(0.91, 0.88, 0.80, 1.0)      # bone white
+@export var color_text_dim: Color = Color(0.58, 0.56, 0.52, 1.0)  # redacted grey
+@export var color_focus: Color = Color(0.92, 0.62, 0.22, 1.0)     # amber focus ring
+@export var color_danger: Color = Color(0.95, 0.18, 0.22, 1.0)
+@export var color_good: Color = Color(0.42, 0.82, 0.52, 1.0)
 
 # --- type scale (base px at 100%) ---
 @export var font_size_body: int = 16
@@ -48,6 +49,33 @@ class_name UITheme
 
 const MIN_SCALE := 0.75
 const MAX_SCALE := 1.50
+
+# --- type system (NIGHT SHIFT): Cinzel = engraved occult display, Oswald = condensed UI,
+#     ShareTechMono = scanner/dossier data readouts. Loaded lazily + cached. ---
+const DISPLAY_FONT_PATH := "res://art/fonts/Cinzel.ttf"
+const UI_FONT_PATH := "res://art/fonts/Oswald.ttf"
+const MONO_FONT_PATH := "res://art/fonts/ShareTechMono.ttf"
+var _display_font: Font = null
+var _ui_font: Font = null
+var _mono_font: Font = null
+
+
+func display_font() -> Font:
+	if _display_font == null and ResourceLoader.exists(DISPLAY_FONT_PATH):
+		_display_font = load(DISPLAY_FONT_PATH)
+	return _display_font
+
+
+func ui_font() -> Font:
+	if _ui_font == null and ResourceLoader.exists(UI_FONT_PATH):
+		_ui_font = load(UI_FONT_PATH)
+	return _ui_font
+
+
+func mono_font() -> Font:
+	if _mono_font == null and ResourceLoader.exists(MONO_FONT_PATH):
+		_mono_font = load(MONO_FONT_PATH)
+	return _mono_font
 
 
 ## Build a Godot Theme from the current tokens. Called whenever accessibility flags change.
@@ -74,6 +102,21 @@ func build_theme() -> Theme:
 		"tritanopia":
 			blood = Color(0.85, 0.20, 0.55, 1.0)   # red -> magenta
 			gold = Color(0.30, 0.85, 0.95, 1.0)    # gold -> cyan
+
+	# --- fonts: Oswald everywhere by default; ShareTechMono for numeric/data controls ---
+	var uif := ui_font()
+	if uif != null:
+		t.set_default_font(uif)
+		t.set_font("font", "Label", uif)
+		t.set_font("font", "Button", uif)
+		t.set_font("font", "OptionButton", uif)
+		t.set_font("font", "CheckButton", uif)
+		t.set_font("font", "TabContainer", uif)
+	var mf := mono_font()
+	if mf != null:
+		t.set_font("font", "ProgressBar", mf)
+		t.set_font("font", "LineEdit", mf)
+	t.set_default_font_size(body)
 
 	t.set_color("font_color", "Label", txt)
 	t.set_color("font_color", "Button", txt)

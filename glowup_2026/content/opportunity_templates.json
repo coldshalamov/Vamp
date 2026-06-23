@@ -1,0 +1,212 @@
+[
+  {
+    "id": "body_with_two_names",
+    "display_name": "A Body With Two Names",
+    "family": "substitution",
+    "premise": "A body tied to the player's current identity has been logged under two contradictory names. Three factions want one version to become official.",
+    "required_tags": ["records", "body_evidence"],
+    "forbidden_tags": ["records_destroyed"],
+    "role_slots": [
+      {"id": "record_keeper", "tags": ["police", "records"], "optional": false},
+      {"id": "witness", "tags": ["civilian", "eyewitness"], "optional": false},
+      {"id": "beneficiary", "tags": ["faction_agent"], "optional": true}
+    ],
+    "objective_nodes": [
+      {"id": "learn_claims", "verb": "inspect_claim_graph", "next": ["rewrite", "persuade", "erase", "frame"], "optional": false},
+      {"id": "rewrite", "verb": "alter_record", "next": ["contain"], "optional": true},
+      {"id": "persuade", "verb": "change_witness_claim", "next": ["contain"], "optional": true},
+      {"id": "erase", "verb": "destroy_evidence", "next": ["contain"], "optional": true},
+      {"id": "frame", "verb": "install_false_identity", "next": ["contain"], "optional": true},
+      {"id": "contain", "verb": "manage_resulting_rumor", "next": [], "optional": false}
+    ],
+    "resolution_methods": ["stealth", "influence", "systems", "force"],
+    "fail_forward": [
+      "identity_link_weakened_but_not_removed",
+      "record_destroyed_but_witness_remains",
+      "new_identity_takes_heat",
+      "faction_gains_a_copy_and_creates_debt"
+    ],
+    "pressure_relief": {"exposure": 0.48, "heat": 0.16},
+    "pressure_generation": {"debt": 0.24, "anomaly": 0.05},
+    "novelty_tags": ["identity", "evidence", "rumor", "body"],
+    "base_difficulty": 0.52,
+    "authored_priority": 0.82,
+    "counter_strength": 0.20,
+    "cooldown_ticks": 1800
+  },
+  {
+    "id": "last_train_before_dawn",
+    "display_name": "The Last Train Before Dawn",
+    "family": "extraction",
+    "premise": "A target and a hunter board opposite ends of the last moving route as dawn begins to close the streets.",
+    "required_tags": ["transit", "dawn_route"],
+    "forbidden_tags": ["transit_disabled"],
+    "role_slots": [
+      {"id": "target", "tags": ["valuable", "mobile"], "optional": false},
+      {"id": "hunter", "tags": ["nemesis_or_inquisition"], "optional": false},
+      {"id": "operator", "tags": ["civilian", "route_control"], "optional": true}
+    ],
+    "objective_nodes": [
+      {"id": "board", "verb": "reach_route_before_lock", "next": ["protect", "abduct", "reroute", "bargain"], "optional": false},
+      {"id": "protect", "verb": "escort_target", "next": ["choose_exit"], "optional": true},
+      {"id": "abduct", "verb": "seize_target", "next": ["choose_exit"], "optional": true},
+      {"id": "reroute", "verb": "control_transit_system", "next": ["choose_exit"], "optional": true},
+      {"id": "bargain", "verb": "change_target_allegiance", "next": ["choose_exit"], "optional": true},
+      {"id": "choose_exit", "verb": "commit_to_haven_or_recipient", "next": [], "optional": false}
+    ],
+    "resolution_methods": ["mobility", "force", "stealth", "systems", "influence"],
+    "fail_forward": [
+      "target_reaches_wrong_faction_but_contacts_player",
+      "hunter_marks_player_damage_signature",
+      "route_is_lost_but_hidden_haven_is_discovered",
+      "target_survives_with_injury_and_new_need"
+    ],
+    "pressure_relief": {"debt": 0.18, "injury": 0.10},
+    "pressure_generation": {"heat": 0.26, "exposure": 0.18, "anomaly": 0.08},
+    "novelty_tags": ["dawn", "moving_space", "nemesis", "extraction"],
+    "base_difficulty": 0.66,
+    "authored_priority": 0.88,
+    "counter_strength": 0.30,
+    "cooldown_ticks": 2400
+  },
+  {
+    "id": "blood_bank_audit",
+    "display_name": "The Blood Bank Audit",
+    "family": "containment",
+    "premise": "A blood bank front is being audited while its real stock, a hungry coterie member, and a falsified donor ledger threaten to expose one another.",
+    "required_tags": ["bloodbank", "records"],
+    "forbidden_tags": ["bloodbank_destroyed"],
+    "role_slots": [
+      {"id": "auditor", "tags": ["institutional", "social"], "optional": false},
+      {"id": "keeper", "tags": ["front_owner"], "optional": false},
+      {"id": "hungry_ally", "tags": ["coterie", "need"], "optional": true}
+    ],
+    "objective_nodes": [
+      {"id": "stabilize", "verb": "buy_time", "next": ["forge", "move_stock", "feed_ally", "coerce"], "optional": false},
+      {"id": "forge", "verb": "repair_ledger", "next": ["resolve_audit"], "optional": true},
+      {"id": "move_stock", "verb": "smuggle_vitae", "next": ["resolve_audit"], "optional": true},
+      {"id": "feed_ally", "verb": "control_need", "next": ["resolve_audit"], "optional": true},
+      {"id": "coerce", "verb": "pressure_auditor", "next": ["resolve_audit"], "optional": true},
+      {"id": "resolve_audit", "verb": "choose_front_future", "next": [], "optional": false}
+    ],
+    "resolution_methods": ["influence", "systems", "stealth", "mobility", "force"],
+    "fail_forward": [
+      "front_survives_with_higher_upkeep",
+      "stock_is_lost_but_ledger_is_clean",
+      "ally_is_exposed_and_owes_rescue_debt",
+      "auditor_becomes_a_recruitable_witness"
+    ],
+    "pressure_relief": {"need": 0.28, "debt": 0.14},
+    "pressure_generation": {"exposure": 0.12, "debt": 0.16, "volatility": 0.08},
+    "novelty_tags": ["front", "economy", "coterie", "social_pressure"],
+    "base_difficulty": 0.50,
+    "authored_priority": 0.76,
+    "counter_strength": 0.10,
+    "cooldown_ticks": 2100
+  },
+  {
+    "id": "heralds_memory",
+    "display_name": "The Herald's Memory",
+    "family": "suppression",
+    "premise": "The wounded herald has reconstructed one true habit and one false belief about the player. Both are about to be sold.",
+    "required_tags": ["nemesis_active", "information_market"],
+    "forbidden_tags": ["herald_dead"],
+    "role_slots": [
+      {"id": "nemesis", "tags": ["named", "scarred", "adaptive"], "optional": false},
+      {"id": "broker", "tags": ["information", "neutral"], "optional": false},
+      {"id": "buyer", "tags": ["faction_agent"], "optional": true}
+    ],
+    "objective_nodes": [
+      {"id": "learn_beliefs", "verb": "discover_true_and_false_claim", "next": ["silence", "alter", "weaponize", "reconcile"], "optional": false},
+      {"id": "silence", "verb": "stop_sale", "next": ["resolve_nemesis"], "optional": true},
+      {"id": "alter", "verb": "edit_information", "next": ["resolve_nemesis"], "optional": true},
+      {"id": "weaponize", "verb": "sell_false_claim", "next": ["resolve_nemesis"], "optional": true},
+      {"id": "reconcile", "verb": "change_nemesis_relationship", "next": ["resolve_nemesis"], "optional": true},
+      {"id": "resolve_nemesis", "verb": "choose_memory_fate", "next": [], "optional": false}
+    ],
+    "resolution_methods": ["stealth", "influence", "force", "systems"],
+    "fail_forward": [
+      "buyer_receives_only_false_claim",
+      "true_habit_becomes_known_but_nemesis_debt_changes",
+      "broker_keeps_copy_and_offers_future_trade",
+      "nemesis_gains_new_rank_without_new_resistance"
+    ],
+    "pressure_relief": {"exposure": 0.24, "anomaly": 0.12},
+    "pressure_generation": {"fear": 0.18, "debt": 0.12},
+    "novelty_tags": ["nemesis", "belief", "adaptation", "information"],
+    "base_difficulty": 0.64,
+    "authored_priority": 0.92,
+    "counter_strength": 0.55,
+    "cooldown_ticks": 3000
+  },
+  {
+    "id": "favor_in_red_row",
+    "display_name": "A Favor in Red Row",
+    "family": "arbitration",
+    "premise": "A coterie favor, a neighborhood obligation, and a gang truce all mature on the same corner before the night ends.",
+    "required_tags": ["community", "gang_presence"],
+    "forbidden_tags": ["district_abandoned"],
+    "role_slots": [
+      {"id": "dependent", "tags": ["civilian", "relationship"], "optional": false},
+      {"id": "gang_voice", "tags": ["gang", "negotiator"], "optional": false},
+      {"id": "coterie_member", "tags": ["ally", "debt"], "optional": false}
+    ],
+    "objective_nodes": [
+      {"id": "hear_terms", "verb": "read_conflicting_needs", "next": ["mediate", "demonstrate", "extract", "delegate"], "optional": false},
+      {"id": "mediate", "verb": "construct_agreement", "next": ["pay_cost"], "optional": true},
+      {"id": "demonstrate", "verb": "selective_intimidation", "next": ["pay_cost"], "optional": true},
+      {"id": "extract", "verb": "remove_dependent", "next": ["pay_cost"], "optional": true},
+      {"id": "delegate", "verb": "use_coterie_job", "next": ["pay_cost"], "optional": true},
+      {"id": "pay_cost", "verb": "assign_debt_and_reputation", "next": [], "optional": false}
+    ],
+    "resolution_methods": ["influence", "force", "mobility", "stealth"],
+    "fail_forward": [
+      "dependent_safe_truce_broken",
+      "truce_holds_coterie_member_resentful",
+      "gang_gains_local_claim_but_owes_player",
+      "public_success_raises_fear_and_exposure"
+    ],
+    "pressure_relief": {"debt": 0.34, "volatility": 0.12},
+    "pressure_generation": {"exposure": 0.08, "fear": 0.10},
+    "novelty_tags": ["relationship", "community", "gang", "debt"],
+    "base_difficulty": 0.47,
+    "authored_priority": 0.80,
+    "counter_strength": 0.05,
+    "cooldown_ticks": 1800
+  },
+  {
+    "id": "baron_is_missing",
+    "display_name": "The Baron Is Missing",
+    "family": "demonstration",
+    "premise": "A claimed domain has no visible Baron for one night. Rivals test whether the territory belongs to the player, the coterie, or nobody.",
+    "required_tags": ["player_domain", "contested"],
+    "forbidden_tags": ["domain_secure"],
+    "role_slots": [
+      {"id": "challenger", "tags": ["rival_faction", "elite"], "optional": false},
+      {"id": "tenant_or_business", "tags": ["domain_asset"], "optional": false},
+      {"id": "ally", "tags": ["coterie_or_contact"], "optional": true}
+    ],
+    "objective_nodes": [
+      {"id": "read_test", "verb": "identify_real_challenge", "next": ["defend", "delegate", "bargain", "trap"], "optional": false},
+      {"id": "defend", "verb": "hold_ground", "next": ["declare_rule"], "optional": true},
+      {"id": "delegate", "verb": "empower_ally", "next": ["declare_rule"], "optional": true},
+      {"id": "bargain", "verb": "share_or_trade_control", "next": ["declare_rule"], "optional": true},
+      {"id": "trap", "verb": "turn_raid_into_evidence", "next": ["declare_rule"], "optional": true},
+      {"id": "declare_rule", "verb": "set_domain_precedent", "next": [], "optional": false}
+    ],
+    "resolution_methods": ["force", "influence", "systems", "stealth", "mobility"],
+    "fail_forward": [
+      "asset_lost_domain_retained",
+      "domain_shared_with_upkeep_change",
+      "ally_becomes_visible_sub_baron",
+      "challenger_survives_as_new_nemesis_candidate"
+    ],
+    "pressure_relief": {"volatility": 0.38, "heat": 0.08},
+    "pressure_generation": {"debt": 0.16, "exposure": 0.14, "fear": 0.14},
+    "novelty_tags": ["domain", "raid", "ownership", "coterie"],
+    "base_difficulty": 0.62,
+    "authored_priority": 0.86,
+    "counter_strength": 0.25,
+    "cooldown_ticks": 2700
+  }
+]

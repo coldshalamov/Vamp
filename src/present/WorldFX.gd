@@ -20,7 +20,7 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
 	match event_id:
 		"attack.start":
-			_add({ "type": "swing", "pos": pos, "rot": _facing_of(int(payload.get("entity_id", 0))), "t": 0.0, "dur": 0.18, "reach": 34.0 })
+			_add({ "type": "swing", "pos": pos, "rot": _facing_of(int(payload.get("entity_id", 0))), "t": 0.0, "dur": 0.24, "reach": 42.0 })
 		"damage.dealt":
 			_add({ "type": "spark", "pos": pos, "t": 0.0, "dur": 0.22, "col": Color("#ffd2a0"), "crit": bool(payload.get("crit", false)) })
 		"damage.player":
@@ -85,12 +85,14 @@ func _draw() -> void:
 		var pos: Vector2 = fx["pos"]
 		match fx["type"]:
 			"swing":
-				# a bright crescent sweeping across the facing arc
-				var reach: float = fx["reach"] * (0.85 + 0.3 * p)
+				# a bright crescent slash that sweeps across the facing arc
+				var reach: float = fx["reach"] * (0.9 + 0.22 * p)
 				var rot: float = fx["rot"]
-				var col := Color(0.96, 0.92, 0.82, a * 0.9)
-				draw_arc(pos, reach, rot - 0.85, rot + 0.85, 18, col, 4.0 * (1.0 - p) + 1.5, true)
-				draw_arc(pos, reach * 0.78, rot - 0.7, rot + 0.7, 14, Color(col.r, col.g, col.b, a * 0.4), 2.0, true)
+				var from: float = rot - 1.05 + p * 1.25     # leading edge sweeps through the swing
+				var to: float = from + 0.95
+				var col := Color(1.0, 0.96, 0.86, a * 0.95)
+				draw_arc(pos, reach, from, to, 16, col, 5.0 * (1.0 - p) + 2.0, true)
+				draw_arc(pos, reach * 0.8, from, to, 12, Color(col.r, col.g, col.b, a * 0.4), 2.0, true)
 			"spark":
 				var rad: float = (10.0 if fx.get("crit", false) else 6.0)
 				var col: Color = fx["col"]

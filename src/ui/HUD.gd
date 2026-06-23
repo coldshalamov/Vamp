@@ -62,6 +62,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	_refresh_vitals()
 	_refresh_action_phase()
+	_refresh_hotbar()
 
 
 # ---------------------------------------------------------------- layout
@@ -256,9 +257,17 @@ func _icon_rect(tex: Texture2D, px: int) -> TextureRect:
 	return r
 
 
+const PowerGlyphScript := preload("res://src/ui/PowerGlyph.gd")
+const DISC_COLORS := {
+	"cel": Color("#8fd6ff"), "pot": Color("#e0883a"), "for": Color("#6fd6a0"),
+	"obf": Color("#9a8cc0"), "aus": Color("#aef0ff"), "dom": Color("#b98cff"),
+	"pre": Color("#f0c040"), "bs": Color("#c01028"), "pro": Color("#7aa05a"),
+}
+
+
 func _make_hotbar_slot(slot_index: int) -> Dictionary:
 	var panel := Control.new()
-	panel.custom_minimum_size = Vector2(58, 58)
+	panel.custom_minimum_size = Vector2(62, 64)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# slot plate
 	var bg := TextureRect.new()
@@ -267,9 +276,9 @@ func _make_hotbar_slot(slot_index: int) -> Dictionary:
 	bg.stretch_mode = TextureRect.STRETCH_SCALE
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(bg)
-	# dark inner plate so the atlas icons (which carry a mauve backing) read on the slot
+	# dark inner plate
 	var plate := ColorRect.new()
-	plate.color = Color(0.02, 0.02, 0.03, 0.85)
+	plate.color = Color(0.03, 0.03, 0.045, 0.9)
 	plate.set_anchors_preset(PRESET_FULL_RECT)
 	plate.offset_left = 4
 	plate.offset_top = 4
@@ -277,17 +286,22 @@ func _make_hotbar_slot(slot_index: int) -> Dictionary:
 	plate.offset_bottom = -4
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(plate)
-	# power icon
-	var icon := TextureRect.new()
-	icon.set_anchors_preset(PRESET_FULL_RECT)
-	icon.offset_left = 3
-	icon.offset_top = 3
-	icon.offset_right = -3
-	icon.offset_bottom = -3
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.self_modulate = Color(1.35, 1.35, 1.35, 1.0)  # lift the dim atlas icons
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(icon)
+	# crisp discipline glyph (replaces the messy atlas icons)
+	var glyph := PowerGlyphScript.new()
+	glyph.set_anchors_preset(PRESET_FULL_RECT)
+	glyph.offset_left = 6
+	glyph.offset_top = 5
+	glyph.offset_right = -6
+	glyph.offset_bottom = -17
+	glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(glyph)
+	# power name (mono, bottom strip) — answers "what does this key do?"
+	var name_lbl := _tag("", _accent("bone"), 8)
+	name_lbl.set_anchors_preset(PRESET_BOTTOM_WIDE)
+	name_lbl.offset_top = -13
+	name_lbl.offset_bottom = -2
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(name_lbl)
 	# cooldown shade
 	var cd := ColorRect.new()
 	cd.color = Color(0, 0, 0, 0.6)
@@ -295,12 +309,17 @@ func _make_hotbar_slot(slot_index: int) -> Dictionary:
 	cd.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cd.visible = false
 	panel.add_child(cd)
-	# slot index (mono, corner)
-	var key_label := _tag(str(slot_index), _accent("moon"), 11)
-	key_label.position = Vector2(4, 2)
+	# keybind number (mono, corner, bold)
+	var key_label := _tag(str(slot_index), _accent("gold"), 13)
+	key_label.position = Vector2(5, 1)
 	panel.add_child(key_label)
 	_hotbar.add_child(panel)
-	return { "panel": panel, "icon": icon, "key": key_label, "cd": cd, "slot": slot_index }
+	return { "panel": panel, "glyph": glyph, "name": name_lbl, "key": key_label, "cd": cd, "slot": slot_index }
+
+
+func _short_name(n: String) -> String:
+	var s := n.to_upper()
+	return s if s.length() <= 10 else s.substr(0, 9)
 
 
 # ---------------------------------------------------------------- refresh
@@ -369,19 +388,28 @@ func _refresh_heat() -> void:
 
 
 func _refresh_hotbar() -> void:
-	const STARTER := ["bs_bolt", "obf_cloak", "for_mend", "cel_dash"]
+	# Bind to the ACTUAL equipped powers (meta.slots) so the boxes match what keys 1-8 cast.
+	var slots: Array = []
+	if Sim != null and Sim.meta != null and Sim.meta.get("slots") != null:
+		slots = Sim.meta.slots
 	var b := _player_behaviour()
 	for i in HOTBAR_SIZE:
 		var slot: Dictionary = _hotbar_slots[i]
-		var power_id: String = String(STARTER[i]) if i < STARTER.size() else ""
-		var icon: TextureRect = slot["icon"]
+		var glyph = slot["glyph"]
+		var name_lbl: Label = slot["name"]
 		var cd: ColorRect = slot["cd"]
+		var power_id: String = String(slots[i]) if i < slots.size() and slots[i] != null else ""
 		if power_id == "":
-			icon.texture = null
+			glyph.set_power("", Color(0.4, 0.4, 0.45), true)
+			name_lbl.text = ""
 			cd.visible = false
 			continue
-		icon.texture = _icon_for(power_id)
+		var prefix: String = power_id.split("_")[0]
+		var col: Color = DISC_COLORS.get(prefix, Color("#c0c0cc"))
 		var def := PowerCatalog.get_def(power_id)
+		glyph.set_power(prefix, col, false)
+		name_lbl.text = _short_name(String(def.get("name", power_id)))
+		name_lbl.add_theme_color_override("font_color", col)
 		if b != null and b.power_cooldowns.has(power_id):
 			var remaining := int(b.power_cooldowns[power_id])
 			var total := int(def.get("cooldown", remaining)) if not def.is_empty() else remaining

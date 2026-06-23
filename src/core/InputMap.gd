@@ -34,6 +34,10 @@ const ACTION_LABELS := {
 	"slot_2": "ACTION_SLOT_2",
 	"slot_3": "ACTION_SLOT_3",
 	"slot_4": "ACTION_SLOT_4",
+	"slot_5": "ACTION_SLOT_5",
+	"slot_6": "ACTION_SLOT_6",
+	"slot_7": "ACTION_SLOT_7",
+	"slot_8": "ACTION_SLOT_8",
 	"pause": "ACTION_PAUSE",
 }
 
@@ -87,6 +91,10 @@ const DEFAULTS := {
 	"slot_2":      [KEY_2],
 	"slot_3":      [KEY_3],
 	"slot_4":      [KEY_4],
+	"slot_5":      [KEY_5],
+	"slot_6":      [KEY_6],
+	"slot_7":      [KEY_7],
+	"slot_8":      [KEY_8],
 	"pause":       [KEY_ESCAPE],
 }
 
@@ -162,7 +170,7 @@ func capture(event: InputEvent) -> InputAction:
 			return InputAction.new(InputAction.Kind.FINISH)
 		# Hotbar slots: emit a POWER intent with action_id "slot_N". Sim.apply_input resolves
 		# the slot to the actual power id via the player's hotbar (see SimPlayer/SimMeta).
-		for slot_idx in range(1, 5):
+		for slot_idx in range(1, 9):
 			if event.is_action("slot_%d" % slot_idx):
 				var power := InputAction.new(InputAction.Kind.POWER)
 				power.action_id = "slot_%d" % slot_idx

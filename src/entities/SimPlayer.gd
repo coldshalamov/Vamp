@@ -47,6 +47,7 @@ var gulp_hits: int = 0
 var gulp_misses: int = 0
 var gulp_bonus_vitae: float = 0.0
 var gulp_slow_ticks: int = 0
+var flow_stacks: int = 0   # gulp-as-master-cancel: perfect combo timing builds flow (+melee, decays)
 var iframes_remaining: int = 0
 var vehicle_id: int = 0
 var carrying_body_id: int = 0
@@ -114,6 +115,8 @@ func apply_action(action: InputAction, sim) -> void:
 
 func step(delta: float, sim) -> void:
 	_tick_cooldowns()
+	if flow_stacks > 0 and sim.tick - sim.player_last_attack_tick > 75:
+		flow_stacks = 0   # flow bleeds off if you stop the dance
 	_tick_buffs(delta, sim)
 	_tick_blood(delta, sim)
 	if iframes_remaining > 0:
@@ -415,7 +418,7 @@ func state_hash() -> int:
 		snapped(frenzy, 0.001), frenzied, feeding_target_id, snapped(feed_drained, 0.001),
 		snapped(feed_progress, 0.001), feed_lethal, iframes_remaining,
 		gulp_window_active, gulp_window_ticks, gulp_period_ticks,
-		gulp_hits, gulp_misses, snapped(gulp_bonus_vitae, 0.001), gulp_slow_ticks,
+		gulp_hits, gulp_misses, snapped(gulp_bonus_vitae, 0.001), gulp_slow_ticks, flow_stacks,
 		vehicle_id, carrying_body_id,
 		frenzy_cooldown, sprinting, sneaking, aiming, holding_feed,
 		fed_count, kills, innocent_kills, snapped(damage_dealt, 0.001),
@@ -481,9 +484,18 @@ func _try_attack(sim) -> void:
 				if cur_def.in_combo_window(entity.action_frame) and cur_def.combo_next != "":
 					var next_def := _get_action_def(cur_def.combo_next)
 					if next_def != null:
+						# gulp-as-master-cancel: the tight FIRST frames of the window are a "perfect"
+						# just-frame that builds flow (more melee). Late-but-valid cancels just chain.
+						var earliest := cur_def.startup + cur_def.active + cur_def.combo_window_start
+						var perfect: bool = entity.action_frame <= earliest + 4
 						entity.begin_action(next_def, sim)
-						sim.emit_cue("attack.start", { "entity_id": entity.id, "action": next_def.id, "pos": entity.pos })
+						if perfect:
+							flow_stacks = mini(5, flow_stacks + 1)
+							sim.emit_cue("flow.perfect", { "stacks": flow_stacks, "pos": entity.pos })
+						sim.emit_cue("attack.start", { "entity_id": entity.id, "action": next_def.id, "pos": entity.pos, "flow": flow_stacks })
 						sim.player_last_attack_tick = sim.tick
+				else:
+					flow_stacks = 0   # mistimed cancel drops your flow
 
 func _try_dash(dir: Vector2, sim, distance: float, iframe_ticks: int) -> bool:
 	if carrying_body_id != 0:

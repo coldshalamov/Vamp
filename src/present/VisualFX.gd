@@ -78,6 +78,11 @@ func _register_cues() -> void:
 		"vfx": _on_level_up,
 		"duration_ms": 900,
 	})
+	CueBus.define("flow.perfect", CueBus.Priority.COMBAT, {
+		"vfx": _on_flow_perfect,
+		"duration_ms": 250,
+		"max_concurrent": 4,
+	})
 
 func _create_flash_overlay() -> void:
 	flash_overlay = ColorRect.new()
@@ -253,3 +258,10 @@ func _on_level_up(payload: Dictionary) -> void:
 	var lvl: int = int(payload.get("level", 0))
 	flash_screen(Color("#3a2e08"), 0.4)
 	show_caption("LEVEL %d" % lvl)
+
+
+func _on_flow_perfect(payload: Dictionary) -> void:
+	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
+	var stacks: int = int(payload.get("stacks", 1))
+	spawn_floating_text(pos + Vector2(0, -34), "FLOW x%d" % stacks, Color("#f0c040"), true)
+	set_time_scale(0.55, 0.05)

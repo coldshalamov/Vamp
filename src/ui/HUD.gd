@@ -28,6 +28,8 @@ var _hp_bar: TextureProgressBar = null
 var _vitae_label: Label = null
 var _hp_label: Label = null
 var _level_label: Label = null
+var _pressure_icons: Array = []
+const RESIDUE_SVG := "res://glowup_2026/art/residue_icons.svg"
 var _hunger_row: HBoxContainer = null
 var _heat_row: HBoxContainer = null
 var _hotbar: HBoxContainer = null
@@ -64,6 +66,7 @@ func _process(_delta: float) -> void:
 	_refresh_vitals()
 	_refresh_action_phase()
 	_refresh_hotbar()
+	_refresh_pressure()
 
 
 # ---------------------------------------------------------------- layout
@@ -111,6 +114,16 @@ func _build_layout() -> void:
 		var pip := _icon_rect(_tex(TEX_TOOTH_EMPTY), 18)
 		_hunger_row.add_child(pip)
 		_hunger_pips.append(pip)
+
+	# --- residue / pressure icons (glowup residue_icons atlas): Exposure / Heat / Need ---
+	var pressure_box := HBoxContainer.new()
+	pressure_box.add_theme_constant_override("separation", 7)
+	pressure_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top_left.add_child(pressure_box)
+	for ch in [0, 1, 2]:
+		var picon := _residue_icon(ch)
+		pressure_box.add_child(picon)
+		_pressure_icons.append({ "rect": picon, "channel": ch })
 
 	# --- top-right heat row ---
 	var heat_card := PanelContainer.new()
@@ -318,6 +331,37 @@ func _make_hotbar_slot(slot_index: int) -> Dictionary:
 	panel.add_child(key_label)
 	_hotbar.add_child(panel)
 	return { "panel": panel, "glyph": glyph, "name": name_lbl, "key": key_label, "cd": cd, "slot": slot_index }
+
+
+func _residue_icon(idx: int) -> TextureRect:
+	var tr := TextureRect.new()
+	tr.custom_minimum_size = Vector2(22, 22)
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if ResourceLoader.exists(RESIDUE_SVG):
+		var src := load(RESIDUE_SVG) as Texture2D
+		if src != null:
+			var cell: int = int(src.get_width() / 6)   # 6-cell atlas, robust to import scale
+			var at := AtlasTexture.new()
+			at.atlas = src
+			at.region = Rect2(idx * cell, 0, cell, src.get_height())
+			tr.texture = at
+	return tr
+
+
+func _refresh_pressure() -> void:
+	if _pressure_icons.is_empty() or Sim == null or Sim.player == null:
+		return
+	var b := _player_behaviour()
+	var vals := [
+		clampf(Sim.player.exposure / 1.45, 0.0, 1.0),
+		clampf(Sim.heat / 6.0, 0.0, 1.0),
+		clampf((float(b.get("hunger")) if b != null else 0.0) / 5.0, 0.0, 1.0),
+	]
+	for pi in _pressure_icons:
+		var ch: int = int(pi["channel"])
+		var v: float = vals[ch] if ch < vals.size() else 0.0
+		(pi["rect"] as TextureRect).modulate = Color(1, 1, 1, 0.3 + 0.7 * v)
 
 
 func _short_name(n: String) -> String:

@@ -27,6 +27,8 @@ config/icon="res://art/icon.png"
 Sim="*res://src/sim/Sim.gd"
 CueBus="*res://src/present/CueBus.gd"
 Rebind="*res://src/core/InputMap.gd"
+UIManager="*res://src/ui/UIManager.gd"
+SaveSystem="*res://src/core/SaveSystem.gd"
 
 [display]
 
@@ -74,3 +76,7 @@ renderer/rendering_method.mobile="gl_compatibility"
 textures/canvas_textures/default_texture_filter=0
 environment/defaults/default_clear_color=Color(0.03, 0.03, 0.05, 1)
 2d_snapping/use_pixel_snap=true
+
+[internationalization]
+
+locale/translations=PackedStringArray("res://art/i18n/ui.en.en.translation")

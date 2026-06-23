@@ -14,6 +14,7 @@ const EntityRendererScript := preload("res://src/present/EntityRenderer.gd")
 const LightingDirectorScript := preload("res://src/present/LightingDirector.gd")
 const CameraDirectorScript := preload("res://src/present/CameraDirector.gd")
 const VisualFXScript := preload("res://src/present/VisualFX.gd")
+const DebugOverlayScript := preload("res://src/present/DebugOverlay.gd")
 
 var _world_renderer: Node2D = null
 var _prop_renderer: Node2D = null
@@ -21,6 +22,7 @@ var _entity_renderer: Node2D = null
 var _lighting: Node2D = null
 var _camera: Camera2D = null
 var _visual_fx: CanvasLayer = null
+var _debug_overlay: CanvasLayer = null
 var _game_active: bool = true
 
 func _ready() -> void:
@@ -61,6 +63,11 @@ func _ready() -> void:
 	_visual_fx = VisualFXScript.new()
 	_visual_fx.name = "VisualFX"
 	add_child(_visual_fx)
+
+	# F3 sim-truth debug overlay. Starts hidden; pure read of Sim state.
+	_debug_overlay = DebugOverlayScript.new()
+	_debug_overlay.name = "DebugOverlay"
+	add_child(_debug_overlay)
 
 func _physics_process(_delta: float) -> void:
 	if not _game_active or Sim == null:

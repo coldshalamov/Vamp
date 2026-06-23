@@ -37,6 +37,9 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 			_add({ "type": "ring", "pos": pos, "t": 0.0, "dur": 0.4, "rmax": 36.0, "col": Color("#7fe0a0") })
 		"blood.drink":
 			_add({ "type": "ring", "pos": pos, "t": 0.0, "dur": 0.32, "rmax": 22.0, "col": Color("#c0304a") })
+		"blood.command":
+			_add({ "type": "ring", "pos": pos, "t": 0.0, "dur": 0.3, "rmax": 52.0, "col": Color("#c01028") })
+			_add({ "type": "aoe", "pos": pos, "t": 0.0, "dur": 0.25, "rmax": 44.0, "col": Color("#9a0c20") })
 		"player.respawn":
 			_add({ "type": "shock", "pos": pos, "t": 0.0, "dur": 0.6, "rmax": 90.0, "col": Color("#9a6fff") })
 		"player.level_up":

@@ -295,6 +295,7 @@ func cast_power(power_id: String, sim) -> bool:
 			_apply_buff(power_id, int(def.get("duration", 600)), { "move": 1.35, "damage": 0.60, "maxHP": 0.30 })
 			entity.hp = min(entity.max_hp, entity.hp + entity.max_hp * 0.30)
 		"bs_bolt":
+			_command_blood_bolts(sim, def)   # COMMAND: spilled blood -> free fan of extra bolts
 			var bolt_target := _aim_target(sim, float(def.get("range", 340.0)))
 			if bolt_target == null:
 				_fire_projectile(sim, def, Vector2.RIGHT.rotated(entity.facing), "blood")
@@ -868,6 +869,27 @@ func _spell_damage(def: Dictionary) -> float:
 	if buffs.has("res_melancholic"):
 		amount *= 1.0 + float(buffs["res_melancholic"].get("spell", 0.25))
 	return amount
+
+## COMMAND atom (hemokinesis): if you're near spilled blood, Blood Bolt commands it into a fan of
+## extra free bolts (the medium is already paid for). Rewards fighting in your own carnage.
+func _command_blood_bolts(sim, def: Dictionary) -> int:
+	if sim.world == null:
+		return 0
+	var probe := entity.pos + Vector2.RIGHT.rotated(entity.facing) * 56.0
+	var pool: int = sim.world.blood_at(probe)
+	if pool < 20:
+		probe = entity.pos
+		pool = sim.world.blood_at(probe)
+	if pool < 20:
+		return 0
+	var bolts: int = clampi(pool / 40, 1, 4)
+	sim.world.siphon_blood(probe, bolts * 40)
+	for i in range(bolts):
+		var spread: float = (float(i) - float(bolts - 1) * 0.5) * 0.22
+		_fire_projectile(sim, def, Vector2.RIGHT.rotated(entity.facing + spread), "blood")
+	sim.emit_cue("blood.command", { "pos": entity.pos, "count": bolts })
+	return bolts
+
 
 func _fire_projectile(sim, def: Dictionary, dir: Vector2, kind: String) -> void:
 	var shot_dir := dir.normalized()

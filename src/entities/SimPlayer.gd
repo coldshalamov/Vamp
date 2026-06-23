@@ -11,6 +11,13 @@ const ACTION_HEAVY := preload("res://data/powers/melee_heavy.tres")
 const ACTION_DASH := preload("res://data/powers/dash.tres")
 const PowerCatalogScript := preload("res://src/data/PowerCatalog.gd")
 
+# --- Gulp timing mini-game (deterministic, tick-based) ---
+const GULP_PERIOD := 42        # ticks between gulp windows (~0.7s @ 60Hz)
+const GULP_WINDOW := 15        # window-open duration (~0.25s) — the "tap now" beat
+const GULP_HIT_BONUS := 0.12   # fraction of victim blood_yield healed per perfect gulp
+const GULP_MISS_SLOW := 0.6    # drain-speed factor while penalised after a miss (longer exposure)
+const GULP_SLOW_TICKS := 30
+
 var entity: SimEntity
 
 var move_dir: Vector2 = Vector2.ZERO
@@ -33,6 +40,13 @@ var feeding_target_id: int = 0
 var feed_progress: float = 0.0
 var feed_drained: float = 0.0
 var feed_lethal: bool = false
+var gulp_window_active: bool = false
+var gulp_window_ticks: int = 0
+var gulp_period_ticks: int = 0
+var gulp_hits: int = 0
+var gulp_misses: int = 0
+var gulp_bonus_vitae: float = 0.0
+var gulp_slow_ticks: int = 0
 var iframes_remaining: int = 0
 var vehicle_id: int = 0
 var carrying_body_id: int = 0
@@ -67,7 +81,11 @@ func apply_action(action: InputAction, sim) -> void:
 			if aim_point.distance_squared_to(entity.pos) > 4.0:
 				entity.facing = (aim_point - entity.pos).angle()
 		InputAction.Kind.ATTACK:
-			_try_attack(sim)
+			# While feeding, the attack input is the GULP tap (hit the open window for bonus vitae).
+			if feeding_target_id != 0:
+				_gulp_tap(sim)
+			else:
+				_try_attack(sim)
 		InputAction.Kind.DASH:
 			_try_dash(action.vector, sim, ACTION_DASH.range, 12)
 		InputAction.Kind.FEED:
@@ -368,6 +386,8 @@ func state_hash() -> int:
 		snapped(hunger, 0.001), snapped(humanity, 0.001),
 		snapped(frenzy, 0.001), frenzied, feeding_target_id, snapped(feed_drained, 0.001),
 		snapped(feed_progress, 0.001), feed_lethal, iframes_remaining,
+		gulp_window_active, gulp_window_ticks, gulp_period_ticks,
+		gulp_hits, gulp_misses, snapped(gulp_bonus_vitae, 0.001), gulp_slow_ticks,
 		vehicle_id, carrying_body_id,
 		frenzy_cooldown, sprinting, sneaking, aiming, holding_feed,
 		fed_count, kills, innocent_kills, snapped(damage_dealt, 0.001),
@@ -527,6 +547,7 @@ func _start_feeding(target: SimEntity, sim, lethal: bool) -> void:
 	feed_progress = 0.0
 	feed_drained = 0.0
 	feed_lethal = lethal
+	_reset_gulp(GULP_PERIOD)
 	target.ai_state = "downed" if target.downed else "fed"
 	target.perception_state = "helpless"
 	sim.emit_cue("feed.start", { "target_id": target.id, "pos": target.pos, "lethal": lethal })
@@ -537,14 +558,19 @@ func _tick_feeding(delta: float, sim) -> void:
 		_interrupt_feed(sim)
 		return
 	entity.facing = (target.pos - entity.pos).angle()
+	_tick_gulp(sim, target)
 	var speed := 1.0 + hunger * 0.10
+	if gulp_slow_ticks > 0:
+		speed *= GULP_MISS_SLOW   # a missed gulp slows the feed → longer exposure
+		gulp_slow_ticks -= 1
 	feed_progress += delta * speed
 	var gain: float = target.blood_yield * 0.55 * delta * speed
 	feed_drained += gain
 	target.blood_left -= gain
 	heal_blood(gain)
-	if feed_progress >= 0.45 and int(feed_progress * 10.0) % 7 == 0:
-		sim.emit_cue("feed.gulp", { "target_id": target.id, "pos": target.pos, "magnitude": gain })
+	# Heartbeat / drain pulse cue (audio + vignette), distinct from the gulp window beat.
+	if feed_progress >= 0.2 and int(feed_progress * 10.0) % 7 == 0:
+		sim.emit_cue("feed.drain", { "target_id": target.id, "pos": target.pos, "magnitude": gain, "hunger": hunger })
 	if holding_feed and (feed_drained >= target.blood_yield * 1.2 or target.blood_left <= 0.0):
 		_finish_feed(sim, true)
 	elif not holding_feed and feed_drained >= target.blood_yield * 0.70:
@@ -580,8 +606,9 @@ func _finish_feed(sim, lethal: bool) -> void:
 		target.tags["fed_on"] = true
 		humanity = min(10.0, humanity + 0.03)
 		sim.witnessed_act(target.pos, "feed", 1.0)
-		sim.emit_cue("feed.spare", { "target_id": target.id, "pos": target.pos, "blood": feed_drained })
+		sim.emit_cue("feed.spare", { "target_id": target.id, "pos": target.pos, "blood": feed_drained, "gulp_bonus": gulp_bonus_vitae, "gulp_hits": gulp_hits })
 	feed_drained = 0.0
+	_reset_gulp(0)
 
 func _interrupt_feed(sim) -> void:
 	var target: SimEntity = sim.get_entity(feeding_target_id) as SimEntity
@@ -591,7 +618,62 @@ func _interrupt_feed(sim) -> void:
 	feed_progress = 0.0
 	feed_drained = 0.0
 	holding_feed = false
+	_reset_gulp(0)
 	sim.emit_cue("feed.interrupt", { "pos": entity.pos })
+
+
+# --- Gulp timing mini-game: deterministic windows; a well-timed ATTACK during a window grants bonus
+# vitae + slowmo; a miss (or tap outside the window) slows the feed (longer exposure). The tap arrives
+# through the normal InputAction stream, so replay stays deterministic. ---
+
+func _reset_gulp(period: int) -> void:
+	gulp_window_active = false
+	gulp_window_ticks = 0
+	gulp_period_ticks = period
+	gulp_hits = 0
+	gulp_misses = 0
+	gulp_bonus_vitae = 0.0
+	gulp_slow_ticks = 0
+
+
+func _tick_gulp(sim, target: SimEntity) -> void:
+	if gulp_window_active:
+		gulp_window_ticks -= 1
+		if gulp_window_ticks <= 0:
+			# Window closed with no tap — a miss.
+			gulp_window_active = false
+			gulp_misses += 1
+			gulp_slow_ticks = GULP_SLOW_TICKS
+			gulp_period_ticks = GULP_PERIOD
+			sim.emit_cue("feed.gulp.miss", { "target_id": target.id, "pos": target.pos, "reason": "timeout" })
+	else:
+		gulp_period_ticks -= 1
+		if gulp_period_ticks <= 0:
+			gulp_window_active = true
+			gulp_window_ticks = GULP_WINDOW
+			gulp_period_ticks = GULP_PERIOD
+			sim.emit_cue("feed.gulp", { "target_id": target.id, "pos": target.pos, "window": true, "ticks": GULP_WINDOW })
+
+
+func _gulp_tap(sim) -> void:
+	if feeding_target_id == 0:
+		return
+	var target: SimEntity = sim.get_entity(feeding_target_id) as SimEntity
+	if target == null:
+		return
+	if gulp_window_active:
+		gulp_window_active = false
+		gulp_hits += 1
+		gulp_period_ticks = GULP_PERIOD
+		var bonus: float = target.blood_yield * GULP_HIT_BONUS
+		gulp_bonus_vitae += bonus
+		heal_blood(bonus)
+		sim.emit_cue("feed.gulp.perfect", { "target_id": target.id, "pos": target.pos, "bonus": bonus, "hits": gulp_hits })
+	else:
+		# Tapped outside the window — mistimed; light penalty.
+		gulp_misses += 1
+		gulp_slow_ticks = GULP_SLOW_TICKS
+		sim.emit_cue("feed.gulp.miss", { "target_id": target.id, "pos": target.pos, "reason": "early" })
 
 func _tick_blood(delta: float, sim) -> void:
 	blood = max(0.0, blood - delta * 0.12)

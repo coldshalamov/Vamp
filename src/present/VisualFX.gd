@@ -53,7 +53,15 @@ func _register_cues() -> void:
 		"duration_ms": 400,
 	})
 	CueBus.define("feed.gulp", CueBus.Priority.GAMEPLAY, {
-		"vfx": _on_feed_gulp,
+		"vfx": _on_feed_gulp_window,
+		"duration_ms": 250,
+	})
+	CueBus.define("feed.gulp.perfect", CueBus.Priority.COMBAT, {
+		"vfx": _on_feed_gulp_perfect,
+		"duration_ms": 250,
+	})
+	CueBus.define("feed.gulp.miss", CueBus.Priority.GAMEPLAY, {
+		"vfx": _on_feed_gulp_miss,
 		"duration_ms": 200,
 	})
 
@@ -196,7 +204,20 @@ func _on_masquerade_broken(payload: Dictionary) -> void:
 	var color := Color("#f0d060") if stars < 3 else Color("#ff2030")
 	flash_screen(color, 0.2)
 
-func _on_feed_gulp(payload: Dictionary) -> void:
+func _on_feed_gulp_window(payload: Dictionary) -> void:
+	# The "tap now" beat — a cyan prompt over the victim telegraphing the timing window.
 	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
-	var mag: float = payload.get("magnitude", 0.0)
-	spawn_floating_text(pos + Vector2(0, -20), "+" + "%.0f" % (mag * 10.0), Color("#ff2a4a"), false)
+	spawn_floating_text(pos + Vector2(0, -34), "GULP", Color("#6fd6e0"), false)
+
+
+func _on_feed_gulp_perfect(payload: Dictionary) -> void:
+	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
+	var bonus: float = payload.get("bonus", 0.0)
+	spawn_floating_text(pos + Vector2(0, -26), "+%.0f" % bonus, Color("#f0c040"), true)
+	set_time_scale(0.45, 0.08)   # brief slowmo reward (present-only; Sim ticks fixed)
+	flash_screen(Color("#3a1010"), 0.05)
+
+
+func _on_feed_gulp_miss(payload: Dictionary) -> void:
+	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
+	spawn_floating_text(pos + Vector2(0, -20), "miss", Color("#7a4a4a"), false)

@@ -60,19 +60,29 @@ func _on_new_game() -> void:
 
 
 func _on_continue_game() -> void:
+	# Load the full persisted run and restore it into the Sim. restore_run() re-seeds via
+	# new_game(), then layers the saved run scalars + meta back on top, so the authoritative
+	# state matches the save. If there is no save (or it is corrupt/empty), restore_run()
+	# returns false WITHOUT building a world — fall back to a fresh game so gameplay still
+	# boots clean against a valid Sim (player/world non-null).
 	var data := SaveSystem.load()
-	var seed_value := int(data.get("seed", 42))
-	var clan := String(data.get("clan", "brujah"))
-	Sim.new_game(seed_value, clan)
+	if not Sim.restore_run(data):
+		var seed_value := int(data.get("seed", 42))
+		var clan := String(data.get("clan", "brujah"))
+		Sim.new_game(seed_value, clan)
+	# Entering gameplay (re)builds GameRenderer, which re-syncs the scene tree to whatever
+	# entities the Sim now holds — restored or freshly spawned.
 	_enter_gameplay()
 
 
 func _on_save_game() -> void:
-	var data := {
-		"seed": Sim.seed_value,
-		"clan": String(Sim.player.tags.get("clan", "brujah")) if Sim.player != null else "brujah",
-		"tick": Sim.tick,
-	}
+	# Persist the FULL run: run scalars (seed, rng, tick, heat, investigations, ...) plus the
+	# whole meta backend (level/xp/money/skill tree/inventory/coterie/domains/...). seed/clan
+	# are mirrored at the top level too so a corrupt/partial save can still seed a fallback
+	# new_game() in _on_continue_game without parsing the nested meta block.
+	var data := Sim.serialize_run()
+	data["seed"] = Sim.seed_value
+	data["clan"] = String(Sim.meta.clan_id) if Sim.meta != null else "brujah"
 	SaveSystem.save(data)
 
 

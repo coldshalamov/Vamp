@@ -11,20 +11,23 @@
 extends Node
 # NOTE: no class_name — this script IS the `SaveSystem` autoload singleton.
 
-const SAVE_PATH := "user://save.json"
+# Godot variant text (var_to_str), NOT JSON: it round-trips every Godot type losslessly
+# (ints stay ints, Vector2 positions survive). JSON coerces all numbers to float and drops
+# Vector2, which silently breaks the full-run restore (legend/positions vanished mid-restore).
+const SAVE_PATH := "user://save.sav"
 
 
 static func save_exists() -> bool:
 	return FileAccess.file_exists(SAVE_PATH)
 
 
-## Persist the minimal slice state. `data` is owned by the caller (Boot.gd).
+## Persist the full run state. `data` is owned by the caller (Boot.gd via Sim.serialize_run()).
 func save(data: Dictionary) -> void:
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f == null:
 		push_warning("[SaveSystem] could not open save for write: %s" % SAVE_PATH)
 		return
-	f.store_string(JSON.stringify(data, "  "))
+	f.store_string(var_to_str(data))
 	f.close()
 
 
@@ -36,7 +39,7 @@ func load() -> Dictionary:
 		return {}
 	var text := f.get_as_text()
 	f.close()
-	var parsed: Variant = JSON.parse_string(text)
+	var parsed: Variant = str_to_var(text)
 	if not (parsed is Dictionary):
 		return {}
 	return parsed

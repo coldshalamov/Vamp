@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bbxdfsydpfpkb"
-path="res://.godot/imported/npc_civilian.jpg-89fe5f4a6bd5e2f35380654ab4fac1a7.ctex"
+uid="uid://dsyb8ptj6rig6"
+path="res://.godot/imported/11_hud_over_gameplay.png-fd6303363e2a41c1a47f02fa72ac090b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/images/npc_civilian.jpg"
-dest_files=["res://.godot/imported/npc_civilian.jpg-89fe5f4a6bd5e2f35380654ab4fac1a7.ctex"]
+source_file="res://docs/evidence/11_hud_over_gameplay.png"
+dest_files=["res://.godot/imported/11_hud_over_gameplay.png-fd6303363e2a41c1a47f02fa72ac090b.ctex"]
 
 [params]
 

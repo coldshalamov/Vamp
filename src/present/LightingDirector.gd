@@ -1,32 +1,57 @@
-## LightingDirector.gd — creates dynamic Light2D nodes from SimWorld light anchors.
+## LightingDirector.gd — dynamic Light2D rig: readable moonlit night + a travelling
+## predator follow-light, plus authored world lights (neon, streetlamps, haven sign).
 ##
-## Adds a CanvasModulate for global darkness and spawns one PointLight2D per
-## authored world light. Owned by the vision-capable frontend agent.
+## The old version flooded the scene to near-black (#08080c) with 3 tiny lights and NO player
+## light, so everything was a black void. We use a readable night ambient and a warm follow-light
+## so the world is legible AND moody (chiaroscuro: bright pool around the predator, dark beyond).
+## Owned by the vision-capable frontend agent.
 extends Node2D
 class_name LightingDirector
 
-const AMBIENT_DARKNESS := Color("#08080c")
+# Moonlit night: dark enough to read as night, bright enough to SEE the textured street.
+# (The old #08080c made the whole frame a void.) Lights ADD warm pools on top of this.
+const AMBIENT_NIGHT := Color(0.30, 0.30, 0.40)
 
 var _lights: Array[PointLight2D] = []
 var _modulate: CanvasModulate = null
+var _player_light: PointLight2D = null
+
 
 func setup(world: SimWorld) -> void:
-	# Global darkness so lights cut through.
 	_modulate = CanvasModulate.new()
-	_modulate.color = AMBIENT_DARKNESS
+	_modulate.color = AMBIENT_NIGHT
 	add_child(_modulate)
 
-	# Spawn lights from world data.
+	# Authored world lights (neon / streetlamp / haven sign).
 	for light_data in world.lights:
-		var light := PointLight2D.new()
-		light.position = light_data["pos"]
-		light.texture = _make_light_texture(int(light_data["radius"]))
-		light.color = light_data["color"]
-		light.energy = light_data["energy"]
-		light.shadow_enabled = true
-		light.shadow_color = Color(0, 0, 0, 0.6)
+		var light := _make_light(
+			light_data["pos"],
+			int(light_data["radius"]),
+			light_data["color"],
+			float(light_data["energy"]) * 1.4)
 		add_child(light)
 		_lights.append(light)
+
+	# The predator's travelling pool of light — the single biggest legibility/atmosphere lever.
+	_player_light = _make_light(Vector2.ZERO, 300, Color(1.0, 0.93, 0.82), 1.15)
+	add_child(_player_light)
+
+
+func _process(_delta: float) -> void:
+	if _player_light != null and Sim != null and Sim.player != null:
+		_player_light.position = Sim.player.pos
+
+
+func _make_light(pos: Vector2, radius: int, color: Color, energy: float) -> PointLight2D:
+	var light := PointLight2D.new()
+	light.position = pos
+	light.texture = _make_light_texture(radius)
+	light.color = color
+	light.energy = energy
+	light.blend_mode = Light2D.BLEND_MODE_ADD
+	light.shadow_enabled = false  # no occluders yet; enable when walls become LightOccluder2D
+	return light
+
 
 func _make_light_texture(radius: int) -> GradientTexture2D:
 	var texture := GradientTexture2D.new()
@@ -36,7 +61,9 @@ func _make_light_texture(radius: int) -> GradientTexture2D:
 	texture.fill_from = Vector2(0.5, 0.5)
 	texture.fill_to = Vector2(1.0, 0.5)
 	var gradient := Gradient.new()
+	# Soft, slightly front-loaded falloff: bright core, gentle edge — reads as a real light pool.
 	gradient.add_point(0.0, Color(1, 1, 1, 1))
+	gradient.add_point(0.55, Color(1, 1, 1, 0.45))
 	gradient.add_point(1.0, Color(1, 1, 1, 0))
 	texture.gradient = gradient
 	return texture

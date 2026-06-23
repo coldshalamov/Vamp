@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bbxdfsydpfpkb"
-path="res://.godot/imported/npc_civilian.jpg-89fe5f4a6bd5e2f35380654ab4fac1a7.ctex"
+uid="uid://dfb8dwv4iucid"
+path="res://.godot/imported/thug.png-cbb2db6708e2927fff3ec760680eaa8e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/images/npc_civilian.jpg"
-dest_files=["res://.godot/imported/npc_civilian.jpg-89fe5f4a6bd5e2f35380654ab4fac1a7.ctex"]
+source_file="res://assets/sprites/gen/thug.png"
+dest_files=["res://.godot/imported/thug.png-cbb2db6708e2927fff3ec760680eaa8e.ctex"]
 
 [params]
 

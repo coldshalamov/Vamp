@@ -21,10 +21,11 @@ top-down. The differentiators that are *already in code* and most other vampire 
 
 ## 2. What the screenshots would show (the capsule promise)
 
-The Nightglass Gothic Noir look: a rain-slick street in deep blue-black, a **pool of candle-gold light**
-with the vampire mid-feed over a victim, blood-red UI accents, a hunter's flashlight cone sweeping an
-alley, the heat stars glowing. **None of this is screenshot-ready today** — the current build is colored
-circles on black (see `docs/evidence/`). The capsule promise is gated entirely on the M5 art+light pass.
+The Dirty Top-Down Urban Horror look (user-chosen): a rain-slick concrete street under sodium-orange
+streetlamps, headlight and **police-light cones** raking the asphalt, neon signage reflected in wet
+ground, the vampire mid-feed over a victim with a **blood trail** behind, blood-red HUD accents, heat
+stars glowing. **None of this is screenshot-ready today** — the current build is colored circles on
+black (see `docs/evidence/`). The capsule promise is gated entirely on the M5 art+light pass.
 
 ## 3. The 10-second trailer beat
 

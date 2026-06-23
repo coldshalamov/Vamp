@@ -25,7 +25,7 @@ because the expensive, un-fun-to-build half (a correct deterministic sim) is alr
 | Axis | Choice | Why this one (evidence-based) |
 |---|---|---|
 | **Gameplay** | **Hades-tight action core (A)** + vampire verbs, with GTA heat (C) and a *seed* of immersive-sim (E) | The skill-gap + frame-data + cancel combo already exist and are tested — the action foundation is the repo's strength. Lead with it. City-sim and systemic surfaces are Phase 2. |
-| **Art** | **Nightglass Gothic Noir** + stylized readable top-down sprites | The existing concept art (`assets/images/player_vampire.jpg` et al.) **is already this style** — deep shadow, blood red, candle gold, comic-noir ink. Direction is pre-validated; we just need top-down framing + chroma-key + atlas. |
+| **Art** | **Dirty Top-Down Urban Horror** (user-chosen 2026-06-23) | Grimy concrete streets, sodium-orange streetlamps, headlight/police-light cones, neon signage, wet-asphalt sheen, blood trails — GTA-readable, grounded-urban rather than premium-comic. Lighting is *even more* central here (reflective rain-slick streets, light cones), so the Light2D work is the unlock. The existing comic-noir concept JPGs become **menu/portrait** art; gameplay sprites lean grittier and more grounded. Top-down framing + chroma-key + atlas pipeline unchanged. |
 | **UI** | **Predator-Minimal in gameplay, Occult-Dossier in menus** | `art/ui/` already ships HP/vitae bars, hunger teeth, heat stars, slot bg — purpose-built for a minimal predator HUD. |
 | **Audio** | Build the **bus architecture** (Master/Music/SFX/Voice/Ambient) + CueBus→AudioServer bridge; start with the **feeding heartbeat**, hit/feed/power one-shots, one adaptive ambient stem, offscreen hunter footsteps; captions for all | Audio is at zero; the architecture is the unlock. CueBus is the perfect driver (it already carries `pos`/`magnitude`). |
 | **Tech** | **Keep deterministic Sim authority; CharacterBody2D-style actors are already mirrored.** Fix present-layer wiring only. | The Sim is proven and tested. Do not rewrite it. |
@@ -96,7 +96,7 @@ From `REVAMP_SPEC.md §6`, scoped to what the slice must actually prove:
   screen state + banner), feeding heartbeat audio.
 - **M4 (heat/hunter):** search legibility + cone, the property test (≥3 behaviors), the forced fight,
   the 3 clan keystones at runtime, the herald→nemesis trigger.
-- **M5 (art/light/UI/audio pass):** authored sprites for all 5 actors, Nightglass lighting, predator
+- **M5 (art/light/UI/audio pass):** authored sprites for all 5 actors, dirty-urban lighting (street/head/police/neon light cones + wet-asphalt reflections), predator
   HUD with real `art/ui` pieces, the audio bus graph + cue table, continuous dawn pressure + sky lerp.
 - **M6 (the slice):** author the block + the night's beats end-to-end; 5 clean runs; blind playtest.
 

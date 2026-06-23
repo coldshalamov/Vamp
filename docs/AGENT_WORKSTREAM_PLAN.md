@@ -47,7 +47,7 @@ skill+choice, the hunter searches honestly, clans diverge, dawn bites, the nemes
 
 | Stream | Task | DoD / evidence |
 |---|---|---|
-| **H Render/Light** | Nightglass lighting: player follow-light (chiaroscuro), clock-driven intensity + sky gradient, streetlamp/headlight/muzzle/feed lights (≥3 dynamic per scene), bloom on highlights only (per memory `visual-night-legibility`). | Dark scene reads "moody" not "broken"; capsule-quality screenshot. |
+| **H Render/Light** | Dirty-urban lighting: player follow-light (chiaroscuro), clock-driven intensity + sky gradient, streetlamp/headlight/police/neon/muzzle/feed lights (≥3 dynamic per scene), wet-asphalt reflections, bloom on highlights only (per memory `visual-night-legibility`). | Grimy street reads "moody" not "broken"; capsule-quality screenshot. |
 | **I UI/UX** | Predator-Minimal HUD using real `art/ui` pieces (vitae/blood/hunger/heat/humanity + hotbar from `meta.slot_power`); interact prompts; Occult-Dossier menu skin; text scale + high-contrast. | Purpose obvious in 2s; controller + KB/M; no dev labels. |
 | **J Audio** | Adaptive ambient→combat→chase→dawn stem cross-fade driven by CueBus tension; feeding heartbeat; offscreen hunter footsteps (positional); heat stingers; full cue table + captions. | Hearing an offscreen hunter is reliably reactable; every beat has audio on the right bus. |
 | **K Narrative** | Opening hook line; sire/herald/nemesis framing; 3–5 NPC barks; one banner per humanity step; dawn recap as a *moment*. | A blind playtester names the hook after 30s. |

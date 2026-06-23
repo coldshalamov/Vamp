@@ -27,12 +27,37 @@ var _road_tex: Texture2D = null
 var _wall_tex: Texture2D = null
 
 
+const WET_SHADER := "res://glowup_2026/shaders/wet_asphalt.gdshader"
+
+
 func setup(world: SimWorld) -> void:
 	_world = world
 	_floor_tex = _try_load("res://assets/images/sidewalk.jpg")
 	_road_tex = _try_load("res://assets/images/asphalt_wet.jpg")
 	_wall_tex = _try_load("res://assets/images/windows_sheet.jpg")
+	_apply_wet_material()
 	queue_redraw()
+
+
+## Apply the merged glowup wet-asphalt shader as a subtle wet-street sheen over the tiles.
+func _apply_wet_material() -> void:
+	if not ResourceLoader.exists(WET_SHADER):
+		return
+	var mat := ShaderMaterial.new()
+	mat.shader = load(WET_SHADER)
+	var noise := _try_load("res://assets/images/wet_noise.png")
+	var ripple := _try_load("res://assets/images/wet_ripple.png")
+	if noise != null:
+		mat.set_shader_parameter("noise_texture", noise)
+	if ripple != null:
+		mat.set_shader_parameter("ripple_texture", ripple)
+	mat.set_shader_parameter("wetness", 0.5)
+	mat.set_shader_parameter("reflection_strength", 0.16)
+	mat.set_shader_parameter("warm_mix", 0.32)
+	mat.set_shader_parameter("darkening", 0.08)
+	mat.set_shader_parameter("ripple_strength", 0.1)
+	mat.set_shader_parameter("macro_scale", 1.4)
+	material = mat
 
 
 func _try_load(path: String) -> Texture2D:

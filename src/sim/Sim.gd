@@ -28,6 +28,7 @@ var last_crime_tick: int = -999999
 var last_provoke_tick: int = -999999
 var last_seen_pos: Vector2 = Vector2.ZERO
 var responder_spawn_ticks: int = 0
+var sigils: Array[Dictionary] = []   # Blood Grammar INSCRIBE: active blood-sigils rewriting local rules
 var player_last_attack_tick: int = -999999
 var escaped: bool = false
 var reached_haven: bool = false
@@ -103,6 +104,7 @@ func tick_sim(delta: float) -> void:
 		world.decay_blood()
 	if world != null and tick % 5 == 0:
 		_tick_fire()
+	_tick_sigils()
 	if meta != null:
 		meta.tick(delta, self)
 	_update_body_witnesses()
@@ -681,6 +683,35 @@ func _tick_fire() -> void:
 		world.fire[ni] = maxi(world.fire[ni], 40)
 		world.blood[ni] = maxi(0, world.blood[ni] - 25)   # fire consumes the blood fuel
 		world._burning[ni] = true
+
+
+## INSCRIBE: paint a blood-sigil that rewrites one rule within its radius until it fades.
+func inscribe_sigil(pos: Vector2, rule: String, radius: float, ticks: int) -> void:
+	sigils.append({ "pos": pos, "rule": rule, "radius": radius, "ticks": ticks })
+	emit_cue("sigil.inscribe", { "pos": pos, "rule": rule, "radius": radius })
+
+
+func _tick_sigils() -> void:
+	if sigils.is_empty():
+		return
+	for i in range(sigils.size() - 1, -1, -1):
+		var s: Dictionary = sigils[i]
+		s["ticks"] = int(s["ticks"]) - 1
+		if int(s["ticks"]) <= 0:
+			sigils.remove_at(i)
+			continue
+		if tick % 6 != 0:
+			continue
+		match String(s["rule"]):
+			"fear_is_damage":
+				# "FEAR IS DAMAGE": within the sigil, a frightened enemy is seared.
+				var rad: float = float(s["radius"])
+				var c: Vector2 = s["pos"]
+				for e in entities:
+					if e == null or e.dead or e.kind != "npc" or e.faction == "civ":
+						continue
+					if e.has_status("fear") and e.pos.distance_to(c) <= rad:
+						e.apply_status("burn", 24, { "dps": 7.0, "damage_type": "blood" })
 
 
 func _kill_xp(target: SimEntity) -> int:

@@ -51,3 +51,16 @@ func _draw() -> void:
 		draw_circle(fc, ts * 0.5 * flick, Color(0.85, 0.30, 0.06, 0.42 * life))
 		draw_circle(fc + Vector2(0, -ts * 0.08), ts * 0.32 * flick, Color(1.0, 0.62, 0.16, 0.55 * life))
 		draw_circle(fc + Vector2(0, -ts * 0.18 * flick), ts * 0.16 * flick, Color(1.0, 0.92, 0.55, 0.7 * life))
+	# INSCRIBE — glowing blood-sigils that rewrite a room's rule
+	if Sim != null:
+		for s in Sim.sigils:
+			var sp: Vector2 = s["pos"]
+			var sr: float = float(s["radius"])
+			var slife: float = clampf(float(s["ticks"]) / 360.0, 0.15, 1.0)
+			var spulse: float = 0.6 + 0.4 * sin(_t * 3.0)
+			var scol := Color(0.86, 0.07, 0.17, 0.32 * slife * spulse)
+			draw_arc(sp, sr, 0, TAU, 44, scol, 2.6, true)
+			draw_arc(sp, sr * 0.6, 0, TAU, 34, Color(scol.r, scol.g, scol.b, 0.18 * slife), 1.6, true)
+			for k in range(3):
+				var ang: float = _t * 0.5 + float(k) * TAU / 3.0
+				draw_line(sp + Vector2.RIGHT.rotated(ang) * sr * 0.16, sp + Vector2.RIGHT.rotated(ang) * sr * 0.46, Color(scol.r, scol.g, scol.b, 0.5 * slife), 1.6)

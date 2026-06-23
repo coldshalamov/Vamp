@@ -103,7 +103,10 @@ func apply_action(action: InputAction, sim) -> void:
 		InputAction.Kind.FINISH:
 			_try_finish(sim)
 		InputAction.Kind.POWER:
-			cast_power(action.action_id, sim)
+			if action.action_id == "inscribe":
+				inscribe(sim)
+			else:
+				cast_power(action.action_id, sim)
 		InputAction.Kind.RELEASE:
 			if action.action_id == "feed":
 				holding_feed = false
@@ -869,6 +872,19 @@ func _spell_damage(def: Dictionary) -> float:
 	if buffs.has("res_melancholic"):
 		amount *= 1.0 + float(buffs["res_melancholic"].get("spell", 0.25))
 	return amount
+
+## INSCRIBE atom: spend vitae to paint a blood-sigil at your feet that rewrites a local rule.
+## Ink is your own life (Open Vein), so authoring a law is a real cost.
+func inscribe(sim) -> void:
+	const COST := 16.0
+	if blood < COST:
+		sim.emit_cue("power.failed.no_blood", { "power_id": "inscribe", "blood": blood })
+		return
+	blood -= COST
+	if sim.world != null:
+		sim.world.spill_blood(entity.pos, 10)   # the ink
+	sim.inscribe_sigil(entity.pos, "fear_is_damage", 92.0, 360)
+
 
 ## COMMAND atom (hemokinesis): if you're near spilled blood, Blood Bolt commands it into a fan of
 ## extra free bolts (the medium is already paid for). Rewards fighting in your own carnage.

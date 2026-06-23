@@ -82,6 +82,14 @@ func _run() -> void:
 	await _settle(14)
 	await _shot("play_react_fire")
 
+	# INSCRIBE: paint a blood-sigil (rune ring)
+	if Sim != null and Sim.player != null and Sim.player.behaviour != null:
+		Sim.player.behaviour.blood = 60.0
+		Sim.player.pos = Sim.player.pos + Vector2(0, -90)   # step off the flames
+		Sim.player.behaviour.inscribe(Sim)
+	await _settle(10)
+	await _shot("play_sigil")
+
 	# Death → the torpor screen (was: world froze, character vanished, no recovery).
 	if Sim != null and Sim.player != null:
 		Sim.player.hp = 0.0

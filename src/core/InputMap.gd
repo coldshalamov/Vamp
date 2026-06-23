@@ -30,6 +30,7 @@ const ACTION_LABELS := {
 	"feed": "ACTION_FEED",
 	"dash": "ACTION_DASH",
 	"interact": "ACTION_INTERACT",
+	"inscribe": "ACTION_INSCRIBE",
 	"slot_1": "ACTION_SLOT_1",
 	"slot_2": "ACTION_SLOT_2",
 	"slot_3": "ACTION_SLOT_3",
@@ -87,6 +88,7 @@ const DEFAULTS := {
 	"feed":        [KEY_F],
 	"dash":        [KEY_SHIFT],
 	"interact":    [KEY_E],
+	"inscribe":    [KEY_Q],
 	"slot_1":      [KEY_1],
 	"slot_2":      [KEY_2],
 	"slot_3":      [KEY_3],
@@ -168,6 +170,10 @@ func capture(event: InputEvent) -> InputAction:
 			return pounce
 		if InputMap.has_action("finish") and event.is_action("finish"):
 			return InputAction.new(InputAction.Kind.FINISH)
+		if InputMap.has_action("inscribe") and event.is_action("inscribe"):
+			var insc := InputAction.new(InputAction.Kind.POWER)
+			insc.action_id = "inscribe"
+			return insc
 		# Hotbar slots: emit a POWER intent with action_id "slot_N". Sim.apply_input resolves
 		# the slot to the actual power id via the player's hotbar (see SimPlayer/SimMeta).
 		for slot_idx in range(1, 9):

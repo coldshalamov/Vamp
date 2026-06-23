@@ -55,6 +55,13 @@ const ONE_SHOTS := {
 	"swallow": { "freq": 140.0, "dur": 0.09, "type": "gulp",  "gain": 0.40 },
 	"sting":   { "freq": 320.0, "dur": 0.14, "type": "sting", "gain": 0.45 },
 	"ui":      { "freq": 880.0, "dur": 0.05, "type": "blip",  "gain": 0.25 },
+	"swish":   { "freq": 520.0, "dur": 0.08, "type": "sting", "gain": 0.22 },   # melee swing
+	"cast":    { "freq": 300.0, "dur": 0.18, "type": "sting", "gain": 0.30 },   # power cast
+	"boom":    { "freq": 58.0,  "dur": 0.24, "type": "thump", "gain": 0.62 },   # AoE / heavy impact
+	"whoosh":  { "freq": 260.0, "dur": 0.12, "type": "sting", "gain": 0.24 },   # dash
+	"thud":    { "freq": 70.0,  "dur": 0.15, "type": "thump", "gain": 0.50 },   # body falls
+	"chime":   { "freq": 660.0, "dur": 0.22, "type": "blip",  "gain": 0.32 },   # level up
+	"shot":    { "freq": 230.0, "dur": 0.10, "type": "sting", "gain": 0.30 },   # blood bolt
 }
 
 
@@ -151,6 +158,25 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 			_update_heartbeat(float(payload.get("hunger", _hb_hunger)))
 		"feed.kill", "feed.spare", "feed.interrupt":
 			_stop_heartbeat()
+		# Procedural SFX coverage so the game isn't near-silent (no audio files shipped).
+		"attack.start":
+			play_one_shot("swish", payload)
+		"power.cast":
+			play_one_shot("cast", payload)
+		"damage.dealt":
+			play_one_shot("thump", payload)
+		"damage.player":
+			play_one_shot("boom", payload)
+		"move.dash":
+			play_one_shot("whoosh", payload)
+		"npc.death":
+			play_one_shot("thud", payload)
+		"power.potence.quake_hit", "power.potence.hit":
+			play_one_shot("boom", payload)
+		"blood.command":
+			play_one_shot("shot", payload)
+		"player.level_up", "power.unlocked":
+			play_one_shot("chime", payload)
 
 
 # Bridge target for CueBus._play_audio(). priority drives ducking of Music/Ambient.

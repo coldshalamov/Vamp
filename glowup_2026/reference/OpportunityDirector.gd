@@ -159,7 +159,7 @@ func choose(context: Dictionary, style: Dictionary, selection_roll: float, diffi
 	var difficulty_jitter := (clampf(difficulty_roll, 0.0, 1.0) * 2.0 - 1.0) * 0.06
 	var difficulty := clampf(float(selected.get("base_difficulty", 0.5)) + difficulty_jitter + 0.08 * pressure_load, 0.0, 1.0)
 	var tick := int(context.get("tick", 0))
-	var instance_hash := abs(hash([String(selected.get("template_id", "")), tick, instance_salt,
+	var instance_hash: int = absi(hash([String(selected.get("template_id", "")), tick, instance_salt,
 		String(selected.get("district_id", "")), String(selected.get("faction_id", ""))]))
 	var instance := selected.duplicate(true)
 	instance["instance_id"] = "ng_opp_%016x" % instance_hash

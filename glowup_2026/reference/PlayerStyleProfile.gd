@@ -181,7 +181,7 @@ func _remember_repeat(key: String, count: int) -> void:
 		repeat_order.append(key)
 	repeat_memory[key] = count
 	while repeat_order.size() > MAX_REPEAT_KEYS:
-		var oldest := repeat_order.pop_front()
+		var oldest: String = repeat_order.pop_front()
 		repeat_memory.erase(oldest)
 
 

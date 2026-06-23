@@ -146,9 +146,24 @@ func step(delta: float, sim) -> void:
 			sim.emit_cue("move.sprint", { "entity_id": entity.id, "pos": entity.pos, "magnitude": 0.35 })
 		var next_pos := entity.pos + move_dir * speed * delta
 		entity.pos = sim.world.resolve_motion(entity.pos, next_pos, entity.radius)
+	_tick_drink(sim)
 	entity.exposure = _compute_exposure(sim)
 	entity.tags["cloaked"] = buffs.has("obf_cloak") or buffs.has("obf_vanish")
 	entity.tags["frenzied"] = frenzied
+
+
+## DRINK (Blood Grammar): reclaim vitae from a pool you're standing in — closes the Open Vein loop.
+## Reclaim is lossy (≈half), so spilling to cast still has a net cost; fresh feeding remains primary.
+func _tick_drink(sim) -> void:
+	if feeding_target_id != 0 or sim.world == null or blood >= max_blood:
+		return
+	if sim.world.blood_at(entity.pos) < 6:
+		return
+	var taken: int = sim.world.siphon_blood(entity.pos, 3)
+	if taken > 0:
+		heal_blood(float(taken) * 0.5)
+		if sim.tick % 12 == 0:
+			sim.emit_cue("blood.drink", { "pos": entity.pos, "amount": taken })
 
 func cast_power(power_id: String, sim) -> bool:
 	var def: Dictionary = PowerCatalogScript.get_def(power_id)
@@ -332,6 +347,9 @@ func cast_power(power_id: String, sim) -> bool:
 			ok = false
 	if ok:
 		sim.emit_cue("power.cast", { "power_id": power_id, "name": def.get("name", power_id), "pos": entity.pos, "cue": def.get("cue", "") })
+		# Open Vein: paying vitae for power opens a small wound that spills at your feet.
+		if sim.world != null and cost > 0.0:
+			sim.world.spill_blood(entity.pos, clampi(int(cost * 0.5), 2, 14))
 		if String(def.get("type", "active")) == "toggle":
 			sim.emit_cue("power.toggle", { "power_id": power_id, "enabled": true, "pos": entity.pos })
 	else:

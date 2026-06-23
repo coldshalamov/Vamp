@@ -274,6 +274,21 @@ func blood_at(world_pos: Vector2) -> int:
 	return blood[_idx(c)]
 
 
+## DRINK: pull up to `amount` depth out of the pool at a position. Returns how much was taken.
+func siphon_blood(world_pos: Vector2, amount: int) -> int:
+	var c := world_to_cell(world_pos)
+	if c.x < 0 or c.y < 0 or c.x >= size.x or c.y >= size.y:
+		return 0
+	var i := _idx(c)
+	var take: int = mini(amount, blood[i])
+	if take <= 0:
+		return 0
+	blood[i] -= take
+	if blood[i] <= 0:
+		_wet.erase(i)
+	return take
+
+
 ## Dry the wet cells a notch (deterministic; iterates only wet cells). Call on a slow cadence.
 func decay_blood() -> void:
 	var dried: Array = []

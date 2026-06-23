@@ -35,6 +35,8 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 			_add({ "type": "shock", "pos": pos, "t": 0.0, "dur": 0.3, "rmax": 60.0, "col": Color("#e0a040") })
 		"player.heal", "feed.gulp.perfect":
 			_add({ "type": "ring", "pos": pos, "t": 0.0, "dur": 0.4, "rmax": 36.0, "col": Color("#7fe0a0") })
+		"blood.drink":
+			_add({ "type": "ring", "pos": pos, "t": 0.0, "dur": 0.32, "rmax": 22.0, "col": Color("#c0304a") })
 		"player.respawn":
 			_add({ "type": "shock", "pos": pos, "t": 0.0, "dur": 0.6, "rmax": 90.0, "col": Color("#9a6fff") })
 

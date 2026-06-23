@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Vampire City residue icon atlas, six 64x64 cells:
+  0 Exposure, 1 Heat, 2 Need, 3 Debt, 4 Anomaly, 5 Dawn.
+  Original vector asset. Import losslessly, then slice at x = 0,64,128,192,256,320.
+  Icons use silhouette and internal geometry so meaning does not depend on color alone.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="384" height="64" viewBox="0 0 384 64">
+  <defs>
+    <style>
+      .bone{fill:none;stroke:#e8dfcf;stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round}
+      .cyan{fill:none;stroke:#6fd6e0;stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round}
+      .red{fill:none;stroke:#d83445;stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round}
+      .amber{fill:none;stroke:#e7ad4d;stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round}
+      .violet{fill:none;stroke:#b58be8;stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round}
+      .gold{fill:none;stroke:#f0c36b;stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round}
+      .plate{fill:#09090d;fill-opacity:.42;stroke:#282833;stroke-width:1}
+    </style>
+  </defs>
+
+  <!-- Exposure: eye + fractured identity rays -->
+  <g transform="translate(0 0)">
+    <rect class="plate" x="2" y="2" width="60" height="60" rx="10"/>
+    <path class="cyan" d="M9 32c7-11 14-16 23-16s16 5 23 16c-7 11-14 16-23 16S16 43 9 32Z"/>
+    <circle class="cyan" cx="32" cy="32" r="7"/>
+    <path class="bone" d="M17 12l-4-5M47 12l4-5M16 51l-5 4M48 51l5 4"/>
+    <path class="cyan" d="M31 25l3 5-4 4 3 5"/>
+  </g>
+
+  <!-- Heat: six-point pursuit star around a hot core -->
+  <g transform="translate(64 0)">
+    <rect class="plate" x="2" y="2" width="60" height="60" rx="10"/>
+    <path class="red" d="M32 7l5 15 15-5-9 13 13 9-16-1-1 16-8-14-13 9 6-15-15-5 16-3Z"/>
+    <circle class="amber" cx="32" cy="32" r="6"/>
+    <path class="red" d="M32 28v5l3 2"/>
+  </g>
+
+  <!-- Need: blood drop with bite/empty crescent -->
+  <g transform="translate(128 0)">
+    <rect class="plate" x="2" y="2" width="60" height="60" rx="10"/>
+    <path class="red" d="M32 7C22 21 15 29 15 41a17 17 0 0 0 34 0C49 29 42 21 32 7Z"/>
+    <path class="bone" d="M23 42c1 6 5 9 10 9"/>
+    <path class="red" d="M24 25l4 6 4-6 4 6 4-6"/>
+  </g>
+
+  <!-- Debt: asymmetric linked hooks with an unresolved gap -->
+  <g transform="translate(192 0)">
+    <rect class="plate" x="2" y="2" width="60" height="60" rx="10"/>
+    <path class="amber" d="M25 18L14 29a10 10 0 0 0 14 14l7-7"/>
+    <path class="amber" d="M39 46l11-11a10 10 0 0 0-14-14l-7 7"/>
+    <path class="bone" d="M25 39l14-14"/>
+    <circle class="amber" cx="20" cy="44" r="2"/>
+    <circle class="amber" cx="44" cy="20" r="2"/>
+  </g>
+
+  <!-- Anomaly: broken signal held inside an incomplete containment ring -->
+  <g transform="translate(256 0)">
+    <rect class="plate" x="2" y="2" width="60" height="60" rx="10"/>
+    <path class="violet" d="M9 34h10l5-17 8 34 7-27 5 10h11"/>
+    <path class="bone" stroke-dasharray="5 6" d="M50 48a24 24 0 1 1 2-30"/>
+    <path class="violet" d="M48 12l6 6-8 3"/>
+  </g>
+
+  <!-- Dawn: horizon, first ray, shelter notch -->
+  <g transform="translate(320 0)">
+    <rect class="plate" x="2" y="2" width="60" height="60" rx="10"/>
+    <path class="gold" d="M9 44h46M18 44a14 14 0 0 1 28 0"/>
+    <path class="gold" d="M32 8v8M14 17l6 6M50 17l-6 6M8 32h8M56 32h-8"/>
+    <path class="bone" d="M23 53v-9h18v9"/>
+    <path class="gold" d="M29 35h6"/>
+  </g>
+</svg>

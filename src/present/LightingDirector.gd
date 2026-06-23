@@ -10,7 +10,7 @@ class_name LightingDirector
 
 # Moonlit night: dark enough to read as night, bright enough to SEE the textured street.
 # (The old #08080c made the whole frame a void.) Lights ADD warm pools on top of this.
-const AMBIENT_NIGHT := Color(0.30, 0.30, 0.40)
+const AMBIENT_NIGHT := Color(0.22, 0.25, 0.31)
 
 var _lights: Array[PointLight2D] = []
 var _modulate: CanvasModulate = null
@@ -32,8 +32,9 @@ func setup(world: SimWorld) -> void:
 		add_child(light)
 		_lights.append(light)
 
-	# The predator's travelling pool of light — the single biggest legibility/atmosphere lever.
-	_player_light = _make_light(Vector2.ZERO, 300, Color(1.0, 0.93, 0.82), 1.15)
+	# The predator's travelling pool of light — a tighter, brighter pool for real chiaroscuro
+	# (bright around the predator, moody dark beyond) instead of a flat wash over everything.
+	_player_light = _make_light(Vector2.ZERO, 240, Color(0.95, 0.9, 0.86), 1.35)
 	add_child(_player_light)
 
 

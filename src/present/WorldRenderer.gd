@@ -7,10 +7,10 @@
 extends Node2D
 class_name WorldRenderer
 
-const WALL_COLOR := Color("#15151d")
-const WALL_TOP_COLOR := Color("#24242f")
-const FLOOR_FALLBACK := Color("#3a3a44")
-const ROAD_FALLBACK := Color("#202028")
+const WALL_COLOR := Color("#13131b")
+const WALL_TOP_COLOR := Color("#22222d")
+const FLOOR_FALLBACK := Color("#262932")   # dark sidewalk
+const ROAD_FALLBACK := Color("#191b22")    # dark wet asphalt
 
 # Translucent surface overlays (drawn on top of the textured floor).
 const SHADOW_TINT := Color(0, 0, 0, 0.45)
@@ -66,15 +66,17 @@ func _draw() -> void:
 ## Draw a tile by sampling a tile-sized region from the big source texture (per-tile offset gives
 ## variation and uses real pixels). Falls back to a flat color if the texture is missing.
 func _draw_tex_tile(tex: Texture2D, rect: Rect2, x: int, y: int, fallback: Color) -> void:
+	# Dark base first, then the photo CONTINUOUSLY at low opacity = subtle grounded texture
+	# instead of a loud, discontinuous per-tile photo quilt (the old *3 jump made it look noisy).
+	draw_rect(rect, fallback)
 	if tex == null:
-		draw_rect(rect, fallback)
 		return
 	var ts: int = _world.tile_size
 	var tw: int = max(ts, tex.get_width())
 	var th: int = max(ts, tex.get_height())
-	var sx: int = (x * ts * 3) % (tw - ts) if tw > ts else 0
-	var sy: int = (y * ts * 3) % (th - ts) if th > ts else 0
-	draw_texture_rect_region(tex, rect, Rect2(sx, sy, ts, ts))
+	var sx: int = (x * ts) % (tw - ts) if tw > ts else 0
+	var sy: int = (y * ts) % (th - ts) if th > ts else 0
+	draw_texture_rect_region(tex, rect, Rect2(sx, sy, ts, ts), Color(1, 1, 1, 0.42))
 
 
 func _draw_wall(rect: Rect2, x: int, y: int) -> void:

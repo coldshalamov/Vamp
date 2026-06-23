@@ -83,6 +83,10 @@ func _register_cues() -> void:
 		"duration_ms": 250,
 		"max_concurrent": 4,
 	})
+	CueBus.define("power.unlocked", CueBus.Priority.CRITICAL, {
+		"vfx": _on_power_unlocked,
+		"duration_ms": 1400,
+	})
 
 func _create_flash_overlay() -> void:
 	flash_overlay = ColorRect.new()
@@ -265,3 +269,10 @@ func _on_flow_perfect(payload: Dictionary) -> void:
 	var stacks: int = int(payload.get("stacks", 1))
 	spawn_floating_text(pos + Vector2(0, -34), "FLOW x%d" % stacks, Color("#f0c040"), true)
 	set_time_scale(0.55, 0.05)
+
+
+func _on_power_unlocked(payload: Dictionary) -> void:
+	var nm: String = String(payload.get("name", "power"))
+	var slot: int = int(payload.get("slot", 0))
+	flash_screen(Color("#2a1838"), 0.35)
+	show_caption("NEW POWER — %s  [key %d]" % [nm.to_upper(), slot])

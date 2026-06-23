@@ -301,6 +301,7 @@ func gain_xp(amount: int, sim = null) -> Array:
 		skill_points += 1
 		if level % 5 == 0:
 			skill_points += 1
+		_apply_power_upgrade(level, sim)
 		ups.append({ "level": level, "attr_points": 2, "skill_points": 2 if level % 5 == 0 else 1, "blood_potency": blood_potency(level) })
 	if level >= MAX_LEVEL and xp > 0:
 		elder_progress += xp
@@ -364,6 +365,31 @@ func branch_points(branch_id: String) -> int:
 		if String(node.get("branch", "")) == branch_id:
 			points += int(tree_nodes[id])
 	return points
+
+# Leveling visibly UPGRADES your kit — a stronger power replaces a starting slot. The hotbar
+# (which reads `slots`) updates automatically, so levelling changes how the game plays.
+const POWER_UPGRADES := {
+	3: [1, "pot_quake"],    # slot 2: Earthshock -> Earthquake (bigger quake)
+	4: [7, "bs_storm"],     # slot 8: Blood Bolt -> Blood Storm (a salvo)
+	5: [0, "cel_flurry"],   # slot 1: Quicken -> Celerity Flurry
+	6: [4, "aus_premon"],   # slot 5: Aura -> Premonition
+	8: [6, "pre_majesty"],  # slot 7: Dread Gaze -> Majesty
+}
+
+
+func _apply_power_upgrade(lv: int, sim) -> void:
+	if not POWER_UPGRADES.has(lv):
+		return
+	var u: Array = POWER_UPGRADES[lv]
+	var slot_idx: int = int(u[0])
+	var pid: String = String(u[1])
+	if slot_idx < 0 or slot_idx >= slots.size() or not Catalog.POWERS.has(pid):
+		return
+	learn_power(pid)
+	slots[slot_idx] = pid
+	if sim != null:
+		sim.emit_cue("power.unlocked", { "power_id": pid, "slot": slot_idx + 1, "name": Catalog.POWERS[pid].get("name", pid) })
+
 
 func learn_power(power_id: String) -> bool:
 	var id := Catalog.canonical_power_id(power_id)

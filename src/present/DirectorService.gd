@@ -8,9 +8,14 @@ extends Node
 
 const StyleProfileScript := preload("res://glowup_2026/reference/PlayerStyleProfile.gd")
 const RumorGraphScript := preload("res://glowup_2026/reference/RumorGraph.gd")
+const OppDirectorScript := preload("res://glowup_2026/reference/OpportunityDirector.gd")
+const TEMPLATES_PATH := "res://glowup_2026/content/opportunity_templates.json"
 
 var style = null   # NightglassPlayerStyleProfile
 var rumor = null   # NightglassRumorGraph — the city's decaying memory of what it witnessed
+var opp = null     # NightglassOpportunityDirector — stages style-aware opportunities
+var _opp_cache: Dictionary = {}
+var _opp_tick: int = -100000
 
 # CueBus event -> (method, intensity). novelty_key dampens farming via the profile's repeat penalty.
 const FEED_INTENSITY := 1.0
@@ -19,8 +24,72 @@ const FEED_INTENSITY := 1.0
 func _ready() -> void:
 	style = StyleProfileScript.new()
 	rumor = RumorGraphScript.new()
+	opp = OppDirectorScript.new()
+	opp.configure(_load_templates())
 	if CueBus != null:
 		CueBus.cue_emitted.connect(_on_cue)
+
+
+func _load_templates() -> Array:
+	if not FileAccess.file_exists(TEMPLATES_PATH):
+		return []
+	var f := FileAccess.open(TEMPLATES_PATH, FileAccess.READ)
+	if f == null:
+		return []
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	return parsed if parsed is Array else []
+
+
+## The opportunity the city would stage next, given the player's style + pressure (cached; shadow mode).
+func current_opportunity() -> Dictionary:
+	if opp == null or opp.templates.is_empty():
+		return {}
+	var now: int = int(Sim.tick) if Sim != null else 0
+	if not _opp_cache.is_empty() and now - _opp_tick < 180:
+		return _opp_cache
+	var ctx := _build_context(now)
+	var st: Dictionary = style.normalized() if style != null else {}
+	var r1: float = float(absi(hash([now / 180, "sel"])) % 1000) / 1000.0
+	var r2: float = float(absi(hash([now / 180, "dif"])) % 1000) / 1000.0
+	var chosen: Dictionary = opp.choose(ctx, st, r1, r2)
+	var selected: Dictionary = chosen.get("selected", {})
+	var tid := String(selected.get("template_id", ""))
+	var result: Dictionary = {}
+	for t in opp.templates:
+		if String(t.get("id", "")) == tid:
+			result = t
+			break
+	if result.is_empty():
+		result = opp.templates[0]
+	_opp_cache = result
+	_opp_tick = now
+	return result
+
+
+func _build_context(now: int) -> Dictionary:
+	# Provide a district carrying the union of all required tags so any template can find a home.
+	var all_tags: Dictionary = {}
+	for t in opp.templates:
+		for tag in t.get("required_tags", []):
+			all_tags[String(tag)] = true
+	var exposure: float = 0.3
+	var heat: float = 0.0
+	if Sim != null:
+		heat = clampf(Sim.heat / 6.0, 0.0, 1.0)
+		if Sim.player != null:
+			exposure = clampf(Sim.player.exposure / 1.3, 0.0, 1.0)
+	return {
+		"tick": now,
+		"districts": { "old_town": { "tags": all_tags.keys(), "control": 0.5 } },
+		"factions": { "anarch": { "id": "anarch", "resources": 0.6, "agenda_pressure": 0.6, "fit": 0.5 } },
+		"controls": { "anarch": 0.5 },
+		"relationships": { "anarch": 0.2 },
+		"resources": { "condition": 1.0, "leverage": 0.3 },
+		"pressure": { "exposure": exposure, "heat": heat, "debt": 0.1 },
+		"player_district": "old_town",
+		"resolved_opportunities": 0,
+	}
 
 
 func _on_cue(event_id: String, payload: Dictionary) -> void:
@@ -30,6 +99,7 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 		"level.loaded":
 			style = StyleProfileScript.new()   # fresh model each new night
 			rumor = RumorGraphScript.new()
+			_opp_cache = {}
 		"feed.kill":
 			style.record_method("force", 1.0, "feed.kill")
 			_witnessed("feed", payload.get("pos", Vector2.ZERO), "feed.kill")

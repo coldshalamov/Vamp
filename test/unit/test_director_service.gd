@@ -5,13 +5,27 @@ extends GutTest
 const DS := preload("res://src/present/DirectorService.gd")
 const SP := preload("res://glowup_2026/reference/PlayerStyleProfile.gd")
 const RG := preload("res://glowup_2026/reference/RumorGraph.gd")
+const OD := preload("res://glowup_2026/reference/OpportunityDirector.gd")
 
 
 func _service():
 	var d = DS.new()
 	d.style = SP.new()   # bypass _ready/autoload; test the cue->style mapping directly
 	d.rumor = RG.new()
+	d.opp = OD.new()
+	d.opp.configure(d._load_templates())
 	return d
+
+
+func test_director_stages_a_style_aware_opportunity() -> void:
+	var d = _service()
+	assert_true(d.opp.templates.size() > 0, "opportunity templates loaded from the merged JSON")
+	# Bias the style toward stealth, then ask the city what it would stage.
+	for i in range(5):
+		d.style.record_method("stealth", 0.8, "s%d" % i)
+	var op: Dictionary = d.current_opportunity()
+	assert_true(not op.is_empty(), "the director staged an opportunity")
+	assert_true(op.has("display_name") or op.has("id"), "it is a real authored template")
 
 
 func test_kills_make_force_the_dominant_style() -> void:

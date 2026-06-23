@@ -177,6 +177,10 @@ func _build_stat_lines() -> Array[String]:
 		if ds.has_method("rumor_belief"):
 			var belief: Dictionary = ds.rumor_belief()
 			lines.append("rumors %d  aware %.2f fear %.2f" % [ds.rumor_claims(), float(belief.get("awareness", 0.0)), float(belief.get("fear", 0.0))])
+		if ds.has_method("current_opportunity"):
+			var op: Dictionary = ds.current_opportunity()
+			if not op.is_empty():
+				lines.append("next op: %s" % String(op.get("display_name", op.get("id", "—"))))
 	return lines
 
 

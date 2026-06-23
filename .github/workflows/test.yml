@@ -1,0 +1,210 @@
+name: CI
+
+# Headless GUT test suite + determinism gate for Vampire City (Godot 4.7).
+#
+# - Downloads a pinned Godot 4.7-stable Linux headless build (cached between runs).
+# - Imports the project (.godot/ is gitignored, so a fresh import is mandatory;
+#   without it GUT's gut_cmdln.gd bails early via error_if_not_all_classes_imported()
+#   and would "pass" with zero tests).
+# - Runs the full GUT suite headless and fails the job on any test failure.
+# - Runs the keystone determinism test as an explicit, independent gate
+#   (REVAMP_SPEC §2.1: 20 headless runs, same seed = identical hash).
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Pinned Godot version. Bump both lines together when upgrading the engine.
+  GODOT_VERSION: "4.7-stable"
+  GODOT_BIN: "Godot_v4.7-stable_linux.x86_64"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Full GUT suite. JUnit XML is exported and uploaded as an artifact.
+  # ---------------------------------------------------------------------------
+  gut:
+    name: GUT test suite (headless)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Godot binary
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: ~/godot-bin
+          key: godot-${{ env.GODOT_VERSION }}-linux-headless
+
+      - name: Download Godot ${{ env.GODOT_VERSION }} (headless)
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p ~/godot-bin
+          URL="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_BIN}.zip"
+          echo "Downloading $URL"
+          curl -fL --retry 3 --retry-delay 5 -o /tmp/godot.zip "$URL"
+          unzip -o /tmp/godot.zip -d ~/godot-bin
+          rm -f /tmp/godot.zip
+
+      - name: Install Godot on PATH
+        run: |
+          set -euo pipefail
+          chmod +x "$HOME/godot-bin/${GODOT_BIN}"
+          ln -sf "$HOME/godot-bin/${GODOT_BIN}" "$HOME/godot-bin/godot"
+          echo "$HOME/godot-bin" >> "$GITHUB_PATH"
+
+      - name: Print Godot version
+        run: godot --headless --version
+
+      - name: Import project
+        # First import generates the .godot/ cache and imports class_name scripts.
+        # It can exit non-zero on benign first-run resource warnings, so we run it
+        # twice and never let its exit code fail the job; the test run is the gate.
+        run: |
+          godot --headless --import || true
+          godot --headless --import || true
+
+      - name: Run GUT suite
+        # gut_cmdln.gd extends SceneTree, so it must be launched with -s.
+        # .gutconfig.json drives dirs/prefix/suffix and sets should_exit, so GUT
+        # quits with a non-zero code on any failure (fast-fail). The XML gate
+        # below is the authoritative check, independent of console layout.
+        run: |
+          godot --headless --display-driver headless --audio-driver Dummy \
+            -s res://addons/gut/gut_cmdln.gd \
+            -gjunit_xml_file=res://test_results.xml \
+            -gexit
+
+      - name: Gate on JUnit results
+        # junit_xml_export.gd writes <testsuites name="GutTests" failures="N"
+        # tests="M">. The file is only written when tests actually ran, so its
+        # absence catches the silent quit(0) on a failed class import. A nonzero
+        # failures attribute is an authoritative failure backstop even if the
+        # process exit code is ever wrong.
+        run: |
+          set -euo pipefail
+          if [ ! -f test_results.xml ]; then
+            echo "::error::No JUnit results — GUT ran zero tests (likely a failed import)."
+            exit 1
+          fi
+          header="$(grep -m1 '<testsuites' test_results.xml || true)"
+          tests="$(printf '%s' "$header" | sed -nE 's/.*\btests="([0-9]+)".*/\1/p')"
+          failures="$(printf '%s' "$header" | sed -nE 's/.*\bfailures="([0-9]+)".*/\1/p')"
+          echo "tests=${tests:-?} failures=${failures:-?}"
+          if [ -z "$tests" ] || [ "$tests" -eq 0 ]; then
+            echo "::error::JUnit reports zero executed tests."
+            exit 1
+          fi
+          if [ -n "$failures" ] && [ "$failures" -gt 0 ]; then
+            echo "::error::$failures failing test(s) in the GUT suite."
+            exit 1
+          fi
+          echo "GUT suite passed: $tests tests, 0 failures."
+
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gut-junit
+          path: test_results.xml
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Determinism gate. Runs only the keystone test so a regression here is
+  # unambiguous and independent of the rest of the suite.
+  # ---------------------------------------------------------------------------
+  determinism:
+    name: Determinism gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Godot binary
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: ~/godot-bin
+          key: godot-${{ env.GODOT_VERSION }}-linux-headless
+
+      - name: Download Godot ${{ env.GODOT_VERSION }} (headless)
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p ~/godot-bin
+          URL="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_BIN}.zip"
+          echo "Downloading $URL"
+          curl -fL --retry 3 --retry-delay 5 -o /tmp/godot.zip "$URL"
+          unzip -o /tmp/godot.zip -d ~/godot-bin
+          rm -f /tmp/godot.zip
+
+      - name: Install Godot on PATH
+        run: |
+          set -euo pipefail
+          chmod +x "$HOME/godot-bin/${GODOT_BIN}"
+          ln -sf "$HOME/godot-bin/${GODOT_BIN}" "$HOME/godot-bin/godot"
+          echo "$HOME/godot-bin" >> "$GITHUB_PATH"
+
+      - name: Import project
+        run: |
+          godot --headless --import || true
+          godot --headless --import || true
+
+      - name: Run determinism test (20 runs, same seed = identical hash)
+        # -gselect narrows to the determinism script; -gexit makes GUT quit
+        # non-zero on failure (fast-fail). The XML gate below is authoritative.
+        run: |
+          godot --headless --display-driver headless --audio-driver Dummy \
+            -s res://addons/gut/gut_cmdln.gd \
+            -gselect=test_determinism \
+            -gjunit_xml_file=res://determinism_results.xml \
+            -gexit
+
+      - name: Gate on determinism JUnit results
+        # Same machine-stable XML gate as the full suite. A missing file means
+        # the determinism script never ran (bad -gselect or failed import);
+        # nonzero tests with zero failures is the only pass condition.
+        run: |
+          set -euo pipefail
+          if [ ! -f determinism_results.xml ]; then
+            echo "::error::Determinism test did not run (no JUnit output)."
+            exit 1
+          fi
+          if ! grep -q "test_determinism" determinism_results.xml; then
+            echo "::error::Determinism script was not selected/executed."
+            exit 1
+          fi
+          header="$(grep -m1 '<testsuites' determinism_results.xml || true)"
+          tests="$(printf '%s' "$header" | sed -nE 's/.*\btests="([0-9]+)".*/\1/p')"
+          failures="$(printf '%s' "$header" | sed -nE 's/.*\bfailures="([0-9]+)".*/\1/p')"
+          echo "tests=${tests:-?} failures=${failures:-?}"
+          if [ -z "$tests" ] || [ "$tests" -eq 0 ]; then
+            echo "::error::Determinism run executed zero tests."
+            exit 1
+          fi
+          if [ -n "$failures" ] && [ "$failures" -gt 0 ]; then
+            echo "::error::Determinism gate failed — sim is nondeterministic ($failures failing)."
+            exit 1
+          fi
+          echo "Determinism gate passed: $tests tests, 0 failures."
+
+      - name: Upload determinism results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: determinism-junit
+          path: determinism_results.xml
+          if-no-files-found: warn

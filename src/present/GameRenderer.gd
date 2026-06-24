@@ -70,6 +70,8 @@ func _ready() -> void:
 	_entity_renderer.name = "EntityRenderer"
 	_entity_renderer.setup(Sim.entities)
 	add_child(_entity_renderer)
+	# Place every rig at its authoritative starting transform before the first rendered frame.
+	_entity_renderer.physics_sync(0.0)
 
 	# World-space combat/spell FX (swings, impacts, shockwaves) — above actors, under UI.
 	_world_fx = WorldFXScript.new()
@@ -108,10 +110,16 @@ func _physics_process(_delta: float) -> void:
 		_game_active = false
 		if _death_screen != null:
 			_death_screen.show_death()
+		if _entity_renderer != null:
+			_entity_renderer.physics_sync(FIXED_DT)
 		return
 	if not _game_active:
 		return
 	Sim.tick_sim(FIXED_DT)
+	# Synchronise visual transforms only after the authoritative tick. With project-level physics
+	# interpolation enabled, Godot now fills rendered frames between these deterministic 60 Hz states.
+	if _entity_renderer != null:
+		_entity_renderer.physics_sync(FIXED_DT)
 
 func _input(event: InputEvent) -> void:
 	# While dead, any key/click rises the player from torpor.
@@ -134,6 +142,8 @@ func _respawn() -> void:
 		Sim.revive_player()
 	_dead_shown = false
 	_game_active = true
+	if _entity_renderer != null:
+		_entity_renderer.physics_sync(0.0)
 	if _death_screen != null:
 		_death_screen.hide_death()
 

@@ -34,6 +34,23 @@ func test_objective_guides_the_player() -> void:
 	sim.queue_free()
 
 
+func test_save_slots_are_independent() -> void:
+	var prev: int = SaveSystem.current_slot
+	SaveSystem.current_slot = 1
+	SaveSystem.save({ "seed": 111 })
+	SaveSystem.current_slot = 2
+	SaveSystem.save({ "seed": 222 })
+	SaveSystem.current_slot = 1
+	assert_eq(int(SaveSystem.load().get("seed", -1)), 111, "slot 1 holds its own save")
+	SaveSystem.current_slot = 2
+	assert_eq(int(SaveSystem.load().get("seed", -1)), 222, "slot 2 holds its own save")
+	SaveSystem.current_slot = 1
+	SaveSystem.erase()
+	SaveSystem.current_slot = 2
+	SaveSystem.erase()
+	SaveSystem.current_slot = prev
+
+
 func test_dread_field_scatters_mortals_when_notorious() -> void:
 	var sim := VCSim.new()
 	sim.new_game(5, "brujah")

@@ -1,50 +1,61 @@
-## SaveSystem.gd — minimal save-game persistence for the vertical slice.
+## SaveSystem.gd — save-game persistence with multiple slots (ship hygiene Steam prerequisite).
 ##
-## The frontend needs a Continue affordance that's disabled when no save exists, and a
-## "Save Game" verb in the pause menu. The full save schema (coterie, economy, Heat
-## history, replay tapes) is Phase 2; for the slice we persist the seed + clan + a tick
-## snapshot so New/Continue round-trips cleanly and UI can react to save state.
+## Three independent slots, each a Godot-variant text file (var_to_str, NOT JSON — it round-trips
+## every Godot type losslessly; JSON coerces ints to float and drops Vector2, which silently broke
+## the full-run restore). The active slot is `current_slot`; save()/load()/save_exists()/erase()
+## operate on it, so the menu can switch slots without changing the call sites in Boot.gd.
 ##
-## This is a separate autoload from Sim: UI calls save()/load() here, and Boot.gd (the
-## game host) is what actually seeds Sim.new_game() with the loaded values. UI still
-## never mutates Sim directly.
+## Separate autoload from Sim: UI calls these; Boot.gd seeds Sim.new_game() with the loaded values.
 extends Node
 # NOTE: no class_name — this script IS the `SaveSystem` autoload singleton.
 
-# Godot variant text (var_to_str), NOT JSON: it round-trips every Godot type losslessly
-# (ints stay ints, Vector2 positions survive). JSON coerces all numbers to float and drops
-# Vector2, which silently breaks the full-run restore (legend/positions vanished mid-restore).
-const SAVE_PATH := "user://save.sav"
+static var current_slot: int = 0
+
+
+static func _slot_path(slot: int) -> String:
+	return "user://save_%d.sav" % clampi(slot, 0, 2)
 
 
 static func save_exists() -> bool:
-	return FileAccess.file_exists(SAVE_PATH)
+	return FileAccess.file_exists(_slot_path(current_slot))
 
 
-## Persist the full run state. `data` is owned by the caller (Boot.gd via Sim.serialize_run()).
+static func slot_exists(slot: int) -> bool:
+	return FileAccess.file_exists(_slot_path(slot))
+
+
+## Persist the full run state into the active slot. `data` is owned by the caller.
 func save(data: Dictionary) -> void:
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var f := FileAccess.open(_slot_path(current_slot), FileAccess.WRITE)
 	if f == null:
-		push_warning("[SaveSystem] could not open save for write: %s" % SAVE_PATH)
+		push_warning("[SaveSystem] could not open slot %d for write" % current_slot)
 		return
 	f.store_string(var_to_str(data))
 	f.close()
 
 
 func load() -> Dictionary:
-	if not save_exists():
+	return _read(_slot_path(current_slot))
+
+
+## A save's headline data (for slot-select UI): level/clan/etc. without restoring the run.
+func slot_info(slot: int) -> Dictionary:
+	return _read(_slot_path(slot))
+
+
+func _read(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
 		return {}
-	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
 		return {}
 	var text := f.get_as_text()
 	f.close()
 	var parsed: Variant = str_to_var(text)
-	if not (parsed is Dictionary):
-		return {}
-	return parsed
+	return parsed if parsed is Dictionary else {}
 
 
 func erase() -> void:
-	if save_exists():
-		DirAccess.remove_absolute(SAVE_PATH)
+	var path := _slot_path(current_slot)
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)

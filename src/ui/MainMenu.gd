@@ -16,6 +16,7 @@ var _btn_continue: Button = null
 var _btn_settings: Button = null
 var _btn_quit: Button = null
 var _btn_difficulty: Button = null
+var _btn_slot: Button = null
 var _reveal: Array[Control] = []
 
 
@@ -128,6 +129,9 @@ func _build() -> void:
 	_btn_difficulty = _dossier_button("DIF", _difficulty_label(), _on_cycle_difficulty)
 	col.add_child(_btn_difficulty)
 	_reveal.append(_btn_difficulty)
+	_btn_slot = _dossier_button("SLOT", _slot_label(), _on_cycle_slot)
+	col.add_child(_btn_slot)
+	_reveal.append(_btn_slot)
 
 	# --- scanline / vignette atmosphere overlay (top) ---
 	var overlay := ColorRect.new()
@@ -293,6 +297,16 @@ func _on_cycle_difficulty() -> void:
 	UIManager.selected_difficulty = (UIManager.selected_difficulty + 1) % 3
 	if _btn_difficulty != null:
 		_btn_difficulty.text = "DIF    %s" % _difficulty_label()
+
+func _slot_label() -> String:
+	return "SAVE SLOT: %d" % (SaveSystem.current_slot + 1)
+
+func _on_cycle_slot() -> void:
+	SaveSystem.current_slot = (SaveSystem.current_slot + 1) % 3
+	if _btn_slot != null:
+		_btn_slot.text = "SLOT    %s" % _slot_label()
+	if _btn_continue != null:
+		_btn_continue.disabled = not _has_save()   # Continue reflects the selected slot
 
 func _on_quit() -> void:
 	if UIManager.cb_quit_to_desktop.is_valid():

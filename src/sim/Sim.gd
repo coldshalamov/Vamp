@@ -86,7 +86,10 @@ func new_game(new_seed_value: int, clan_id: String) -> void:
 	spawn_npc("ped", world.named_points.get("witness", Vector2(330, 560)), { "state": "wander" })
 	spawn_npc("thug", world.named_points.get("enemy", Vector2(560, 560)), { "state": "guard", "hostile_to_player": true })
 	spawn_vehicle("sedan", Vector2(710, 620), { "angle": 0.0 })
-	spawn_vehicle("police", Vector2(960, 622), { "angle": PI, "ai": true, "siren": true })
+	# Wire the AI car to the road it spawns on (upper horizontal road, rows 17-22) and to its
+	# initial heading (faces west -> road_dir -1), so lane-following holds the street instead of
+	# relying on defaults. Ambient traffic + axis-inference-from-road is a world-life task later.
+	spawn_vehicle("police", Vector2(960, 622), { "angle": PI, "ai": true, "siren": true, "road_axis": 0, "road_dir": -1 })
 	meta.generate_mission_offers(self)
 	meta.apply_to_runtime(self)
 	emit_cue("level.loaded", { "level_id": "vertical_slice_block", "player_spawn": player.pos, "lights": world.lights.size() })

@@ -30,6 +30,7 @@ var last_seen_pos: Vector2 = Vector2.ZERO
 var responder_spawn_ticks: int = 0
 var style_ledger: StyleLedger = null   # consequence loop: profiles play style -> styled hunter dispatch
 var contract: Dictionary = {}   # consequence loop: the active walkable bounty (empty = none)
+var wells: Array[Dictionary] = []   # active gravity wells (the Maw): radial pull + collapse burst
 var sigils: Array[Dictionary] = []   # Blood Grammar INSCRIBE: active blood-sigils rewriting local rules
 var player_last_attack_tick: int = -999999
 var escaped: bool = false
@@ -63,6 +64,7 @@ func new_game(new_seed_value: int, clan_id: String) -> void:
 	investigations.clear()
 	style_ledger = StyleLedger.new()
 	contract = {}
+	wells.clear()
 	last_body_carried_seen_tick = -999999
 	_next_entity_seq = 1
 	entities.clear()
@@ -114,6 +116,7 @@ func tick_sim(delta: float) -> void:
 	if world != null and tick % 5 == 0:
 		_tick_fire()
 	_tick_sigils()
+	_tick_wells()
 	if meta != null:
 		meta.tick(delta, self)
 	_update_body_witnesses()
@@ -489,7 +492,8 @@ func state_hash() -> int:
 		escaped, reached_haven, last_body_carried_seen_tick,
 		_hash_variant(investigations),
 		style_ledger.state_hash() if style_ledger != null else 0,
-		_hash_variant(contract)
+		_hash_variant(contract),
+		_hash_variant(wells)
 	])
 	for e in entities:
 		if e != null:
@@ -515,6 +519,7 @@ func serialize_run() -> Dictionary:
 		"last_body_carried_seen_tick": last_body_carried_seen_tick,
 		"style_ledger": style_ledger.to_dict() if style_ledger != null else {},
 		"contract": contract.duplicate(true),
+		"wells": wells.duplicate(true),
 		"meta": meta.serialize(self) if meta != null else {},
 	}
 
@@ -538,6 +543,11 @@ func restore_run(data: Dictionary) -> bool:
 		style_ledger.from_dict(data["style_ledger"])
 	if data.get("contract", null) is Dictionary:
 		contract = (data["contract"] as Dictionary).duplicate(true)
+	if data.get("wells", null) is Array:
+		wells.clear()
+		for w in (data["wells"] as Array):
+			if w is Dictionary:
+				wells.append((w as Dictionary).duplicate(true))
 	escaped = bool(data.get("escaped", escaped))
 	reached_haven = bool(data.get("reached_haven", reached_haven))
 	investigations = _clean_investigations(data.get("investigations", []))
@@ -687,6 +697,33 @@ func _offer_contract() -> void:
 			contract = { "active": true, "target_id": e.id, "deadline_tick": tick + 1800, "reward": 40, "kind": "hunt" }
 			emit_cue("contract.offered", { "target_id": e.id, "pos": e.pos, "reward": 40 })
 			return
+
+## The Maw: open a gravity well that drags NPCs inward (real inward impulse + tumble, via the
+## knockback channel ImpulsePhysics rides), then collapses for a damage burst. Deterministic.
+func spawn_well(pos: Vector2, radius: float, strength: float, ticks: int) -> void:
+	wells.append({ "pos": pos, "radius": radius, "strength": strength, "ticks": ticks })
+	emit_cue("power.dark.maw_open", { "pos": pos, "radius": radius })
+
+func _tick_wells() -> void:
+	for i in range(wells.size() - 1, -1, -1):
+		var well: Dictionary = wells[i]
+		var wpos: Vector2 = well["pos"]
+		var wr := float(well["radius"])
+		var strength := float(well["strength"])
+		well["ticks"] = int(well["ticks"]) - 1
+		for e in entities:
+			if e == null or e.dead or e.kind != "npc":
+				continue
+			var to: Vector2 = wpos - e.pos
+			var d := to.length()
+			if d > 6.0 and d < wr:
+				e.knockback_vel = (e.knockback_vel as Vector2) + to / d * (strength * (1.0 - d / wr))
+				e.tumble_ticks = maxi(int(e.tumble_ticks), 6)
+		if int(well["ticks"]) <= 0:
+			for e2 in entities_in_radius(wpos, wr, func(x): return x != null and not x.dead and x.kind == "npc"):
+				damage_entity(null, e2, 24.0, { "cue": "power.dark.maw_collapse", "crit_chance": 0.0, "damage_type": "shadow" })
+			emit_cue("power.dark.maw_collapse", { "pos": wpos })
+			wells.remove_at(i)
 
 func _spawn_responder() -> void:
 	var stars := heat_stars()

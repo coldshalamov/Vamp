@@ -367,6 +367,7 @@ func cast_power(power_id: String, sim) -> bool:
 			for target in sim.entities_in_radius(center, float(def.get("radius", 95.0)), func(e): return e.kind == "npc" and e.faction != "player" and not e.dead):
 				target.apply_status("root", int(def.get("duration", 180)))
 				sim.damage_entity(entity, target, _spell_damage(def), { "cue": "power.dark.tendril" })
+			sim.spawn_well(center, float(def.get("radius", 95.0)) * 1.6, 520.0, 120)   # the Maw: drag foes in
 		"shd_arms":
 			var arms_target := _aim_target(sim, float(def.get("range", 340.0)))
 			if arms_target == null:

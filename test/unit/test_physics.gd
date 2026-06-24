@@ -45,6 +45,20 @@ func _ram_damage(speed: float) -> float:
 	return lost
 
 
+func test_maw_pulls_entities_inward() -> void:
+	var sim := VCSim.new()
+	sim.new_game(5, "brujah")
+	var e := sim.spawn_npc("thug", Vector2(700.0, 500.0), {})
+	e.ai_state = "idle"
+	var center := Vector2(600.0, 500.0)
+	sim.spawn_well(center, 220.0, 520.0, 40)
+	var before := e.pos.distance_to(center)
+	for _t in range(20):
+		sim.tick_sim(DT)
+	assert_lt(e.pos.distance_to(center), before, "the Maw drags NPCs toward it (real inward force)")
+	sim.queue_free()
+
+
 func test_physics_is_deterministic() -> void:
 	assert_eq(_pileup_hash(), _pileup_hash(), "the impulse pass must be bit-deterministic")
 

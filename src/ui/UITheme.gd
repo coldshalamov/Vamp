@@ -133,6 +133,24 @@ func build_theme() -> Theme:
 	t.set_font_size("font_size", "Slider", body)
 	t.set_font_size("title_size", "Label", title)
 
+	# Styled tooltips — the Living Dossier hover card (dark case-file panel + blood spine), so HUD
+	# hover text reads as a dossier instead of the bare OS tooltip.
+	var tip_box := StyleBoxFlat.new()
+	tip_box.bg_color = Color(0.05, 0.04, 0.055, 0.97) if not high_contrast else Color(0, 0, 0, 0.99)
+	tip_box.border_color = blood
+	tip_box.border_width_left = 3
+	tip_box.content_margin_left = 12
+	tip_box.content_margin_right = 12
+	tip_box.content_margin_top = 8
+	tip_box.content_margin_bottom = 8
+	tip_box.corner_radius_top_right = 3
+	tip_box.corner_radius_bottom_right = 3
+	t.set_stylebox("panel", "TooltipPanel", tip_box)
+	if uif != null:
+		t.set_font("font", "TooltipLabel", uif)
+	t.set_font_size("font_size", "TooltipLabel", hud)
+	t.set_color("font_color", "TooltipLabel", txt)
+
 	# ProgressBar (vitae / HP bars).
 	t.set_color("font_color", "ProgressBar", txt_dim)
 	t.set_font_size("font_size", "ProgressBar", hud)

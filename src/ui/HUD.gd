@@ -288,7 +288,7 @@ const DISC_COLORS := {
 func _make_hotbar_slot(slot_index: int) -> Dictionary:
 	var panel := Control.new()
 	panel.custom_minimum_size = Vector2(62, 64)
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS   # hoverable for the dossier tooltip; clicks still fall through
 	# slot plate
 	var bg := TextureRect.new()
 	bg.texture = _tex(TEX_SLOT)
@@ -456,6 +456,7 @@ func _refresh_hotbar() -> void:
 			glyph.set_power("", Color(0.4, 0.4, 0.45), true)
 			name_lbl.text = ""
 			cd.visible = false
+			(slot["panel"] as Control).tooltip_text = ""
 			continue
 		var prefix: String = power_id.split("_")[0]
 		var col: Color = DISC_COLORS.get(prefix, Color("#c0c0cc"))
@@ -463,6 +464,9 @@ func _refresh_hotbar() -> void:
 		glyph.set_power(prefix, col, false)
 		name_lbl.text = _short_name(String(def.get("name", power_id)))
 		name_lbl.add_theme_color_override("font_color", col)
+		# Living Dossier: hovering a hotbar slot says what the spell IS (name, discipline, cost, cd, desc).
+		var disc_name: String = String(GameCatalog.DISCIPLINES.get(String(def.get("discipline", "")), {}).get("name", ""))
+		(slot["panel"] as Control).tooltip_text = "%s   (key %d)\n%s · %d vitae · %.1fs cooldown\n%s" % [String(def.get("name", power_id)), i + 1, disc_name, int(def.get("cost", 0.0)), float(def.get("cooldown", 0)) / 60.0, String(def.get("description", ""))]
 		if b != null and b.power_cooldowns.has(power_id):
 			var remaining := int(b.power_cooldowns[power_id])
 			var total := int(def.get("cooldown", remaining)) if not def.is_empty() else remaining

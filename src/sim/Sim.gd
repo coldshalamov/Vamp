@@ -91,7 +91,11 @@ func new_game(new_seed_value: int, clan_id: String) -> void:
 
 	spawn_npc("ped", world.named_points.get("civilian", Vector2(245, 576)), { "state": "wander" })
 	spawn_npc("ped", world.named_points.get("witness", Vector2(330, 560)), { "state": "wander" })
-	spawn_npc("thug", world.named_points.get("enemy", Vector2(560, 560)), { "state": "guard", "hostile_to_player": true })
+	# The slice's first named foe is the HERALD — the sire's hunter. Tagged so the nemesis backend
+	# forces a flee on its first defeat (try_nemesis_escape) instead of a clean death: it returns
+	# scarred and resistant to the damage type that beat it. The slice's ending hook, in one tag.
+	var herald := spawn_npc("thug", world.named_points.get("enemy", Vector2(560, 560)), { "state": "guard", "hostile_to_player": true })
+	herald.tags["herald"] = true
 	spawn_vehicle("sedan", Vector2(710, 620), { "angle": 0.0 })
 	# Wire the AI car to the road it spawns on (upper horizontal road, rows 17-22) and to its
 	# initial heading (faces west -> road_dir -1), so lane-following holds the street instead of

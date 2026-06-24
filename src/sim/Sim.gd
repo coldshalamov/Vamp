@@ -29,6 +29,7 @@ var last_provoke_tick: int = -999999
 var last_seen_pos: Vector2 = Vector2.ZERO
 var responder_spawn_ticks: int = 0
 var style_ledger: StyleLedger = null   # consequence loop: profiles play style -> styled hunter dispatch
+var contract: Dictionary = {}   # consequence loop: the active walkable bounty (empty = none)
 var sigils: Array[Dictionary] = []   # Blood Grammar INSCRIBE: active blood-sigils rewriting local rules
 var player_last_attack_tick: int = -999999
 var escaped: bool = false
@@ -61,6 +62,7 @@ func new_game(new_seed_value: int, clan_id: String) -> void:
 	reached_haven = false
 	investigations.clear()
 	style_ledger = StyleLedger.new()
+	contract = {}
 	last_body_carried_seen_tick = -999999
 	_next_entity_seq = 1
 	entities.clear()
@@ -117,6 +119,7 @@ func tick_sim(delta: float) -> void:
 	_update_body_witnesses()
 	_update_investigations(delta)
 	_update_heat(delta)
+	_tick_contract()
 	_check_escape()
 	_cleanup_dead_transients()
 
@@ -485,7 +488,8 @@ func state_hash() -> int:
 		player_last_attack_tick, _last_vitals_emit_tick, time_scale,
 		escaped, reached_haven, last_body_carried_seen_tick,
 		_hash_variant(investigations),
-		style_ledger.state_hash() if style_ledger != null else 0
+		style_ledger.state_hash() if style_ledger != null else 0,
+		_hash_variant(contract)
 	])
 	for e in entities:
 		if e != null:
@@ -510,6 +514,7 @@ func serialize_run() -> Dictionary:
 		"investigations": investigations.duplicate(true),
 		"last_body_carried_seen_tick": last_body_carried_seen_tick,
 		"style_ledger": style_ledger.to_dict() if style_ledger != null else {},
+		"contract": contract.duplicate(true),
 		"meta": meta.serialize(self) if meta != null else {},
 	}
 
@@ -531,6 +536,8 @@ func restore_run(data: Dictionary) -> bool:
 	player_last_attack_tick = int(data.get("player_last_attack_tick", player_last_attack_tick))
 	if style_ledger != null and data.get("style_ledger", null) is Dictionary:
 		style_ledger.from_dict(data["style_ledger"])
+	if data.get("contract", null) is Dictionary:
+		contract = (data["contract"] as Dictionary).duplicate(true)
 	escaped = bool(data.get("escaped", escaped))
 	reached_haven = bool(data.get("reached_haven", reached_haven))
 	investigations = _clean_investigations(data.get("investigations", []))
@@ -626,6 +633,9 @@ func current_objective() -> String:
 			return "A hunter searches your trail — break line of sight"
 	if heat_stars() >= 3:
 		return "Heat is high — lose your pursuers and lie low"
+	if not contract.is_empty():
+		var secs := maxi((int(contract.get("deadline_tick", 0)) - tick) / 60, 0)
+		return "CONTRACT: drain the marked mortal (%ds left)" % secs
 	var pb := player.behaviour
 	if pb != null:
 		var maxb := float(pb.get("max_blood"))
@@ -636,6 +646,34 @@ func current_objective() -> String:
 func record_style(channel: String, weight: float) -> void:
 	if style_ledger != null:
 		style_ledger.record(channel, weight)
+
+## The walkable bounty: offered when the night is calm, resolved when the marked mortal is drained
+## (dead or downed), expired at the deadline. Deterministic; hashed + saved like the StyleLedger.
+func _tick_contract() -> void:
+	if contract.is_empty():
+		if heat_stars() == 0 and tick > 120 and tick % 600 == 0:
+			_offer_contract()
+		return
+	var target := get_entity(int(contract.get("target_id", 0)))
+	if target == null or target.dead or target.downed:
+		var reward := int(contract.get("reward", 0))
+		if meta != null:
+			meta.gain_xp(reward, self)
+		emit_cue("contract.complete", { "xp": reward, "pos": player.pos if player != null else Vector2.ZERO })
+		contract = {}
+		return
+	if tick >= int(contract.get("deadline_tick", 0)):
+		target.tags.erase("contract_target")
+		emit_cue("contract.expired", { "pos": target.pos })
+		contract = {}
+
+func _offer_contract() -> void:
+	for e in entities:
+		if e != null and not e.dead and e.kind == "npc" and e.faction == "civ" and not e.downed:
+			e.tags["contract_target"] = 1
+			contract = { "active": true, "target_id": e.id, "deadline_tick": tick + 1800, "reward": 40, "kind": "hunt" }
+			emit_cue("contract.offered", { "target_id": e.id, "pos": e.pos, "reward": 40 })
+			return
 
 func _spawn_responder() -> void:
 	var stars := heat_stars()

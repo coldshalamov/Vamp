@@ -32,3 +32,17 @@ func test_objective_guides_the_player() -> void:
 	sim.player.behaviour.set("blood", 5.0)   # nearly dry
 	assert_true(sim.current_objective().to_lower().contains("feed"), "low vitae should point the player at feeding")
 	sim.queue_free()
+
+
+func test_contract_offer_and_complete() -> void:
+	var sim := VCSim.new()
+	sim.new_game(7, "brujah")
+	sim._offer_contract()
+	assert_false(sim.contract.is_empty(), "a contract should be offered when a mortal is present")
+	var target := sim.get_entity(int(sim.contract["target_id"]))
+	assert_not_null(target, "the contract marks a real entity")
+	if target != null:
+		target.dead = true   # drain the mark
+	sim._tick_contract()
+	assert_true(sim.contract.is_empty(), "draining the marked mortal completes the contract")
+	sim.queue_free()

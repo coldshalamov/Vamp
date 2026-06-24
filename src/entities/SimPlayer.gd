@@ -215,6 +215,11 @@ func cast_power(power_id: String, sim) -> bool:
 	if sim.meta != null and not sim.meta.knows_power(power_id):
 		sim.emit_cue("power.failed.unknown", { "power_id": power_id })
 		return false
+	# Brujah BLOOD RAGE keystone: while raging, the Beast has the wheel — Disciplines are locked out
+	# (the cost side of the toggle). No-op unless the player is Brujah+pot_key and currently frenzied.
+	if sim.meta != null and sim.meta.blood_rage_blocks_disciplines(frenzied):
+		sim.emit_cue("power.failed.raging", { "power_id": power_id, "pos": entity.pos })
+		return false
 	if String(def.get("type", "active")) == "toggle" and buffs.has(power_id):
 		buffs.erase(power_id)
 		sim.emit_cue("power.toggle", { "power_id": power_id, "enabled": false, "pos": entity.pos })
@@ -224,9 +229,18 @@ func cast_power(power_id: String, sim) -> bool:
 		return false
 	var cost: float = sim.meta.effective_power_cost(power_id) if sim.meta != null else float(def.get("cost", 0.0))
 	if blood < cost:
-		sim.emit_cue("power.failed.no_blood", { "power_id": power_id, "blood": blood })
-		return false
-	blood -= cost
+		# Tremere VITAE ALCHEMY keystone: pay the vitae shortfall as aggravated HP instead of
+		# refusing the cast ("the other half drains from HP"). 0 unless Tremere+bs_key.
+		var hp_pay: float = sim.meta.cast_hp_shortfall(power_id, blood) if sim.meta != null else 0.0
+		if hp_pay > 0.0 and entity.hp - hp_pay > 1.0:
+			blood = 0.0
+			entity.hp = maxf(1.0, entity.hp - hp_pay)
+			sim.emit_cue("power.cast_from_hp", { "power_id": power_id, "hp_paid": hp_pay, "pos": entity.pos })
+		else:
+			sim.emit_cue("power.failed.no_blood", { "power_id": power_id, "blood": blood })
+			return false
+	else:
+		blood -= cost
 	# Hemomancy: cast while standing in your own spilled blood and the spell draws on the pool,
 	# consuming it for a potent transmutation buff on your blood magic.
 	if sim.world != null and sim.world.blood_at(entity.pos) >= 30:
@@ -766,6 +780,12 @@ func _finish_feed(sim, lethal: bool) -> void:
 			_react_to_humanity_drop(sim, target.pos)
 		sim.witnessed_act(target.pos, "kill", 1.5)
 		sim.emit_cue("feed.kill", { "target_id": target.id, "pos": target.pos, "blood": feed_drained })
+		# Nosferatu ONE WITH SHADOW keystone: a feed-kill keeps you cloaked instead of breaking it,
+		# so you can chain kills from the dark. No-op unless the player is Nosferatu+obf_key.
+		if sim.meta != null and sim.meta.stealth_kill_keeps_cloak():
+			var cloak_ticks: int = sim.meta.shadow_kill_cloak_ticks()
+			_apply_buff("obf_cloak", cloak_ticks, { "stealth": true })
+			sim.emit_cue("power.cloak.shadowkill", { "target_id": target.id, "pos": entity.pos, "ticks": cloak_ticks })
 	else:
 		target.downed = true
 		target.ai_state = "downed"

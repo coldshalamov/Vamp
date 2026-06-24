@@ -235,6 +235,10 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 			var fs := int(player.behaviour.get("flow_stacks"))
 			if fs > 0:
 				dmg *= 1.0 + float(fs) * 0.08   # gulp-cancel flow rewards the dance
+				# Brujah BLOOD RAGE keystone: +40% melee while the Beast is loose. Returns 1.0 unless
+				# the player is Brujah with pot_key allocated AND currently frenzied (pure read).
+				if meta != null:
+					dmg *= meta.blood_rage_damage_mult(bool(player.tags.get("frenzied", false)))
 	var armor := target.armor
 	if target.has_status("weaken"):
 		armor = maxf(0.0, armor - float(target.status_data.get("weaken", {}).get("amount", 0.20)))

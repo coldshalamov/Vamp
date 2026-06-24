@@ -39,7 +39,9 @@ func push_notification(text: String, color: Color = Color.WHITE) -> void:
 func push_banner(title: String, body: String, color: Color = Color.WHITE) -> void:
 	var banner_box := _banner_box()
 	while banner_box.get_child_count() >= MAX_BANNERS:
-		_dismiss_banner(banner_box.get_child(0))
+		var oldest := banner_box.get_child(0)
+		if is_instance_valid(oldest):
+			oldest.queue_free()
 	var card := PanelContainer.new()
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var vbox := VBoxContainer.new()
@@ -61,26 +63,32 @@ func push_banner(title: String, body: String, color: Color = Color.WHITE) -> voi
 		body_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vbox.add_child(body_label)
 	banner_box.add_child(card)
-	card.modulate.a = 0.0
 	var reduced := UIManager.is_reduced_motion() if UIManager != null else false
+	# A CARD-OWNED tween auto-cancels when the card is freed early (overflow trim or
+	# clear_banners() on death), so no stale-reference callback can fire. This replaces the old
+	# create_timer(BANNER_DWELL).timeout.connect(_dismiss_banner.bind(card)), which crashed with
+	# "Cannot convert argument 1 from Object to Object" whenever the bound card was freed first —
+	# the cause of the MASQUERADE BROKEN banner sticking on screen and bleeding onto the death screen.
+	var tw := card.create_tween()
 	if reduced:
 		card.modulate.a = 1.0
+		tw.tween_interval(BANNER_DWELL)
 	else:
-		var tw := create_tween()
+		card.modulate.a = 0.0
 		tw.tween_property(card, "modulate:a", 1.0, 0.2)
-	get_tree().create_timer(BANNER_DWELL).timeout.connect(_dismiss_banner.bind(card))
-
-
-func _dismiss_banner(card: Node) -> void:
-	if card == null or not is_instance_valid(card):
-		return
-	var reduced := UIManager.is_reduced_motion() if UIManager != null else false
-	if reduced:
-		card.queue_free()
-		return
-	var tw := create_tween()
-	tw.tween_property(card, "modulate:a", 0.0, 0.3)
+		tw.tween_interval(BANNER_DWELL)
+		tw.tween_property(card, "modulate:a", 0.0, 0.3)
 	tw.tween_callback(card.queue_free)
+
+
+## Immediately clear all live banners (e.g. on death or scene change so banners never bleed
+## across the death screen or a fresh night). Toasts are transient enough to leave as-is.
+func clear_banners() -> void:
+	if _banner_box_cache == null:
+		return
+	for child in _banner_box_cache.get_children():
+		if is_instance_valid(child):
+			child.queue_free()
 
 
 func _fade_out(label: Label, dwell: float) -> void:

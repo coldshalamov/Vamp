@@ -12,8 +12,8 @@ const PLACEMENTS := [
 	{ "tex": "res://assets/props/lamp_alt.png", "pos": Vector2(300, 545), "scale": 0.34 },
 	{ "tex": "res://assets/props/neon_sign.png", "pos": Vector2(250, 300), "scale": 0.55 },
 	{ "tex": "res://assets/props/tree.png", "pos": Vector2(120, 600), "scale": 0.42 },
-	{ "tex": "res://assets/props/tree_alt1.png", "pos": Vector2(700, 705), "scale": 0.42 },
-	{ "tex": "res://assets/props/tree_alt2.png", "pos": Vector2(1010, 705), "scale": 0.42 },
+	{ "tex": "res://assets/props/tree_alt2.png", "pos": Vector2(700, 705), "scale": 0.42 },
+	{ "tex": "res://assets/props/tree.png", "pos": Vector2(1010, 705), "scale": 0.42 },
 ]
 
 var _items: Array[Dictionary] = []

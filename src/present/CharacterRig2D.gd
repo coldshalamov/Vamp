@@ -153,8 +153,11 @@ func _draw() -> void:
 # ----------------------------------------------------------------------------- pose construction
 
 func _build_pose() -> Dictionary:
-	var scale_factor := maxf(entity.radius / 12.0, 0.62)
-	var build := float(_profile.get("build", 1.0))
+	# stature multiplies vertical extents; shoulders multiplies lateral span only.
+	var stature := clampf(float(_profile.get("stature", 1.0)), 0.70, 1.40)
+	var shoulder_mult := clampf(float(_profile.get("shoulders", 1.0)), 0.80, 1.40)
+	var scale_factor := maxf(entity.radius / 12.0, 0.62) * stature
+	var build := float(_profile.get("build", 1.0)) * shoulder_mult
 	var raw_forward := Vector2.RIGHT.rotated(_facing)
 	# Billboarded pseudo-3D projection: preserve world heading but compress depth so figures remain
 	# upright and readable rather than looking like paper dolls lying flat on the street.
@@ -262,6 +265,7 @@ func _build_pose() -> Dictionary:
 		"weapon": weapon,
 		"locomotion": locomotion,
 		"hit": hit_amount,
+		"head_scale": clampf(float(_profile.get("head_scale", 1.0)), 0.80, 1.25),
 	}
 
 
@@ -350,7 +354,9 @@ func _draw_character(pose: Dictionary, alpha: float, offset: Vector2, ghost: boo
 	# oscillation prevents the old "rigid stack of balls" look without turning into a cape cartoon.
 	if bool(_profile.get("long_coat", false)) and not ghost:
 		var cloth_drag := -forward * (2.0 + 4.0 * clampf(_speed_blend, 0.0, 1.0)) * s
-		var cloth_wave := side * sin(_time * 5.2 + float(entity.id)) * 1.2 * s * clampf(_speed_blend, 0.0, 1.0)
+		# Clamp lateral wave so tail vertices never cross each other.
+		var raw_wave := sin(_time * 5.2 + float(entity.id)) * 1.2 * s * clampf(_speed_blend, 0.0, 1.0)
+		var cloth_wave := side * clampf(raw_wave, -2.8 * s, 2.8 * s)
 		var tail_l := pelvis - side * 3.0 * s + Vector2(0.0, 9.5 * s) + cloth_drag + cloth_wave
 		var tail_r := pelvis + side * 3.0 * s + Vector2(0.0, 9.5 * s) + cloth_drag - cloth_wave
 		_poly([pelvis - side * 4.5 * s, pelvis + side * 0.2 * s, tail_r, tail_l], coat_shadow)
@@ -362,28 +368,32 @@ func _draw_character(pose: Dictionary, alpha: float, offset: Vector2, ghost: boo
 	# Torso is an angular tapered mesh with separate lit and shadow planes.
 	var shoulder_span := 6.5 * s * float(pose["build"])
 	var waist_span := 3.8 * s * float(pose["build"])
+	# Clamp inner insets so they can never exceed 85% of the outer span — prevents the inner quads
+	# from crossing each other (bowtie) when build is small or forward compression is large.
+	var top_inset := minf(0.7 * s, shoulder_span * 0.85)
+	var bot_inset := minf(0.45 * s, waist_span * 0.85)
 	var torso_top_l := chest - side * shoulder_span - forward * 0.7 * s
 	var torso_top_r := chest + side * shoulder_span + forward * 0.7 * s
 	var torso_bottom_l := pelvis - side * waist_span
 	var torso_bottom_r := pelvis + side * waist_span
 	_poly([torso_top_l, torso_top_r, torso_bottom_r, torso_bottom_l], outline)
 	_poly([
-		torso_top_l + side * 0.7 * s,
-		torso_top_r - side * 0.7 * s,
-		torso_bottom_r - side * 0.45 * s,
-		torso_bottom_l + side * 0.45 * s,
+		torso_top_l + side * top_inset,
+		torso_top_r - side * top_inset,
+		torso_bottom_r - side * bot_inset,
+		torso_bottom_l + side * bot_inset,
 	], coat)
 	_poly([
-		torso_top_l + side * 0.7 * s,
-		chest - side * 0.4 * s,
-		pelvis - side * 0.15 * s,
-		torso_bottom_l + side * 0.45 * s,
+		torso_top_l + side * top_inset,
+		chest - side * minf(0.4 * s, shoulder_span * 0.85),
+		pelvis - side * minf(0.15 * s, waist_span * 0.85),
+		torso_bottom_l + side * bot_inset,
 	], coat.lightened(0.10))
 	_poly([
-		chest + side * 0.3 * s,
-		torso_top_r - side * 0.7 * s,
-		torso_bottom_r - side * 0.45 * s,
-		pelvis + side * 0.1 * s,
+		chest + side * minf(0.3 * s, shoulder_span * 0.85),
+		torso_top_r - side * top_inset,
+		torso_bottom_r - side * bot_inset,
+		pelvis + side * minf(0.1 * s, waist_span * 0.85),
 	], coat_shadow)
 	# Lapels, harness, belt, and faction accent create readable material breaks at game scale.
 	if detail_level >= 1 and not ghost:
@@ -401,12 +411,22 @@ func _draw_character(pose: Dictionary, alpha: float, offset: Vector2, ghost: boo
 
 	# Neck and angular head planes.
 	_segment(neck + Vector2(0, 1.0 * s), head + Vector2(0, 2.5 * s), 3.4 * s, skin.darkened(0.18), outline, false)
-	_draw_head(head, forward, side, s, skin, hood, outline, rim, accent, ghost)
+	_draw_head(head, forward, side, s * float(pose.get("head_scale", 1.0)), skin, hood, outline, rim, accent, ghost)
 
-	# Contact highlights on the near side make the volume read under dark lighting.
+	# Silhouette rim lights — thin edge catches that separate the dark figure from dark asphalt.
+	# Near side shoulder→elbow: most visible edge from camera-right.
+	# Torso top cross-light: gives coat shoulders a defined roof line.
+	# Far-side outer coat edge (shoulder_l → torso_bottom_l): the single line that reads "long coat"
+	#   from behind/three-quarter views without any extra geometry.
 	if detail_level >= 1 and not ghost:
 		draw_line(shoulder_r, elbow_r, rim, maxf(0.7, 0.8 * s), true)
 		draw_line(torso_top_l, torso_top_r, _with_alpha(rim, rim.a * 0.72), maxf(0.65, 0.75 * s), true)
+		# Outer coat-edge rim on far side.
+		var outer_coat_top := torso_top_l
+		var outer_coat_bot := torso_bottom_l
+		draw_line(outer_coat_top, outer_coat_bot, _with_alpha(rim, rim.a * 0.42), maxf(0.55, 0.65 * s), true)
+		# Hip-to-knee far leg rim so legs don't merge into the coat shadow.
+		draw_line(hip_l, knee_l, _with_alpha(rim, rim.a * 0.28), maxf(0.5, 0.6 * s), true)
 
 
 func _draw_leg(hip: Vector2, knee: Vector2, foot: Vector2, s: float, color: Color, outline: Color, rim: Color, alpha: float, ghost: bool) -> void:
@@ -530,8 +550,10 @@ func _draw_armor_plate(chest: Vector2, side: Vector2, forward: Vector2, s: float
 func _draw_shadow(pose: Dictionary) -> void:
 	var s := float(pose["s"])
 	var dash_scale := 1.0 - 0.25 * clampf(_dash_timer / 0.34, 0.0, 1.0)
-	draw_set_transform(Vector2(0.0, 1.0 * s), 0.0, Vector2(1.45 * dash_scale, 0.48 * dash_scale))
-	draw_circle(Vector2.ZERO, 7.4 * s, Color(0.0, 0.0, 0.0, 0.48))
+	# Tight contact shadow under the feet: narrower X and flatter Y than the old blob so it reads
+	# as "feet on asphalt" rather than a floating orb of doom.
+	draw_set_transform(Vector2(0.0, 0.5 * s), 0.0, Vector2(0.82 * dash_scale, 0.22 * dash_scale))
+	draw_circle(Vector2.ZERO, 5.8 * s, Color(0.0, 0.0, 0.0, 0.62))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -627,7 +649,8 @@ func _draw_corpse() -> void:
 func _draw_downed() -> void:
 	var s := maxf(entity.radius / 12.0, 0.62)
 	_draw_shadow({"s": s})
-	var sway := sin(_time * 1.2 + float(entity.id)) * 1.2 * s
+	# Clamp sway so the breathing motion can never shear the quad past convex.
+	var sway := clampf(sin(_time * 1.2 + float(entity.id)) * 1.2 * s, -1.1 * s, 1.1 * s)
 	var outline := Color(0.012, 0.014, 0.02, 0.95)
 	var coat: Color = _profile["coat"]
 	var skin: Color = _profile["skin"]
@@ -672,6 +695,34 @@ func _oriented_box(center: Vector2, forward: Vector2, side: Vector2, length: flo
 
 
 func _poly(points: Array, color: Color) -> void:
+	if points.size() < 3:
+		return
+	# Reject any polygon where a vertex has leaked NaN or Inf.
+	for p in points:
+		var v: Vector2 = p
+		if not (is_finite(v.x) and is_finite(v.y)):
+			return
+	# Reject degenerate (zero-area) polygons — avoids bowtie self-intersections that crash the
+	# triangulator and contributes nothing to the image anyway.
+	var area := 0.0
+	var n := points.size()
+	for i in range(n):
+		var a: Vector2 = points[i]
+		var b: Vector2 = points[(i + 1) % n]
+		area += a.cross(b)
+	if absf(area) < 0.08:
+		return
+	# 4-point quads: split into two explicit triangles.  A triangle cannot self-intersect, so
+	# draw_colored_polygon's triangulator can never fail on it.  draw_colored_polygon handles
+	# 3-point arrays efficiently via a single triangle, so this is also the fast path.
+	if points.size() == 4:
+		var pa := PackedVector2Array([points[0], points[1], points[2]])
+		var pb := PackedVector2Array([points[0], points[2], points[3]])
+		draw_colored_polygon(pa, color)
+		draw_colored_polygon(pb, color)
+		return
+	# 5+ points: pass through; these are pre-authored convex pentagons (head, corpse outline) that
+	# have never triggered a failure in practice.
 	var packed := PackedVector2Array()
 	for p in points:
 		packed.append(p)
@@ -711,85 +762,39 @@ func _resonance_color(humour: String) -> Color:
 
 
 func _make_profile() -> Dictionary:
-	var key := "%s:%s:%s" % [entity.kind, entity.faction, entity.type_id] if entity != null else ""
+	# CharacterVisualProfile is the authoritative art-direction source.  We adapt its richer schema
+	# to the flat key contract that the 800 lines below expect, rather than rewriting every read
+	# site.  Keys that map: coat_dark→coat_shadow, cloth→hood, coat_length→long_coat (float→bool),
+	# armored→armor, masked→mask.  Shape keys stature/shoulders/coat_length are forwarded as-is so
+	# _build_pose can honour them.
 	if entity == null:
-		return _default_profile(key)
-	if entity.kind == "player":
-		return {
-			"key": key,
-			"coat": Color("242733"),
-			"coat_shadow": Color("11141d"),
-			"pants": Color("101218"),
-			"skin": Color("d3c5bb"),
-			"hood": Color("0e1118"),
-			"accent": Color("f02d43"),
-			"metal": Color("9ca8b8"),
-			"build": 0.96,
-			"hooded": true,
-			"eyes": true,
-			"mask": false,
-			"armor": false,
-			"long_coat": true,
-			"claws": true,
-		}
-	match String(entity.faction):
-		"civ":
-			var variants := [
-				{
-					"coat": Color("555049"), "coat_shadow": Color("302d2a"), "pants": Color("292725"),
-					"skin": Color("c5a58b"), "hood": Color("47423b"), "accent": Color("817568"),
-					"metal": Color("8e9298"), "build": 0.96, "hooded": false, "eyes": false,
-					"mask": false, "armor": false, "long_coat": false, "claws": false,
-				},
-				{
-					"coat": Color("394654"), "coat_shadow": Color("222b34"), "pants": Color("20272e"),
-					"skin": Color("d0b09a"), "hood": Color("303b47"), "accent": Color("718398"),
-					"metal": Color("9aa4b0"), "build": 1.02, "hooded": false, "eyes": false,
-					"mask": false, "armor": false, "long_coat": true, "claws": false,
-				},
-				{
-					"coat": Color("604638"), "coat_shadow": Color("36261f"), "pants": Color("28201b"),
-					"skin": Color("ad8064"), "hood": Color("413129"), "accent": Color("8d6653"),
-					"metal": Color("8f918f"), "build": 0.91, "hooded": true, "eyes": false,
-					"mask": false, "armor": false, "long_coat": false, "claws": false,
-				},
-			]
-			var p: Dictionary = variants[entity.id % variants.size()].duplicate(true)
-			p["key"] = key
-			return p
-		"gang":
-			return {
-				"key": key, "coat": Color("322820"), "coat_shadow": Color("17130f"),
-				"pants": Color("191511"), "skin": Color("b68e68"), "hood": Color("241e18"),
-				"accent": Color("8e2830"), "metal": Color("a3a0a0"), "build": 1.16,
-				"hooded": false, "eyes": false, "mask": false, "armor": false,
-				"long_coat": false, "claws": false,
-			}
-		"police":
-			return {
-				"key": key, "coat": Color("182943"), "coat_shadow": Color("0c1728"),
-				"pants": Color("101821"), "skin": Color("bda08a"), "hood": Color("101a2a"),
-				"accent": Color("9fb8de"), "metal": Color("59697f"), "build": 1.10,
-				"hooded": false, "eyes": false, "mask": entity.type_id == "swat", "armor": true,
-				"long_coat": false, "claws": false,
-			}
-		"inquis":
-			return {
-				"key": key, "coat": Color("25262c"), "coat_shadow": Color("101116"),
-				"pants": Color("111218"), "skin": Color("c9bca8"), "hood": Color("14161c"),
-				"accent": Color("d5cfbf"), "metal": Color("9da3a8"), "build": 1.08,
-				"hooded": true, "eyes": false, "mask": true, "armor": true,
-				"long_coat": true, "claws": false,
-			}
-		"player":
-			return {
-				"key": key, "coat": Color("332641"), "coat_shadow": Color("171020"),
-				"pants": Color("18101f"), "skin": Color("b89cc0"), "hood": Color("211832"),
-				"accent": Color("8958bd"), "metal": Color("9d91aa"), "build": 1.00,
-				"hooded": true, "eyes": false, "mask": false, "armor": false,
-				"long_coat": true, "claws": false,
-			}
-	return _default_profile(key)
+		return _default_profile("")
+	var key := "%s:%s:%s" % [entity.kind, entity.faction, entity.type_id]
+	var p: Dictionary = CharacterVisualProfile.for_entity(entity)
+	return {
+		"key": key,
+		# colours
+		"coat":        p.get("coat",      Color("3d4046")),
+		"coat_shadow": p.get("coat_dark", Color("181a1e")),
+		"pants":       p.get("pants",     Color("17191d")),
+		"skin":        p.get("skin",      Color("b99d87")),
+		"hood":        p.get("cloth",     Color("2b2e33")),
+		"accent":      p.get("accent",    Color("6b6260")),
+		"metal":       p.get("metal",     Color("777b82")),
+		# shape / silhouette
+		"build":       float(p.get("build",    1.0)),
+		"stature":     float(p.get("stature",  1.0)),
+		"shoulders":   float(p.get("shoulders", 1.0)),
+		"coat_length": float(p.get("coat_length", 0.86)),
+		"head_scale":  float(p.get("head_scale", 1.0)),
+		# flags
+		"hooded":    bool(p.get("hooded",   false)),
+		"eyes":      bool(p.get("eyes",     false)),
+		"mask":      bool(p.get("masked",   false)),
+		"armor":     bool(p.get("armored",  false)),
+		"long_coat": float(p.get("coat_length", 0.86)) >= 1.0,
+		"claws":     bool(p.get("claws",    false)),
+	}
 
 
 func _default_profile(key: String) -> Dictionary:
@@ -803,6 +808,10 @@ func _default_profile(key: String) -> Dictionary:
 		"accent": Color("7b818d"),
 		"metal": Color("999fa8"),
 		"build": 1.0,
+		"stature": 1.0,
+		"shoulders": 1.0,
+		"coat_length": 0.86,
+		"head_scale": 1.0,
 		"hooded": false,
 		"eyes": false,
 		"mask": false,

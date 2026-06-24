@@ -46,6 +46,7 @@ var feeding_target_id: int = 0
 var feed_progress: float = 0.0
 var feed_drained: float = 0.0
 var feed_lethal: bool = false
+var feed_brink: bool = false   # crossed into lethal territory: the kill/spare Verdict is live
 var gulp_window_active: bool = false
 var gulp_window_ticks: int = 0
 var gulp_period_ticks: int = 0
@@ -485,7 +486,7 @@ func state_hash() -> int:
 		snapped(aim_point.x, 0.001), snapped(aim_point.y, 0.001),
 		snapped(blood, 0.001), snapped(max_blood, 0.001),
 		snapped(hunger, 0.001), snapped(humanity, 0.001),
-		snapped(frenzy, 0.001), frenzied, feeding_target_id, snapped(feed_drained, 0.001),
+		snapped(frenzy, 0.001), frenzied, feeding_target_id, snapped(feed_drained, 0.001), feed_brink,
 		snapped(feed_progress, 0.001), feed_lethal, iframes_remaining,
 		gulp_window_active, gulp_window_ticks, gulp_period_ticks,
 		gulp_hits, gulp_misses, snapped(gulp_bonus_vitae, 0.001), gulp_slow_ticks, flow_stacks,
@@ -657,10 +658,15 @@ func _start_feeding(target: SimEntity, sim, lethal: bool) -> void:
 	feed_progress = 0.0
 	feed_drained = 0.0
 	feed_lethal = lethal
+	feed_brink = false
 	_reset_gulp(GULP_PERIOD)
 	target.ai_state = "downed" if target.downed else "fed"
 	target.perception_state = "helpless"
-	sim.emit_cue("feed.start", { "target_id": target.id, "pos": target.pos, "lethal": lethal })
+	target.tags["being_fed"] = 1   # seized: the rig plays the grab/drink pose, not a frozen idle
+	target.tags["pallor"] = 0
+	if sim.world != null:
+		sim.world.spill_blood(target.pos, 5)   # the puncture wound spills at the bite
+	sim.emit_cue("feed.start", { "target_id": target.id, "pos": target.pos, "lethal": lethal, "seize": true })
 
 func _tick_feeding(delta: float, sim) -> void:
 	var target: SimEntity = sim.get_entity(feeding_target_id) as SimEntity
@@ -678,6 +684,16 @@ func _tick_feeding(delta: float, sim) -> void:
 	feed_drained += gain
 	target.blood_left -= gain
 	heal_blood(gain)
+	# Visceral feeding: the victim pales tier-by-tier, the bite keeps bleeding into the SPILL grid, and
+	# the struggle fades as they empty. (pallor / feed_struggle are rig hooks; the blood is real.)
+	var drain_ratio: float = clampf(feed_drained / maxf(target.blood_yield, 1.0), 0.0, 1.2)
+	target.tags["pallor"] = clampi(int(drain_ratio * 5.0), 0, 5)
+	target.tags["feed_struggle"] = clampi(5 - int(drain_ratio * 5.0), 0, 5)
+	if sim.world != null and sim.tick % 10 == 0:
+		sim.world.spill_blood(target.pos, 2)
+	if holding_feed and not feed_brink and feed_drained >= target.blood_yield * 0.95:
+		feed_brink = true   # the Brink: one more pull tips spare into kill
+		sim.emit_cue("feed.brink", { "target_id": target.id, "pos": target.pos })
 	# Heartbeat / drain pulse cue (audio + vignette), distinct from the gulp window beat.
 	if feed_progress >= 0.2 and int(feed_progress * 10.0) % 7 == 0:
 		sim.emit_cue("feed.drain", { "target_id": target.id, "pos": target.pos, "magnitude": gain, "hunger": hunger })
@@ -700,6 +716,17 @@ func _finish_feed(sim, lethal: bool) -> void:
 		target.tags["player_body"] = true
 		target.tags["body_discovered"] = false
 		target.tags["fed_on"] = true
+		target.tags["pallor"] = 5
+		target.tags["being_fed"] = 0
+		if sim.world != null:
+			# Hemograph: a vectored arterial spray into the blood grid on the kill (no red oval).
+			var spray: Vector2 = target.pos - entity.pos
+			spray = spray.normalized() if spray.length() > 0.001 else Vector2.RIGHT.rotated(entity.facing)
+			sim.world.spill_blood(target.pos, 80)
+			for k in range(4):
+				var off: Vector2 = spray.rotated((float(k) - 1.5) * 0.22) * (16.0 + 16.0 * float(k))
+				sim.world.spill_blood(target.pos + off, 40 - k * 8)
+			sim.emit_cue("feed.kill.arterial", { "pos": target.pos, "dir": spray.angle() })
 		kills += 1
 		if target.innocent:
 			innocent_kills += 1
@@ -715,6 +742,8 @@ func _finish_feed(sim, lethal: bool) -> void:
 		target.tags["player_body"] = true
 		target.tags["body_discovered"] = false
 		target.tags["fed_on"] = true
+		target.tags["pallor"] = clampi(int(feed_drained / maxf(target.blood_yield, 1.0) * 4.0), 1, 4)
+		target.tags["being_fed"] = 0
 		humanity = min(10.0, humanity + 0.03)
 		sim.witnessed_act(target.pos, "feed", 1.0)
 		sim.emit_cue("feed.spare", { "target_id": target.id, "pos": target.pos, "blood": feed_drained, "gulp_bonus": gulp_bonus_vitae, "gulp_hits": gulp_hits })
@@ -725,6 +754,7 @@ func _finish_feed(sim, lethal: bool) -> void:
 	if target.resonance != "":
 		_apply_resonance(sim, target.resonance, target.blood_yield)
 	feed_drained = 0.0
+	feed_brink = false
 	_reset_gulp(0)
 
 
@@ -765,9 +795,12 @@ func _interrupt_feed(sim) -> void:
 	var target: SimEntity = sim.get_entity(feeding_target_id) as SimEntity
 	if target != null and not target.dead and not target.downed:
 		target.ai_state = "flee" if target.faction == "civ" else "wander"
+	if target != null:
+		target.tags["being_fed"] = 0
 	feeding_target_id = 0
 	feed_progress = 0.0
 	feed_drained = 0.0
+	feed_brink = false
 	holding_feed = false
 	_reset_gulp(0)
 	sim.emit_cue("feed.interrupt", { "pos": entity.pos })

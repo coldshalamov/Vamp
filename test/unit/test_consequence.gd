@@ -34,6 +34,13 @@ func test_objective_guides_the_player() -> void:
 	sim.queue_free()
 
 
+func test_first_hunt_teaches_feeding_first() -> void:
+	var sim := VCSim.new()
+	sim.new_game(3, "brujah")
+	assert_true(sim.current_objective().to_lower().contains("feed"), "a fresh night opens with the First Hunt feed lesson")
+	sim.queue_free()
+
+
 func test_contract_offer_and_complete() -> void:
 	var sim := VCSim.new()
 	sim.new_game(7, "brujah")

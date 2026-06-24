@@ -628,6 +628,13 @@ func _update_heat(delta: float) -> void:
 func current_objective() -> String:
 	if player == null or player.dead:
 		return "Rise from torpor"
+	# First Hunt onboarding: teach the core verbs before the city's systems take the wheel.
+	var fh := player.behaviour
+	if fh != null:
+		if int(fh.get("fed_count")) == 0:
+			return "FIRST HUNT — Drink: stalk a mortal and hold F beside them to feed"
+		if int(fh.get("kills")) == 0 and _has_hostile():
+			return "FIRST HUNT — Hunt: strike with Space, dash clear with Shift"
 	for e in entities:
 		if e != null and e.responder and not e.dead and String(e.perception_state) == "searching":
 			return "A hunter searches your trail — break line of sight"
@@ -642,6 +649,12 @@ func current_objective() -> String:
 		if maxb > 0.0 and float(pb.get("blood")) / maxb < 0.5:
 			return "Vitae runs low — stalk a mortal and feed (hold F)"
 	return "Hunt the night"
+
+func _has_hostile() -> bool:
+	for e in entities:
+		if e != null and not e.dead and e.kind == "npc" and e.hostile_to_player:
+			return true
+	return false
 
 func record_style(channel: String, weight: float) -> void:
 	if style_ledger != null:

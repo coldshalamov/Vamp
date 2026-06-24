@@ -11,11 +11,18 @@ const MAX_ROTATION := 2.5
 const FOLLOW_SPEED := 0.17
 const BASE_ZOOM := 2.4   # pull the camera in so the character reads as a character, not a speck
 
+# B4 — directional kick on melee connect. Added into offset after the noise shake each frame,
+# then decays to zero. Separate from trauma so the direction reads clearly.
+const KICK_DECAY := 6.0
+const KICK_MAG := 7.0         # pixels on a normal hit
+const KICK_MAG_CRIT := 14.0   # pixels on a crit
+
 @export var trauma: float = 0.0
 @export var push_scale: float = 1.0
 
 var _target_pos: Vector2 = Vector2.ZERO
 var _noise: FastNoiseLite = null
+var _kick: Vector2 = Vector2.ZERO   # B4 directional kick, decays per frame
 
 func _ready() -> void:
 	_noise = FastNoiseLite.new()
@@ -29,8 +36,11 @@ func _ready() -> void:
 func _register_cues() -> void:
 	if CueBus == null:
 		return
+	# B4 — dedicated handler reads dir/crit from the melee connect payload so the camera
+	# actually kicks in the attack direction. Registered separately from pounce.hit below
+	# so the pounce handler is not broken when hit.connect's payload shape differs.
 	CueBus.define("hit.connect", CueBus.Priority.COMBAT, {
-		"camera": _on_hit_cue,
+		"camera": _on_hit_connect_cue,
 		"duration_ms": 200,
 	})
 	CueBus.define("pounce.hit", CueBus.Priority.COMBAT, {
@@ -64,13 +74,16 @@ func _process(delta: float) -> void:
 	# Trauma shake
 	if CueBus != null and CueBus.reduced_motion:
 		trauma = 0.0
+		_kick = Vector2.ZERO
 	trauma = maxf(0.0, trauma - TRAUMA_DECAY * delta)
+	# B4 — directional kick decay: moves toward zero at KICK_DECAY units/sec
+	_kick = _kick.move_toward(Vector2.ZERO, KICK_DECAY * delta * maxf(1.0, _kick.length()))
 	if trauma > 0.0:
 		var shake: float = trauma * trauma
-		offset = _shake_offset(shake)
+		offset = _shake_offset(shake) + _kick
 		rotation = _shake_rotation(shake)
 	else:
-		offset = Vector2.ZERO
+		offset = _kick
 		rotation = 0.0
 
 	# Push-in recovery
@@ -97,6 +110,21 @@ func push_in(amount: float) -> void:
 	if CueBus != null and CueBus.reduced_motion:
 		return
 	push_scale = maxf(push_scale, 1.0 + amount)
+
+## B4 — melee connect: directional camera kick along attack direction + crit-scaled trauma.
+## Registered only to "hit.connect" so pounce.hit keeps the generic handler below.
+func _on_hit_connect_cue(payload: Dictionary) -> void:
+	if CueBus != null and CueBus.reduced_motion:
+		return
+	var is_crit: bool = bool(payload.get("crit", false))
+	var dir: Vector2 = payload.get("dir", Vector2.ZERO)
+	if dir.length_squared() < 0.01:
+		dir = Vector2.RIGHT
+	# Kick the camera in the attack direction — a short sharp jerk then noise-shake.
+	var mag: float = KICK_MAG_CRIT if is_crit else KICK_MAG
+	_kick += dir * mag
+	add_trauma(0.55 if is_crit else 0.35)
+	push_in((0.55 if is_crit else 0.35) * 0.08)
 
 func _on_hit_cue(payload: Dictionary) -> void:
 	var magnitude: float = payload.get("magnitude", 0.35)

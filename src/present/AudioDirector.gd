@@ -1,7 +1,7 @@
 ## AudioDirector.gd — the audio backend for the presentation layer (MASTER_PLAN Wave 4 #15-17).
 ##
 ## Owns the AudioServer bus graph (Master > Music / SFX / Voice / Ambient / UI) and is the single
-## sink CueBus routes sound through. Three responsibilities:
+## sink CueBus routes sound through. Four responsibilities:
 ##
 ##   1. BUS GRAPH + DUCKING — build the bus layout at runtime (so no .tres dependency) and duck
 ##      Music/Ambient under combat/critical stings, restoring to a stored baseline afterwards.
@@ -9,6 +9,8 @@
 ##      blips on hit/feed cues so the game is not silent without any audio files shipped.
 ##   3. FEEDING HEARTBEAT — a continuous procedural heartbeat whose BPM/intensity scale with hunger,
 ##      started on feed.start, updated on feed.drain, stopped on feed.kill/spare/interrupt.
+##   4. AMBIENT BED + FOOTSTEPS — a low drone (wind/hum/distant traffic) loops on the Ambient bus;
+##      footstep clicks are synthesised when move.sprint fires.
 ##
 ## This is a VIEW-side autoload: it never touches the Sim. It listens to CueBus.cue_emitted for the
 ## stateful heartbeat, and CueBus._play_audio() forwards one-shot/sting requests here. Everything is
@@ -48,6 +50,24 @@ var _hb_bpm: float = 60.0
 var _hb_intensity: float = 0.4          # 0..1 amplitude / "thump" weight
 var _hb_hunger: float = 1.0             # latched hunger (0..~5), seeds BPM/intensity
 
+# --- ambient bed voice ---
+var _amb_player: AudioStreamPlayer = null
+var _amb_playback = null                # AudioStreamGeneratorPlayback or null
+var _amb_phase: float = 0.0            # accumulates freely — the drone loops via wrapping
+
+# --- footstep voice ---
+# A dedicated voice so footsteps don't steal from the SFX round-robin pool.
+var _foot_player_l: AudioStreamPlayer = null   # panned left
+var _foot_player_r: AudioStreamPlayer = null   # panned right
+var _foot_pb_l = null
+var _foot_pb_r = null
+var _foot_job_l: Dictionary = {}
+var _foot_job_r: Dictionary = {}
+var _foot_next_left: bool = true       # alternates L/R each step
+var _foot_timer: float = 0.0          # seconds since last footstep click
+var _foot_active: bool = false        # true while move.sprint is live this frame
+const FOOT_INTERVAL := 0.38           # seconds between clicks at sprint cadence
+
 # Recognised one-shot sample ids → synth recipe. Anything else falls back to a soft generic blip.
 # freq = base pitch (Hz), dur = seconds, type = waveform shaping, gain = peak amplitude.
 const ONE_SHOTS := {
@@ -62,14 +82,20 @@ const ONE_SHOTS := {
 	"thud":    { "freq": 70.0,  "dur": 0.15, "type": "thump", "gain": 0.50 },   # body falls
 	"chime":   { "freq": 660.0, "dur": 0.22, "type": "blip",  "gain": 0.32 },   # level up
 	"shot":    { "freq": 230.0, "dur": 0.10, "type": "sting", "gain": 0.30 },   # blood bolt
+	"impact":  { "freq": 62.0,  "dur": 0.18, "type": "thump", "gain": 0.65 },   # melee hit.connect (normal)
+	"impact_crit": { "freq": 48.0, "dur": 0.26, "type": "thump", "gain": 0.82 }, # melee hit.connect (crit)
+	"kiss":    { "freq": 160.0, "dur": 0.20, "type": "gulp",  "gain": 0.55 },   # feed.gulp.perfect wet sting
 }
 
 
 func _ready() -> void:
 	_build_bus_graph()
+	_apply_saved_volumes()   # restore saved cfg levels BEFORE capturing baselines
 	_capture_baselines()
 	_build_sfx_pool()
 	_build_heartbeat_voice()
+	_build_ambient_voice()
+	_build_footstep_voices()
 	_connect_cuebus()
 	set_process(true)
 
@@ -108,6 +134,37 @@ func _set_bus_db(bus_name: String, db: float) -> void:
 		AudioServer.set_bus_volume_db(idx, db)
 
 
+## Public API called by SettingsMenu sliders at runtime and by _apply_saved_volumes at boot.
+## For duckable buses (Music, Ambient) we ALSO update _bus_baseline_db so _update_duck doesn't
+## overwrite the new level on the very next frame.
+func set_bus_volume_linear(bus_name: String, linear: float) -> void:
+	var db := linear_to_db(clampf(linear, 0.0, 1.0))
+	_set_bus_db(bus_name, db)
+	if bus_name in _duck_buses:
+		_bus_baseline_db[bus_name] = db
+
+
+## Read user://settings.cfg [audio] and push all five bus levels into AudioServer.
+## Called at boot (before _capture_baselines) so the first frame starts at the saved volume.
+func _apply_saved_volumes() -> void:
+	const CFG_PATH := "user://settings.cfg"
+	const SECTION := "audio"
+	var cfg := ConfigFile.new()
+	if cfg.load(CFG_PATH) != OK:
+		return
+	var bus_map := {
+		"master":  "Master",
+		"music":   "Music",
+		"sfx":     "SFX",
+		"voice":   "Voice",
+		"ambient": "Ambient",
+	}
+	var defaults := { "master": 1.0, "music": 0.8, "sfx": 1.0, "voice": 1.0, "ambient": 0.8 }
+	for key in bus_map:
+		var v: float = float(cfg.get_value(SECTION, key, defaults[key]))
+		set_bus_volume_linear(bus_map[key], v)
+
+
 # ----------------------------------------------------------------- voices
 
 func _make_generator_player(bus_name: String) -> AudioStreamPlayer:
@@ -134,6 +191,22 @@ func _build_heartbeat_voice() -> void:
 	_hb_player = _make_generator_player("Ambient")
 
 
+func _build_ambient_voice() -> void:
+	_amb_player = _make_generator_player("Ambient")
+	if _amb_player != null:
+		_amb_playback = _ensure_playback(_amb_player)
+
+
+func _build_footstep_voices() -> void:
+	# Two mono players, one per foot. Bus = SFX; subtle gain keeps them under combat SFX.
+	_foot_player_l = _make_generator_player("SFX")
+	_foot_player_r = _make_generator_player("SFX")
+	if _foot_player_l != null:
+		_foot_pb_l = _ensure_playback(_foot_player_l)
+	if _foot_player_r != null:
+		_foot_pb_r = _ensure_playback(_foot_player_r)
+
+
 # ----------------------------------------------------------------- CueBus wiring
 
 func _connect_cuebus() -> void:
@@ -143,11 +216,12 @@ func _connect_cuebus() -> void:
 	# cues drive it without needing a registered def.
 	if not CueBus.cue_emitted.is_connected(_on_cue):
 		CueBus.cue_emitted.connect(_on_cue)
-	# Register the one-shot audio modalities. define() MERGES keys, so this co-exists with the
-	# camera/vfx defs CameraDirector & VisualFX already registered for these events — match their
-	# priorities (both COMBAT) so the merged scalar is unchanged.
-	CueBus.define("hit.connect", CueBus.Priority.COMBAT, { "audio": "thump", "duration_ms": 200 })
-	CueBus.define("feed.gulp.perfect", CueBus.Priority.COMBAT, { "audio": "swallow", "duration_ms": 250 })
+	# Register audio modalities. define() MERGES keys, co-existing with camera/vfx defs.
+	# hit.connect: audio is handled crit-conditionally in _on_cue — no "audio" key here to avoid
+	# double-fire (cue_emitted fires _on_cue; define "audio" key would fire play_cue_audio on top).
+	CueBus.define("hit.connect", CueBus.Priority.COMBAT, { "duration_ms": 200 })
+	# feed.gulp.perfect: "kiss" sting handled in _on_cue for the same reason; keep priority registered.
+	CueBus.define("feed.gulp.perfect", CueBus.Priority.COMBAT, { "duration_ms": 250 })
 
 
 func _on_cue(event_id: String, payload: Dictionary) -> void:
@@ -158,6 +232,17 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 			_update_heartbeat(float(payload.get("hunger", _hb_hunger)))
 		"feed.kill", "feed.spare", "feed.interrupt":
 			_stop_heartbeat()
+		# hit.connect: crit-conditional impact thud (heavier on crit). Handled here not in define
+		# to read payload.crit without double-firing via the "audio" CueBus path.
+		"hit.connect":
+			var is_crit: bool = bool(payload.get("crit", false))
+			play_one_shot("impact_crit" if is_crit else "impact", payload)
+		# feed.gulp.perfect: wet "kiss" sting on a perfectly-timed gulp tap.
+		"feed.gulp.perfect":
+			play_one_shot("kiss", payload)
+		# move.sprint: trigger footstep cadence each sprint cue (rate-limited by _foot_timer).
+		"move.sprint":
+			_foot_active = true
 		# Procedural SFX coverage so the game isn't near-silent (no audio files shipped).
 		"attack.start":
 			play_one_shot("swish", payload)
@@ -286,6 +371,9 @@ func _process(delta: float) -> void:
 	_update_duck(delta)
 	_fill_one_shots()
 	_fill_heartbeat()
+	_fill_ambient()
+	_fill_footsteps(delta)
+	_foot_active = false   # reset per-frame sprint flag; move.sprint re-sets next frame if still running
 
 
 func _fill_one_shots() -> void:
@@ -334,6 +422,104 @@ func _fill_heartbeat() -> void:
 		_hb_phase += step / beat_len
 		if _hb_phase >= 1.0:
 			_hb_phase -= 1.0
+
+
+# ----------------------------------------------------------------- ambient bed
+
+## Low procedural drone: three detuned sine layers (wind-like hum) + a slow-beating sub oscillator
+## for city-night texture. Loops seamlessly — phase wraps mod 1.0 each frame.
+## Gain is intentionally quiet (0.16) so it sits under the heartbeat and other SFX.
+func _fill_ambient() -> void:
+	if _amb_playback == null:
+		if _amb_player != null and not _amb_player.playing:
+			_amb_playback = _ensure_playback(_amb_player)
+		if _amb_playback == null:
+			return
+	var frames: int = _amb_playback.get_frames_available()
+	if frames <= 0:
+		return
+	var step := 1.0 / MIX_RATE
+	for _i in range(frames):
+		var t := _amb_phase   # time within the drone cycle (wraps freely)
+		# Layer 1: low wind hum at ~55 Hz, very slow amplitude tremolo at 0.11 Hz
+		var tremolo1 := 0.5 + 0.5 * sin(TAU * 0.11 * t)
+		var layer1 := sin(TAU * 55.0 * t) * tremolo1 * 0.08
+		# Layer 2: detuned harmonic at ~82 Hz, slightly different tremolo phase
+		var tremolo2 := 0.5 + 0.5 * sin(TAU * 0.13 * t + 1.1)
+		var layer2 := sin(TAU * 82.0 * t) * tremolo2 * 0.05
+		# Layer 3: distant traffic/ventilation rumble — very low 28 Hz, slow beat at 0.07 Hz
+		var beat := 0.4 + 0.6 * sin(TAU * 0.07 * t)
+		var layer3 := sin(TAU * 28.0 * t) * beat * 0.06
+		var s := layer1 + layer2 + layer3
+		# Stereo width: slight L/R phase offset on layer2 gives the ambient a sense of space.
+		var s_l := s
+		var s_r := s + sin(TAU * 82.0 * (t + 0.003)) * tremolo2 * 0.03
+		_amb_playback.push_frame(Vector2(s_l, s_r))
+		_amb_phase += step
+		# Wrap at a long period (100 s) so sin() args don't drift into float imprecision.
+		if _amb_phase >= 100.0:
+			_amb_phase -= 100.0
+
+
+# ----------------------------------------------------------------- footsteps
+
+## Synthesise a single footstep click: a short broadband transient (filtered noise burst) with a
+## low-freq body thump underneath, panned full-left or full-right to alternate feet.
+## Stereo pan is achieved by pushing to one channel only in a mono-routing player.
+func _fill_footstep_job(pb, job: Dictionary, is_left: bool) -> Dictionary:
+	if pb == null or job.is_empty():
+		return job
+	var frames: int = pb.get_frames_available()
+	if frames <= 0:
+		return job
+	var dur: float = 0.055     # short transient
+	var t: float = job.get("t", 0.0)
+	var step := 1.0 / MIX_RATE
+	for _i in range(frames):
+		if t >= dur:
+			break
+		var x := clampf(t / dur, 0.0, 1.0)
+		var env := pow(1.0 - x, 3.0)                         # very fast decay
+		# Body thump (very low) + click (mid-high noise approximation via sum of primes)
+		var thump_s := sin(TAU * 68.0 * t) * env * 0.22
+		# Noise-like texture: sum of inharmonic sine partials (deterministic, no randf)
+		var click_s := (sin(TAU * 1400.0 * t) + sin(TAU * 2300.0 * t) * 0.6
+			+ sin(TAU * 3700.0 * t) * 0.3) * env * 0.10
+		var s := thump_s + click_s
+		# Pan: left foot → left channel only; right foot → right channel only (subtle, not hard-pan)
+		var sv := Vector2(s * 0.8, s * 0.2) if is_left else Vector2(s * 0.2, s * 0.8)
+		pb.push_frame(sv)
+		t += step
+	job["t"] = t
+	if t >= dur:
+		return {}   # done
+	return job
+
+
+func _fill_footsteps(delta: float) -> void:
+	# Advance timer; fire a click at the sprint cadence while _foot_active.
+	if _foot_active:
+		_foot_timer += delta
+		if _foot_timer >= FOOT_INTERVAL:
+			_foot_timer -= FOOT_INTERVAL
+			# Kick off a new footstep job on whichever foot is next.
+			if _foot_next_left:
+				if _foot_pb_l == null and _foot_player_l != null:
+					_foot_pb_l = _ensure_playback(_foot_player_l)
+				if _foot_pb_l != null:
+					_foot_job_l = { "t": 0.0 }
+			else:
+				if _foot_pb_r == null and _foot_player_r != null:
+					_foot_pb_r = _ensure_playback(_foot_player_r)
+				if _foot_pb_r != null:
+					_foot_job_r = { "t": 0.0 }
+			_foot_next_left = not _foot_next_left
+	else:
+		# No sprint this frame; don't advance timer so next sprint starts immediately.
+		_foot_timer = 0.0
+	# Fill active footstep jobs.
+	_foot_job_l = _fill_footstep_job(_foot_pb_l, _foot_job_l, true)
+	_foot_job_r = _fill_footstep_job(_foot_pb_r, _foot_job_r, false)
 
 
 # A "lub-dub" — two low thumps early in the beat, then silence. phase is 0..1 across one beat.

@@ -174,6 +174,7 @@ func tick_combat() -> void:
 				"knockback": def.knockback,
 				"lifesteal": def.lifesteal,
 				"hitstop": def.hitstop_ticks,
+				"melee": true,
 				"status": _first_status(def.applies_status),
 				"status_ticks": _status_ticks(def.applies_status)
 			})
@@ -183,6 +184,12 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 		return 0.0
 	var dmg: float = maxf(0.0, base_damage)
 	var dot := bool(opts.get("dot", false))
+	# THE ONE GUARD: dash i-frames (and the for_unkill / aus_premon buffs that ride on them) make
+	# the player phase through any single hit — projectile, AoE, the Maw, melee. A lingering DoT
+	# still ticks (a burn doesn't care that you dashed), so DoT bypasses the guard on purpose.
+	if target == player and not dot and target.behaviour != null and int(target.behaviour.get("iframes_remaining")) > 0:
+		emit_cue("dodge.iframe", { "pos": target.pos, "attacker_id": attacker.id if attacker != null else 0 })
+		return 0.0
 	if attacker == player and target.tags.has("damage_bonus"):
 		dmg *= 1.0 + float(target.tags.get("damage_bonus", 0.0))
 	if target.has_status("mark"):
@@ -205,12 +212,26 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 		crit = true
 		dmg *= crit_mult / 1.5
 	# Choleric resonance: +melee while the buff lasts (the "feed-on-rage" combat build).
+	var buff_lifesteal := 0.0
 	if attacker == player and player.behaviour != null and not dot:
 		var atk_buffs: Dictionary = player.behaviour.get("buffs")
 		var dt0 := String(opts.get("damage_type", "physical"))
 		if dt0 == "physical" or dt0 == "":
 			if atk_buffs.has("res_choleric"):
 				dmg *= 1.0 + float(atk_buffs["res_choleric"].get("melee", 0.25))
+			# Slice powers (Brujah/Nosferatu/Tremere) write flat "damage"/"lifesteal" buff keys that
+			# damage_entity previously ignored, leaving those powers no-ops. Sum the bonuses across
+			# active buffs (order-independent, so dictionary iteration order can't perturb the hash),
+			# then apply once.
+			var dmg_bonus := 0.0
+			var bkeys := atk_buffs.keys()
+			bkeys.sort()   # sum in a fixed order so float accumulation is deterministic
+			for bk in bkeys:
+				var brec: Dictionary = atk_buffs[bk]
+				dmg_bonus += float(brec.get("damage", 0.0))
+				buff_lifesteal += float(brec.get("lifesteal", 0.0))
+			if dmg_bonus != 0.0:
+				dmg *= 1.0 + dmg_bonus
 			var fs := int(player.behaviour.get("flow_stacks"))
 			if fs > 0:
 				dmg *= 1.0 + float(fs) * 0.08   # gulp-cancel flow rewards the dance
@@ -267,8 +288,10 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 		})
 	if attacker != null:
 		attacker.on_damage_dealt(dmg)
-		if float(opts.get("lifesteal", 0.0)) > 0.0:
-			attacker.heal_blood(dmg * float(opts.get("lifesteal", 0.0)))
+		# Slice lifesteal: the opts-driven weapon lifesteal plus any active "lifesteal" buff key.
+		var total_lifesteal := float(opts.get("lifesteal", 0.0)) + buff_lifesteal
+		if total_lifesteal > 0.0:
+			attacker.heal_blood(dmg * total_lifesteal)
 	target.on_damage_taken(dmg)
 	emit_cue(String(opts.get("cue", "damage.dealt")), {
 		"attacker_id": attacker.id if attacker != null else 0,
@@ -278,6 +301,18 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 		"crit": crit,
 		"damage_type": String(opts.get("damage_type", opts.get("dmgType", "physical"))),
 	})
+	# The beefy melee read on top of the lighter damage.dealt: micro hitstop freeze + spark (VisualFX),
+	# directional shake (CameraDirector), impact thud (AudioDirector). Only melee connects fire this.
+	if bool(opts.get("melee", false)):
+		var hit_dir := (target.pos - attacker.pos) if attacker != null else Vector2.RIGHT
+		hit_dir = hit_dir.normalized() if hit_dir.length() > 0.01 else (Vector2.RIGHT.rotated(attacker.facing) if attacker != null else Vector2.RIGHT)
+		emit_cue("hit.connect", {
+			"pos": target.pos,
+			"dir": hit_dir,
+			"crit": crit,
+			"hitstop": hitstop,
+			"kind": "melee",
+		})
 	if target.hp <= 0.0:
 		if meta != null and meta.try_nemesis_escape(target, self, opts):
 			return dmg
@@ -401,7 +436,7 @@ func witnessed_act(pos: Vector2, act_type: String, amount: float) -> void:
 	last_crime_tick = tick
 	last_provoke_tick = tick
 	last_seen_pos = pos
-	emit_cue("masquerade.broken", { "act": act_type, "witnesses": witnesses, "pos": pos, "heat": heat })
+	emit_cue("masquerade.broken", { "act": act_type, "witnesses": witnesses, "pos": pos, "heat": heat, "stars": heat_stars() })
 
 func add_heat(amount: float, reason: String = "") -> void:
 	var before := heat_stars()

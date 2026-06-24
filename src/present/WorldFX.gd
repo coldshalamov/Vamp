@@ -20,6 +20,16 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 	match event_id:
 		"attack.start":
 			_add({"type": "swing", "pos": pos, "rot": _facing_of(int(payload.get("entity_id", 0))), "t": 0.0, "dur": 0.24, "reach": 42.0})
+		# B4 — melee connect: a directional impact spark oriented along the attack direction.
+		# Larger and brighter on crit. WorldFX receives this via cue_emitted signal so it fires
+		# alongside VisualFX hitstop and CameraDirector kick without extra wiring.
+		"hit.connect":
+			var dir: Vector2 = payload.get("dir", Vector2.ZERO)
+			var is_crit: bool = bool(payload.get("crit", false))
+			var dur: float = 0.30 if is_crit else 0.22
+			# A directional burst: spark centered at impact pos, pushed slightly along dir
+			_add({"type": "impact_burst", "pos": pos, "dir": dir, "t": 0.0, "dur": dur,
+				"col": Color("ffcc88") if is_crit else Color("ffd2a0"), "crit": is_crit})
 		"damage.dealt":
 			_add({"type": "spark", "pos": pos, "t": 0.0, "dur": 0.22, "col": Color("ffd2a0"), "crit": bool(payload.get("crit", false))})
 		"damage.player":
@@ -33,8 +43,14 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 			_add({"type": "shock", "pos": pos, "t": 0.0, "dur": 0.36, "rmax": 105.0, "col": Color("e0883a")})
 		"power.potence.charge_hit":
 			_add({"type": "shock", "pos": pos, "t": 0.0, "dur": 0.30, "rmax": 60.0, "col": Color("e0a040")})
-		"player.heal", "feed.gulp.perfect":
+		"player.heal":
 			_add({"type": "ring", "pos": pos, "t": 0.0, "dur": 0.40, "rmax": 36.0, "col": Color("7fe0a0")})
+		# B2 — perfect gulp: Bleeding Occult Sigil contracts over the throat at pos.
+		# Registered for BOTH cue strings to survive the dot/underscore naming conflict
+		# (SimPlayer currently emits "feed.gulp.perfect"; contract says "feed.gulp_perfect").
+		"feed.gulp.perfect", "feed.gulp_perfect":
+			_add({"type": "sigil", "pos": pos, "t": 0.0, "dur": 0.58,
+				"rmax": 28.0, "col": Color("c0304a")})
 		"blood.drink":
 			_add({"type": "ring", "pos": pos, "t": 0.0, "dur": 0.32, "rmax": 22.0, "col": Color("c0304a")})
 		"blood.command":
@@ -185,6 +201,32 @@ func _draw() -> void:
 					var ang := TAU * float(k) / 6.0 + float(int(pos.x)) * 0.3
 					var d := rad + 14.0 * p
 					draw_line(pos + Vector2.RIGHT.rotated(ang) * rad, pos + Vector2.RIGHT.rotated(ang) * d, Color(col.r, col.g, col.b, a * 0.70), 2.0, true)
+			# B4 — directional impact burst on melee connect. Sparks fan outward along dir
+			# with a secondary burst in the opposite direction (recoil spray).
+			"impact_burst":
+				var is_crit: bool = bool(fx.get("crit", false))
+				var rad2 := 12.0 if is_crit else 7.0
+				var col2: Color = fx["col"]
+				var dir2: Vector2 = fx.get("dir", Vector2.RIGHT)
+				if dir2.length_squared() < 0.01:
+					dir2 = Vector2.RIGHT
+				# Core flash at impact
+				draw_circle(pos, rad2 * (0.9 + 0.5 * p), Color(1, 1, 1, a * 0.60))
+				# Directional sparks fan in a 90-degree cone along dir
+				var fan_count := 7 if is_crit else 5
+				for k in range(fan_count):
+					var spread := lerpf(-0.7, 0.7, float(k) / float(fan_count - 1))
+					var ang3 := dir2.angle() + spread
+					var d3 := (rad2 + 18.0 * p) * (0.65 + 0.35 * float(k % 2))
+					var from3 := pos + Vector2.RIGHT.rotated(ang3) * rad2 * 0.6
+					var to3 := pos + Vector2.RIGHT.rotated(ang3) * d3
+					draw_line(from3, to3, Color(col2.r, col2.g, col2.b, a * 0.85), 2.2 if is_crit else 1.6, true)
+				# Recoil sparks opposite dir (smaller)
+				for k in range(3):
+					var spread2 := lerpf(-0.35, 0.35, float(k) / 2.0)
+					var ang4 := dir2.angle() + PI + spread2
+					var d4 := (rad2 * 0.5 + 10.0 * p)
+					draw_line(pos, pos + Vector2.RIGHT.rotated(ang4) * d4, Color(col2.r, col2.g, col2.b, a * 0.45), 1.4, true)
 			"shock":
 				var rr := float(fx["rmax"]) * _ease_out(p)
 				var col: Color = fx["col"]
@@ -211,6 +253,11 @@ func _draw() -> void:
 				_draw_cloud(fx, p, a)
 			"splash":
 				_draw_splash(fx, p, a)
+			# B2 — Bleeding Occult Sigil: a contracting occult circle with radial glyphs
+			# that contracts inward toward pos (the throat) as the kiss "lands."
+			# Pure draw-math — no random, no sim reads. Deterministic for a given p.
+			"sigil":
+				_draw_sigil(fx, p, a)
 
 
 func _draw_shards(fx: Dictionary, p: float, a: float, count: int, distance: float) -> void:
@@ -272,3 +319,34 @@ func _damage_color(damage_type: String) -> Color:
 func _ease_out(x: float) -> float:
 	x = clampf(x, 0.0, 1.0)
 	return 1.0 - pow(1.0 - x, 3.0)
+
+
+## B2 — Bleeding Occult Sigil: a contracting blood-red occult circle with radial rune-strokes
+## that collapses inward toward pos (the throat) over the gulp duration.
+## No random calls — all geometry is pure deterministic math on p, k, pos.
+## Contracts from rmax down to 0 as p goes 0 -> 1, creating the "kiss lands" convergence.
+func _draw_sigil(fx: Dictionary, p: float, a: float) -> void:
+	var pos: Vector2 = fx["pos"]
+	var col: Color = fx["col"]
+	var rmax: float = float(fx["rmax"])
+	# The ring contracts inward: radius starts at rmax and shrinks to 0 as p approaches 1.
+	# ease_in so it accelerates into the kiss.
+	var contract_p: float = p * p   # ease-in
+	var r: float = rmax * (1.0 - contract_p)
+	if r < 1.0:
+		return
+	# Outer occult ring — thick, bleeds outward
+	draw_arc(pos, r, 0, TAU, 40, Color(col.r, col.g, col.b, a * 0.88), 3.2 * (1.0 - p) + 0.8, true)
+	# Inner ring — thinner, slightly offset rotation for depth
+	draw_arc(pos, r * 0.72, 0, TAU, 32, Color(col.r, col.g, col.b, a * 0.52), 1.6, true)
+	# Radial rune-strokes: 8 spokes connecting outer to inner ring, like a sigil wheel.
+	var spoke_count := 8
+	for k in range(spoke_count):
+		var ang := TAU * float(k) / float(spoke_count) + p * 0.8   # slow rotation as it contracts
+		var outer := pos + Vector2.RIGHT.rotated(ang) * r
+		var inner := pos + Vector2.RIGHT.rotated(ang + 0.22) * r * 0.72
+		draw_line(outer, inner, Color(col.r, col.g, col.b, a * 0.72), 1.8, true)
+	# Heartbeat dot at center — pulses brighter as sigil contracts
+	var core_r: float = 3.0 * contract_p
+	if core_r > 0.5:
+		draw_circle(pos, core_r, Color(1.0, 0.55, 0.65, a * 0.90))

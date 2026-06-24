@@ -32,6 +32,8 @@ func _register_cues() -> void:
 		"vfx": _on_damage_player,
 		"duration_ms": 400,
 	})
+	# B4 — hit.connect fires hitstop freeze here; directional shake is in CameraDirector.
+	# Both register under the same event_id; CueBus.define() MERGES modality keys so both fire.
 	CueBus.define("hit.connect", CueBus.Priority.COMBAT, {
 		"vfx": _on_hit_connect,
 		"duration_ms": 200,
@@ -61,9 +63,17 @@ func _register_cues() -> void:
 		"vfx": _on_feed_gulp_window,
 		"duration_ms": 250,
 	})
+	# B2 — SimPlayer currently emits "feed.gulp.perfect" (dot). The CONTRACT specifies
+	# "feed.gulp_perfect" (underscore). Register BOTH so this layer fires regardless of
+	# which name the sim team ultimately settles on. The director should reconcile the
+	# cue string with the sim team. See CROSS-TEAM CONFLICT note in return summary.
 	CueBus.define("feed.gulp.perfect", CueBus.Priority.COMBAT, {
 		"vfx": _on_feed_gulp_perfect,
-		"duration_ms": 250,
+		"duration_ms": 600,
+	})
+	CueBus.define("feed.gulp_perfect", CueBus.Priority.COMBAT, {
+		"vfx": _on_feed_gulp_perfect,
+		"duration_ms": 600,
 	})
 	CueBus.define("feed.gulp.miss", CueBus.Priority.GAMEPLAY, {
 		"vfx": _on_feed_gulp_miss,
@@ -86,6 +96,15 @@ func _register_cues() -> void:
 	CueBus.define("power.unlocked", CueBus.Priority.CRITICAL, {
 		"vfx": _on_power_unlocked,
 		"duration_ms": 1400,
+	})
+	# B5 — kill vs spare distinct reads
+	CueBus.define("feed.kill", CueBus.Priority.COMBAT, {
+		"vfx": _on_feed_kill,
+		"duration_ms": 450,
+	})
+	CueBus.define("feed.spare", CueBus.Priority.GAMEPLAY, {
+		"vfx": _on_feed_spare,
+		"duration_ms": 350,
 	})
 
 func _create_flash_overlay() -> void:
@@ -198,8 +217,10 @@ func _world_to_screen(world_pos: Vector2) -> Vector2:
 func _on_damage_dealt(payload: Dictionary) -> void:
 	var amount: float = payload.get("amount", 0.0)
 	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
-	var is_crit: bool = amount > 20.0
-	spawn_floating_text(pos, "%.0f" % amount, Color("#ffaaaa") if is_crit else Color("#ffffff"), is_crit)
+	# B19 — size/color from the real crit bool in the payload, NOT from amount > 20.
+	var is_crit: bool = bool(payload.get("crit", false))
+	var col: Color = Color("#ffdd88") if is_crit else Color("#ffffff")
+	spawn_floating_text(pos, "%.0f" % amount, col, is_crit)
 
 func _on_damage_player(payload: Dictionary) -> void:
 	var amount: float = payload.get("amount", 0.0)
@@ -207,8 +228,19 @@ func _on_damage_player(payload: Dictionary) -> void:
 	spawn_floating_text(pos, "%.0f" % amount, Color("#ff6a6a"), false)
 	flash_screen(Color("#ff0000"), 0.08)
 
-func _on_hit_connect(_payload: Dictionary) -> void:
-	set_time_scale(0.1, 0.033)
+## B4 — MELEE CONNECT hitstop freeze (present-only, via Engine.time_scale).
+## Micro-pause: ~3 frames at 60fps. Crit gets a slightly longer snap.
+## WorldFX draws the spark (via cue_emitted signal). CameraDirector kicks the camera.
+## All three modalities fire together because CueBus.define() merges handlers.
+## Flash is crit-only to avoid strobing on normal-hit flurries.
+func _on_hit_connect(payload: Dictionary) -> void:
+	var is_crit: bool = bool(payload.get("crit", false))
+	# Hitstop: brief Engine.time_scale dip. ~0.05s at scale 0.05 ≈ 3 frames of freeze.
+	var freeze_dur: float = 0.07 if is_crit else 0.05
+	set_time_scale(0.05, freeze_dur)
+	# Screen flash: crit only — avoids strobe on flurries. The spark handles normal hits.
+	if is_crit:
+		flash_screen(Color(1.0, 0.88, 0.72, 1.0), 0.07)
 
 func _on_power_cast(payload: Dictionary) -> void:
 	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
@@ -228,10 +260,26 @@ func _on_npc_flinch(payload: Dictionary) -> void:
 	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
 	spawn_floating_text(pos + Vector2(0, -26), "!", Color("#cfe6ff"), false)
 
+## B21 — masquerade flash color/intensity scales CONTINUOUSLY with stars (0-6).
+## Low stars (1-2): a muted amber warning. High stars (5-6): a blinding crimson alarm.
+## flash_screen() drives alpha from `duration * 3.0` (clamped 0.2-1.0); duration itself
+## scales with stars so 1-star is a brief dim tap and 6-star is a long searing blast.
 func _on_masquerade_broken(payload: Dictionary) -> void:
-	var stars: int = payload.get("stars", 0)
-	var color := Color("#f0d060") if stars < 3 else Color("#ff2030")
-	flash_screen(color, 0.2)
+	var stars: int = clampi(int(payload.get("stars", 0)), 0, 6)
+	# t: 0.0 = 0 stars, 1.0 = 6 stars
+	var t: float = float(stars) / 6.0
+	# Color lerps from muted amber through gold to hot red as stars rise.
+	var low_col := Color(0.83, 0.63, 0.13)   # dim amber (0-2 stars)
+	var mid_col := Color(0.94, 0.82, 0.38)   # gold (3 stars)
+	var hi_col  := Color(1.0,  0.13, 0.19)   # full alarm red (6 stars)
+	var color: Color
+	if t < 0.5:
+		color = low_col.lerp(mid_col, t * 2.0)
+	else:
+		color = mid_col.lerp(hi_col, (t - 0.5) * 2.0)
+	# Duration scales 0.07 (1-star) to 0.38 (6-star); flash_screen derives alpha from it.
+	var duration: float = lerpf(0.07, 0.38, t)
+	flash_screen(color, duration)
 
 func _on_feed_gulp_window(payload: Dictionary) -> void:
 	# The "tap now" beat — a cyan prompt over the victim telegraphing the timing window.
@@ -239,12 +287,37 @@ func _on_feed_gulp_window(payload: Dictionary) -> void:
 	spawn_floating_text(pos + Vector2(0, -34), "GULP", Color("#6fd6e0"), false)
 
 
+## B2 — PERFECT GULP: present-only slow-mo time-dilation pulse + deep crimson flash.
+## The contracting Bleeding Occult Sigil is rendered by WorldFX (world-space, throat position).
+## Engine.time_scale is present-only — Sim ticks are fixed and unaffected.
+## No sim.time_scale write anywhere in this handler.
 func _on_feed_gulp_perfect(payload: Dictionary) -> void:
 	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
 	var bonus: float = payload.get("bonus", 0.0)
-	spawn_floating_text(pos + Vector2(0, -26), "+%.0f" % bonus, Color("#f0c040"), true)
-	set_time_scale(0.45, 0.08)   # brief slowmo reward (present-only; Sim ticks fixed)
-	flash_screen(Color("#3a1010"), 0.05)
+	# Time-dilation pulse: deep slow then snap back. Creates the "kiss lands" feel.
+	# Two-phase: plunge to 0.12 for the punch-in, then recover to 0.55 for the linger.
+	set_time_scale(0.12, 0.06)    # punch-in freeze (present-only Engine.time_scale)
+	# A deep blood-red flash blooms then fades — warmth of the kiss.
+	flash_screen(Color(0.55, 0.04, 0.12, 1.0), 0.22)
+	# Brief amber number for the bonus vitae (sim already emits the correct amount).
+	if bonus > 0.0:
+		spawn_floating_text(pos + Vector2(0, -32), "+%.0f" % bonus, Color("#f0c040"), true)
+	# A softer second wave of time-dilation — the linger after the snap.
+	# Implemented as a tween on Engine.time_scale so it doesn't contend with set_time_scale's
+	# await. We start a separate coroutine so this returns immediately.
+	_gulp_linger_pulse()
+
+
+## Present-only linger pulse after perfect gulp. Fires after set_time_scale's freeze ends.
+## Uses Engine.time_scale only — never sim.time_scale.
+## process_always:true on the timer ensures real-time measurement regardless of time_scale.
+func _gulp_linger_pulse() -> void:
+	if CueBus != null and CueBus.reduced_motion:
+		return
+	# Wait 0.09 real seconds (process_always bypasses Engine.time_scale scaling on the timer)
+	# so the linger phase starts just as the punch-in freeze snaps back.
+	await get_tree().create_timer(0.09, true).timeout
+	set_time_scale(0.55, 0.18)
 
 
 func _on_feed_gulp_miss(payload: Dictionary) -> void:
@@ -276,3 +349,19 @@ func _on_power_unlocked(payload: Dictionary) -> void:
 	var slot: int = int(payload.get("slot", 0))
 	flash_screen(Color("#2a1838"), 0.35)
 	show_caption("NEW POWER — %s  [key %d]" % [nm.to_upper(), slot])
+
+
+## B5 — feed.kill: a final dark pulse — something mortal just ended.
+## Deep shadow-black wash, brief and cold. The predator has crossed a line.
+func _on_feed_kill(payload: Dictionary) -> void:
+	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
+	flash_screen(Color(0.02, 0.00, 0.04, 1.0), 0.28)   # near-black shadow pulse
+	spawn_floating_text(pos + Vector2(0, -38), "X", Color(0.55, 0.08, 0.14), true)
+
+
+## B5 — feed.spare: a softer release — the predator pulled back. A breath of silver-blue.
+## Lighter than kill: relief, not finality.
+func _on_feed_spare(payload: Dictionary) -> void:
+	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
+	flash_screen(Color(0.18, 0.22, 0.30, 1.0), 0.14)   # cool silver-blue release
+	spawn_floating_text(pos + Vector2(0, -38), "~", Color(0.65, 0.78, 0.90), false)

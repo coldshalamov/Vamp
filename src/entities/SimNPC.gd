@@ -45,6 +45,11 @@ var path: Array[Vector2] = []
 var path_index: int = 0
 var path_ticks: int = 0
 var _wander_ticks: int = 0
+# Search brain: LKP-anchored hunt that reads where the player WAS, not where they are.
+var _search_mode: int = -1        # -1 = uninitialised; 0 sweep, 1 investigate, 2 lose-the-trail
+var _search_target: Vector2 = Vector2.ZERO
+var _search_phase_ticks: int = 0
+var _search_cued: bool = false
 
 static func configure(e: SimEntity, type_id: String, sim, opts: Dictionary = {}) -> SimEntity:
 	var preset: Dictionary = PRESETS.get(type_id, PRESETS["ped"])
@@ -127,9 +132,13 @@ func step(delta: float, sim) -> void:
 			entity.perception_state = "combat"
 		elif entity.search_ticks > 0 and entity.ai_state in ["chase", "attack", "search"]:
 			entity.search_ticks -= 1
+			if entity.ai_state != "search":
+				_begin_search()   # freshly lost the player — re-roll the hunt behavior
 			entity.ai_state = "search"
 			entity.perception_state = "searching"
 		elif entity.responder:
+			if entity.ai_state != "search":
+				_begin_search()
 			entity.ai_state = "search"
 			entity.perception_state = "searching"
 	if entity.ai_state == "wander" and sees_player:
@@ -138,9 +147,7 @@ func step(delta: float, sim) -> void:
 		"wander":
 			_wander(delta, sim)
 		"investigate", "search":
-			_move_toward(entity.last_seen_pos, delta, sim, 0.75)
-			if entity.pos.distance_to(entity.last_seen_pos) < 28.0 and not sees_player:
-				entity.search_ticks = max(0, entity.search_ticks - 6)
+			_search(delta, sim, sees_player)
 		"guard":
 			pass
 		"follow":
@@ -185,7 +192,7 @@ func on_damage_taken(_amount: float) -> void:
 		entity.perception_state = "combat"
 
 func state_hash() -> int:
-	var h := hash([snapped(speed, 0.001), snapped(threat, 0.001), snapped(wander_target.x, 0.001), snapped(wander_target.y, 0.001), _wander_ticks, path_index, path_ticks])
+	var h := hash([snapped(speed, 0.001), snapped(threat, 0.001), snapped(wander_target.x, 0.001), snapped(wander_target.y, 0.001), _wander_ticks, path_index, path_ticks, _search_mode, snapped(_search_target.x, 0.001), snapped(_search_target.y, 0.001), _search_phase_ticks, _search_cued])
 	for p in path:
 		h = hash([h, snapped(p.x, 0.001), snapped(p.y, 0.001)])
 	return h
@@ -250,6 +257,77 @@ func _chase(delta: float, sim) -> void:
 		return
 	_move_toward(p.pos, delta, sim, 1.0)
 
+## Re-roll the hunt behavior the moment the player is freshly lost. Deterministic: the mode is
+## chosen from a per-search draw (the LCG), not from wall-clock or randf.
+func _begin_search() -> void:
+	_search_mode = -1
+	_search_phase_ticks = 0
+	_search_cued = false
+
+## The "hunts where you WERE" brain. Reads the last-known-position (LKP) and runs one of three
+## legible behaviors. Each emits "ai.search" so a search marker can render at the point of interest.
+func _search(delta: float, sim, _sees_player: bool) -> void:
+	var lkp: Vector2 = entity.last_seen_pos
+	# First tick of a fresh search: pick a behavior off the seeded stream and lock its target.
+	if _search_mode < 0:
+		# Investigate a body/blood the hunter passed near; otherwise sweep the LKP, or — when the
+		# trail has run cold (few search_ticks left) — widen out and prepare to abandon.
+		var body: SimEntity = _nearest_evidence(sim, lkp)
+		if entity.search_ticks <= 60:
+			_search_mode = 2   # lose-the-trail: widen, then give up
+			var spread: float = (float(int(sim.draw_index(360))) / 360.0) * TAU
+			_search_target = lkp + Vector2.RIGHT.rotated(spread) * (140.0 + float(int(sim.draw_index(80))))
+		elif body != null:
+			_search_mode = 1   # investigate nearby evidence
+			_search_target = body.pos
+		else:
+			_search_mode = 0   # move to LKP and sweep a vision cone
+			_search_target = lkp
+		_search_phase_ticks = 0
+		# Emit the search cue once per behavior so a marker can render at the point of interest.
+		if not _search_cued:
+			_search_cued = true
+			sim.emit_cue("ai.search", { "entity_id": entity.id, "pos": _search_target, "mode": _search_mode, "faction": entity.faction })
+
+	_search_phase_ticks += 1
+	match _search_mode:
+		0:
+			# (a) SWEEP — drive to the LKP, then pan the facing across a cone to re-acquire.
+			if entity.pos.distance_to(_search_target) >= 26.0:
+				_move_toward(_search_target, delta, sim, 0.78)
+			else:
+				# Arrived: stand and sweep a vision cone (deterministic sine pan off the tick).
+				entity.vel = Vector2.ZERO
+				var sweep: float = sin(float(_search_phase_ticks) * 0.06) * 1.15
+				var base_face: float = (lkp - entity.pos).angle() if entity.pos.distance_to(lkp) > 4.0 else entity.facing
+				entity.facing = base_face + sweep
+				entity.search_ticks = max(0, entity.search_ticks - 1)
+		1:
+			# (b) INVESTIGATE — go to the body/blood the player left, linger, then fall back to LKP.
+			if entity.pos.distance_to(_search_target) >= 26.0:
+				_move_toward(_search_target, delta, sim, 0.7)
+			else:
+				entity.vel = Vector2.ZERO
+				if _search_phase_ticks > 70:
+					_search_mode = 0          # nothing here — resume sweeping the LKP
+					_search_target = lkp
+					_search_phase_ticks = 0
+				else:
+					entity.search_ticks = max(0, entity.search_ticks - 1)
+		_:
+			# (c) LOSE-THE-TRAIL — widen to a guessed point, then bleed off search and abandon.
+			if entity.pos.distance_to(_search_target) >= 30.0 and _search_phase_ticks < 150:
+				_move_toward(_search_target, delta, sim, 0.85)
+			else:
+				entity.vel = Vector2.ZERO
+			entity.search_ticks = max(0, entity.search_ticks - 4)
+
+## Nearest spilled-blood pool or downed body near the LKP, so the hunter investigates real evidence
+## the player left behind. Returns null when nothing notable is close.
+func _nearest_evidence(sim, around: Vector2) -> SimEntity:
+	return sim.nearest_entity(around, 130.0, func(e: SimEntity) -> bool:
+		return e != entity and not e.dead and e.kind == "npc" and (e.downed or e.ai_state == "downed")) as SimEntity
+
 func _attack(delta: float, sim) -> void:
 	var p: SimEntity = sim.player
 	var dist := entity.pos.distance_to(p.pos)
@@ -258,6 +336,12 @@ func _attack(delta: float, sim) -> void:
 		return
 	entity.facing = (p.pos - entity.pos).angle()
 	if entity.attack_cooldown <= 0 and entity.attack_damage > 0.0:
+		# Gun archetypes (pistol/rifle) fire a real, dodgeable projectile down-range instead of an
+		# instant hitscan — the dash now beats a bullet by stepping out of its path.
+		if _is_gun_npc():
+			_fire_at_player(sim, p)
+			entity.attack_cooldown = 55
+			return
 		var damage := entity.attack_damage
 		if p.behaviour != null and int(p.behaviour.get("iframes_remaining")) > 0:
 			damage = 0.0
@@ -266,6 +350,37 @@ func _attack(delta: float, sim) -> void:
 			if bool(entity.tags.get("elite_vampiric", false)):
 				entity.hp = minf(entity.max_hp, entity.hp + damage * 0.35)
 		entity.attack_cooldown = 55 if entity.attack_range > 80.0 else 42
+
+## True for ranged gun NPCs (cop/swat/hunter/elder/gunner/thrall) — pistol or rifle armed.
+func _is_gun_npc() -> bool:
+	var weapon := String(entity.tags.get("weapon", ""))
+	return weapon == "pistol" or weapon == "rifle"
+
+## Spawn a visible bullet from the muzzle toward the player. Faction-tagged so SimProjectile resolves
+## it against the player (mirrors the player-fired shot path). Deterministic muzzle scatter via the LCG.
+func _fire_at_player(sim, p: SimEntity) -> void:
+	var to_player := p.pos - entity.pos
+	var aim := to_player.angle() if to_player.length_squared() > 0.01 else entity.facing
+	# Tiny deterministic scatter so distant fire is dodgeable, not pinpoint; rifles are tighter.
+	var spread := 0.05 if String(entity.tags.get("weapon", "")) == "rifle" else 0.09
+	aim += (sim.draw_float() - 0.5) * 2.0 * spread
+	var shot_dir := Vector2.RIGHT.rotated(aim)
+	entity.facing = aim
+	var speed := 560.0 if String(entity.tags.get("weapon", "")) == "rifle" else 500.0
+	var start := entity.pos + shot_dir * (entity.radius + 8.0)
+	sim.spawn_projectile(start, shot_dir * speed, {
+		"owner_id": entity.id,
+		"faction": entity.faction,
+		"kind": "bullet",
+		"damage": entity.attack_damage,
+		"radius": 4.0,
+		"life_ticks": 110,
+		"status": "poison" if bool(entity.tags.get("elite_venom", false)) else "",
+		"status_ticks": 180 if bool(entity.tags.get("elite_venom", false)) else 0,
+		"status_dps": 1.6 if bool(entity.tags.get("elite_venom", false)) else 0.0,
+		"cue": "damage.player",
+		"damage_type": "physical",
+	})
 
 func _attack_npc(target: SimEntity, sim) -> void:
 	entity.facing = (target.pos - entity.pos).angle()

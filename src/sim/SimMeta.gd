@@ -436,6 +436,75 @@ func effective_power_cooldown(power_id: String) -> int:
 	var def: Dictionary = Catalog.POWERS.get(Catalog.canonical_power_id(power_id), {})
 	return max(1, roundi(float(def.get("cooldown", 60)) * float(derived.get("cooldownMult", 1.0))))
 
+# ---------------------------------------------------------------------------------------------
+# CLAN KEYSTONES (B13) — the three slice clans play differently at the VERB level. Each keystone
+# below is a real RUNTIME RULE-CHANGE (like bs_key halving cost in effective_power_cost), not a
+# stat node. The action paths (SimPlayer.cast_power / _try_attack / feed verdict, Sim damage/CC)
+# READ these deterministic predicates and change behaviour. A keystone is "owned" when its node
+# is allocated in the tree (tree_nodes) AND the player is of that clan — clan identity is the gate
+# so the keystone is genuinely a clan signature, not a generic node. All pure tree/clan reads:
+# nothing here touches the RNG, the clock, or state_hash, so determinism is preserved.
+
+const BLOOD_RAGE_DAMAGE_MULT := 1.40   # Brujah pot_key: +40% melee while raging
+const BLOOD_RAGE_UPKEEP := 1.8         # vitae/sec drained as the cost of holding the Beast open
+const SHADOW_KILL_CLOAK_TICKS := 120   # Nosferatu obf_key: ~2s cloaked after a stealth feed-kill
+
+func has_keystone(node_id: String) -> bool:
+	return int(tree_nodes.get(node_id, 0)) > 0
+
+# --- Brujah BLOOD RAGE (pot_key): frenzy is an opt-in brawl mode. Raging trades the discipline
+#     hotbar + a vitae drip for a damage multiplier and crowd-control immunity. ----------------
+func blood_rage_unlocked() -> bool:
+	return clan_id == "brujah" and has_keystone("pot_key")
+
+## TRUE only while the keystone is owned AND the Beast is loose. The attack/CC paths read this.
+func blood_rage_active(frenzied: bool) -> bool:
+	return frenzied and blood_rage_unlocked()
+
+## Melee multiplier applied on top of derived meleeDmg while raging (1.0 otherwise). Read in the
+## damage path. Deterministic constant — no draw.
+func blood_rage_damage_mult(frenzied: bool) -> float:
+	return BLOOD_RAGE_DAMAGE_MULT if blood_rage_active(frenzied) else 1.0
+
+## While raging, the Brujah ignores stun/fear/knockback — read by apply_status / mesmerize / fear.
+func blood_rage_cc_immune(frenzied: bool) -> bool:
+	return blood_rage_active(frenzied)
+
+## The cost side of the toggle: raging blocks Disciplines (the cast verb refuses) and drips vitae.
+## cast_power reads blood_rage_blocks_disciplines(); _tick_buffs/_update_frenzy reads the upkeep.
+func blood_rage_blocks_disciplines(frenzied: bool) -> bool:
+	return blood_rage_active(frenzied)
+
+func blood_rage_upkeep(frenzied: bool) -> float:
+	return BLOOD_RAGE_UPKEEP if blood_rage_active(frenzied) else 0.0
+
+# --- Nosferatu ONE WITH SHADOW (obf_key): a stealth feed-kill keeps you cloaked instead of
+#     breaking it. The feed-kill verdict reads keeps_cloak_on_kill() and, if true, re-arms cloak
+#     for shadow_kill_cloak_ticks() instead of clearing it. -------------------------------------
+func stealth_kill_keeps_cloak() -> bool:
+	return clan_id == "nosferatu" and has_keystone("obf_key")
+
+func shadow_kill_cloak_ticks() -> int:
+	return SHADOW_KILL_CLOAK_TICKS if stealth_kill_keeps_cloak() else 0
+
+# --- Tremere VITAE ALCHEMY (bs_key): blood costs are already halved in effective_power_cost.
+#     This rule lets the cast verb proceed when vitae is short by paying the shortfall as
+#     aggravated HP — "the other half drains from HP". cast_power reads cast_hp_shortfall():
+#     if blood < cost but blood + that HP can cover it, deduct the blood it has, deal the rest as
+#     aggravated HP, and allow the cast. Pure arithmetic on the (already keystone-discounted) cost.
+func cast_from_hp_unlocked() -> bool:
+	return clan_id == "tremere" and has_keystone("bs_key")
+
+## HP (aggravated) to pay so a cast can fire when vitae is short. 0 when the rule is off, when
+## blood already covers the cost, or when even HP can't (the caller still gates lethality).
+func cast_hp_shortfall(power_id: String, available_blood: float) -> float:
+	if not cast_from_hp_unlocked():
+		return 0.0
+	var cost := effective_power_cost(power_id)
+	if available_blood >= cost:
+		return 0.0
+	return maxf(0.0, cost - maxf(0.0, available_blood))
+
 func respec_tree(sim = null) -> int:
 	var refund := 0
 	for id in tree_nodes:
@@ -1160,7 +1229,11 @@ func try_nemesis_escape(target: SimEntity, sim, opts: Dictionary = {}) -> bool:
 		return false
 	if not (target.faction == "inquis" or target.type_id in ["hunter", "elder"]):
 		return false
-	var force := bool(opts.get("force_nemesis", false)) or bool(target.tags.get("force_nemesis", false))
+	# B14: the slice's herald (sire's hunter / tutorial boss) is the player's FIRST named foe — it
+	# ALWAYS flees its first defeat. Tagging the spawned entity tags["herald"]=true (done by the
+	# slice spawn) is the whole "trigger" — the rule (force + telegraphed exit) lives here.
+	var is_herald := bool(target.tags.get("herald", false))
+	var force := is_herald or bool(opts.get("force_nemesis", false)) or bool(target.tags.get("force_nemesis", false))
 	if not force and _draw_float(sim) >= 0.40:
 		return false
 	var dtype := String(opts.get("damage_type", opts.get("dmgType", "physical")))
@@ -1184,11 +1257,35 @@ func try_nemesis_escape(target: SimEntity, sim, opts: Dictionary = {}) -> bool:
 	target.hostile_to_player = false
 	target.tags["nemesis_escaped"] = true
 	target.tags["no_body"] = true
+	# Telegraphed exit: flag the flee so presentation paints a legible "they're getting away" exit
+	# (a marker / bark) and the herald can be lured toward the dawn sun-patch instead of just blinking out.
+	target.tags["telegraph_exit"] = true
+	target.tags["flee_from"] = sim.player.pos if sim.player != null else target.pos
+	if is_herald:
+		target.tags["herald_fled"] = true
 	stats["nemesisEscapes"] = int(stats.get("nemesisEscapes", 0)) + 1
 	add_legend(8 + rank * 2, sim, "nemesis_escape")
 	progress_reveal("nemesis", sim)
-	sim.emit_cue("nemesis.escaped", { "name": rec["name"], "rank": rank, "scar": rec["scar"], "resistType": dtype, "entity_id": target.id, "pos": target.pos })
+	sim.emit_cue("nemesis.escaped", { "name": rec["name"], "rank": rank, "scar": rec["scar"], "resistType": dtype, "entity_id": target.id, "pos": target.pos, "herald": is_herald })
 	return true
+
+## B14 trigger — call from the damage path BEFORE lethality: when the herald is wounded past a
+## threshold (default 35% HP) it flees scarred while still alive, rather than waiting for a killing
+## blow. Returns true once it has fired (one-shot, guarded by the herald_fled tag so repeated hits
+## don't re-trigger). Deterministic: try_nemesis_escape's only draws are name/scar rolls.
+func wound_herald_to_flee(target: SimEntity, sim, opts: Dictionary = {}) -> bool:
+	if target == null or sim == null or target.dead:
+		return false
+	if not bool(target.tags.get("herald", false)):
+		return false
+	if bool(target.tags.get("herald_fled", false)) or target.tags.has("nemesis_name"):
+		return false
+	var threshold := float(opts.get("flee_at_pct", 0.35))
+	if target.max_hp <= 0.0 or target.hp > target.max_hp * threshold:
+		return false
+	var flee_opts := opts.duplicate(true)
+	flee_opts["force_nemesis"] = true
+	return try_nemesis_escape(target, sim, flee_opts)
 
 func maybe_inject_nemesis(sim) -> SimEntity:
 	if sim == null or nemeses.is_empty():

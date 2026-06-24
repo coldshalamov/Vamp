@@ -100,15 +100,23 @@ func _build_audio() -> Control:
 
 
 func _on_master(v: float) -> void: _cfg_set(SECTION_AUDIO, "master", v); _apply_bus("Master", v)
-func _on_music(v: float) -> void: _cfg_set(SECTION_AUDIO, "music", v)
-func _on_sfx(v: float) -> void: _cfg_set(SECTION_AUDIO, "sfx", v)
-func _on_voice(v: float) -> void: _cfg_set(SECTION_AUDIO, "voice", v)
-func _on_ambient(v: float) -> void: _cfg_set(SECTION_AUDIO, "ambient", v)
+func _on_music(v: float) -> void: _cfg_set(SECTION_AUDIO, "music", v); _apply_bus("Music", v)
+func _on_sfx(v: float) -> void: _cfg_set(SECTION_AUDIO, "sfx", v); _apply_bus("SFX", v)
+func _on_voice(v: float) -> void: _cfg_set(SECTION_AUDIO, "voice", v); _apply_bus("Voice", v)
+func _on_ambient(v: float) -> void: _cfg_set(SECTION_AUDIO, "ambient", v); _apply_bus("Ambient", v)
 
+## Apply a linear (0..1) volume to a bus.
+## For Music and Ambient: delegates to AudioDirector.set_bus_volume_linear so the ducking baseline
+## is also updated — without this, _update_duck() would clobber the new level on the next frame.
+## For Master, SFX, Voice: sets AudioServer directly (they are not duckable buses).
 func _apply_bus(bus_name: String, v: float) -> void:
-	var idx := AudioServer.get_bus_index(bus_name)
-	if idx != -1:
-		AudioServer.set_bus_volume_db(idx, linear_to_db(clampf(v, 0.0, 1.0)))
+	if AudioDirector != null:
+		AudioDirector.set_bus_volume_linear(bus_name, v)
+	else:
+		# Fallback for headless / early boot before AudioDirector is ready.
+		var idx := AudioServer.get_bus_index(bus_name)
+		if idx != -1:
+			AudioServer.set_bus_volume_db(idx, linear_to_db(clampf(v, 0.0, 1.0)))
 
 
 # ---------------------------------------------------------------- Gameplay

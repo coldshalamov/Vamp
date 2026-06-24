@@ -13,8 +13,14 @@ const PowerCatalogScript := preload("res://src/data/PowerCatalog.gd")
 
 # --- Gulp timing mini-game (deterministic, tick-based) ---
 const GULP_PERIOD := 42        # ticks between gulp windows (~0.7s @ 60Hz)
-const GULP_WINDOW := 15        # window-open duration (~0.25s) — the "tap now" beat
-const GULP_HIT_BONUS := 0.12   # fraction of victim blood_yield healed per perfect gulp
+const GULP_WINDOW := 15        # max window-open duration (~0.25s) — the relaxed "tap now" beat
+const GULP_WINDOW_MIN := 6     # the window never closes below this — a desperate/master gulp is hard, not impossible
+const GULP_WIN_PER_HUNGER := 1.0   # ticks shaved off the window per hunger pip (0-5): hungrier = tighter
+const GULP_WIN_PER_MASTERY := 0.5  # ticks shaved off per predation-mastery rank (0-12): higher skill = tighter ceiling
+const GULP_HIT_BONUS := 0.12   # fraction of victim blood_yield that the BASE drain implies per beat — the perfect tap doubles it
+const GULP_PERFECT_MULT := 2.0     # a perfectly-timed tap pays ~2x vitae for that gulp (capped per feed)
+const GULP_PERFECT_CAP_FRAC := 0.60 # total perfect bonus per feed is capped at this fraction of blood_yield — a masher can't stack infinite
+const GULP_MISS_FORFEIT := 0.06    # a MISS spills this fraction of blood_yield out of the vein (lost vitae, not just time)
 const GULP_MISS_SLOW := 0.6    # drain-speed factor while penalised after a miss (longer exposure)
 const GULP_SLOW_TICKS := 30
 
@@ -686,7 +692,8 @@ func _start_feeding(target: SimEntity, sim, lethal: bool) -> void:
 	target.tags["pallor"] = 0
 	if sim.world != null:
 		sim.world.spill_blood(target.pos, 5)   # the puncture wound spills at the bite
-	sim.emit_cue("feed.start", { "target_id": target.id, "pos": target.pos, "lethal": lethal, "seize": true })
+	# B17 — the heartbeat opens at the right tempo: AudioDirector reads hunger (0-5) to pick the BPM.
+	sim.emit_cue("feed.start", { "target_id": target.id, "pos": target.pos, "hunger": clampi(int(round(hunger)), 0, 5), "lethal": lethal, "seize": true })
 
 func _tick_feeding(delta: float, sim) -> void:
 	var target: SimEntity = sim.get_entity(feeding_target_id) as SimEntity
@@ -695,12 +702,16 @@ func _tick_feeding(delta: float, sim) -> void:
 		return
 	entity.facing = (target.pos - entity.pos).angle()
 	_tick_gulp(sim, target)
-	var speed := 1.0 + hunger * 0.10
+	# Predation economy (B7): clan/predator-tree/Fang feed how fast the vein empties (feedSpeed)
+	# and how much vitae each pull yields (feedYield). Antediluvian Fang etc. live here, not in a constant.
+	var feed_speed: float = float(sim.meta.derived.get("feedSpeed", 1.0)) if sim.meta != null else 1.0
+	var feed_yield: float = float(sim.meta.derived.get("feedYield", 1.0)) if sim.meta != null else 1.0
+	var speed := (1.0 + hunger * 0.10) * feed_speed
 	if gulp_slow_ticks > 0:
 		speed *= GULP_MISS_SLOW   # a missed gulp slows the feed → longer exposure
 		gulp_slow_ticks -= 1
 	feed_progress += delta * speed
-	var gain: float = target.blood_yield * 0.55 * delta * speed
+	var gain: float = target.blood_yield * 0.55 * delta * speed * feed_yield
 	feed_drained += gain
 	target.blood_left -= gain
 	heal_blood(gain)
@@ -786,7 +797,9 @@ func _apply_resonance(sim, humour: String, yield_amount: float) -> void:
 	match humour:
 		"sanguine":
 			heal_blood(yield_amount * 0.30)
-			buffs["res_sanguine"] = { "ticks": DUR }
+			# B29 — sanguine humour keeps the vein warm: a slow vitae trickle the sim actually reads
+			# in _tick_buffs (was a dead buff stored nowhere). regen is blood/sec for the buff's life.
+			buffs["res_sanguine"] = { "ticks": DUR, "regen": 1.5 }
 		"choleric":
 			buffs["res_choleric"] = { "ticks": DUR, "melee": 0.25 }
 		"melancholic":
@@ -840,23 +853,39 @@ func _reset_gulp(period: int) -> void:
 	gulp_slow_ticks = 0
 
 
+# B2(a) — the window tightens deterministically with hunger and predation mastery: a calm, unskilled
+# feed gives the full GULP_WINDOW; a starving master gets a hair-trigger beat (floored, never impossible).
+func _gulp_window_ticks(sim) -> int:
+	var mastery_rank: int = int(sim.meta.mastery.get("predation", {}).get("rank", 0)) if sim.meta != null else 0
+	var win: float = float(GULP_WINDOW) - hunger * GULP_WIN_PER_HUNGER - float(mastery_rank) * GULP_WIN_PER_MASTERY
+	return clampi(int(round(win)), GULP_WINDOW_MIN, GULP_WINDOW)
+
+
+# B2(b) — a miss spills vitae out of the vein (lost blood, not just lost time), so mashing bleeds you dry.
+func _gulp_forfeit(sim, target: SimEntity, reason: String) -> void:
+	gulp_misses += 1
+	gulp_slow_ticks = GULP_SLOW_TICKS
+	var forfeit: float = target.blood_yield * GULP_MISS_FORFEIT
+	blood = maxf(0.0, blood - forfeit)
+	sim.emit_cue("feed.gulp.miss", { "target_id": target.id, "pos": target.pos, "reason": reason, "forfeit": forfeit })
+
+
 func _tick_gulp(sim, target: SimEntity) -> void:
 	if gulp_window_active:
 		gulp_window_ticks -= 1
 		if gulp_window_ticks <= 0:
-			# Window closed with no tap — a miss.
+			# Window closed with no tap — a miss forfeits vitae and slows the feed.
 			gulp_window_active = false
-			gulp_misses += 1
-			gulp_slow_ticks = GULP_SLOW_TICKS
 			gulp_period_ticks = GULP_PERIOD
-			sim.emit_cue("feed.gulp.miss", { "target_id": target.id, "pos": target.pos, "reason": "timeout" })
+			_gulp_forfeit(sim, target, "timeout")
 	else:
 		gulp_period_ticks -= 1
 		if gulp_period_ticks <= 0:
+			var win: int = _gulp_window_ticks(sim)
 			gulp_window_active = true
-			gulp_window_ticks = GULP_WINDOW
+			gulp_window_ticks = win
 			gulp_period_ticks = GULP_PERIOD
-			sim.emit_cue("feed.gulp", { "target_id": target.id, "pos": target.pos, "window": true, "ticks": GULP_WINDOW })
+			sim.emit_cue("feed.gulp", { "target_id": target.id, "pos": target.pos, "window": true, "ticks": win })
 
 
 func _gulp_tap(sim) -> void:
@@ -869,15 +898,24 @@ func _gulp_tap(sim) -> void:
 		gulp_window_active = false
 		gulp_hits += 1
 		gulp_period_ticks = GULP_PERIOD
-		var bonus: float = target.blood_yield * GULP_HIT_BONUS
+		# B2(d)+B7 — a perfect tap pays ~2x the beat's vitae, scaled by feedYield (clan/Fang).
+		# B2(c) — but the per-feed total is capped (gulp_bonus_vitae, reset each feed), so a masher
+		# who somehow lands every window still can't farm infinite blood off one victim.
+		var feed_yield: float = float(sim.meta.derived.get("feedYield", 1.0)) if sim.meta != null else 1.0
+		var cap: float = target.blood_yield * GULP_PERFECT_CAP_FRAC
+		var want: float = target.blood_yield * GULP_HIT_BONUS * GULP_PERFECT_MULT * feed_yield
+		var bonus: float = clampf(cap - gulp_bonus_vitae, 0.0, want)
 		gulp_bonus_vitae += bonus
-		heal_blood(bonus)
+		if bonus > 0.0:
+			heal_blood(bonus)
+		# Emit BOTH the CONTRACT underscore cue (VisualFX slow-mo + Bleeding Occult Sigil, AudioDirector
+		# wet kiss) and the legacy dot cue (existing AudioDirector/WorldFX/test consumers). Fire even at
+		# the cap so the present-only feel-beat still plays.
+		sim.emit_cue("feed.gulp_perfect", { "pos": target.pos })
 		sim.emit_cue("feed.gulp.perfect", { "target_id": target.id, "pos": target.pos, "bonus": bonus, "hits": gulp_hits })
 	else:
-		# Tapped outside the window — mistimed; light penalty.
-		gulp_misses += 1
-		gulp_slow_ticks = GULP_SLOW_TICKS
-		sim.emit_cue("feed.gulp.miss", { "target_id": target.id, "pos": target.pos, "reason": "early" })
+		# Tapped outside the window — mistimed; forfeits vitae just like a timeout (no free mashing).
+		_gulp_forfeit(sim, target, "early")
 
 func _tick_blood(delta: float, sim) -> void:
 	blood = max(0.0, blood - delta * 0.12)
@@ -930,13 +968,21 @@ func _tick_buffs(delta: float, sim) -> void:
 				blood = 0.0
 				expired.append(key)
 				continue
+		# B29 — sanguine resonance (and any future regen buff) trickles vitae back, capped at max_blood.
+		if float(buffs[key].get("regen", 0.0)) > 0.0:
+			blood = minf(max_blood, blood + float(buffs[key].get("regen", 0.0)) * delta)
 		if int(buffs[key].get("ticks", 0)) > 0:
 			buffs[key]["ticks"] = int(buffs[key].get("ticks", 0)) - 1
 		if int(buffs[key].get("ticks", 0)) == 0:
 			expired.append(key)
 	for key in expired:
+		# B26 — power.toggle{enabled:false} is the HUD's "the toggle turned off" signal. A timed
+		# resonance/combat buff expiring is not a toggle going dark, so only toggle buffs announce it.
+		# Toggle powers are tagged with `"toggle": true` at _apply_buff (see cast_power); read BEFORE the erase.
+		var was_toggle: bool = bool(buffs[key].get("toggle", false)) if buffs.has(key) else false
 		buffs.erase(key)
-		sim.emit_cue("power.toggle", { "power_id": key, "enabled": false, "pos": entity.pos })
+		if was_toggle:
+			sim.emit_cue("power.toggle", { "power_id": key, "enabled": false, "pos": entity.pos })
 	if not buffs.has("cel_bullet") and sim.time_scale != 1.0:
 		sim.time_scale = 1.0
 

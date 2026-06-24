@@ -34,6 +34,18 @@ func test_objective_guides_the_player() -> void:
 	sim.queue_free()
 
 
+func test_shatter_combo_amps_damage_on_mesmerized() -> void:
+	var sim := VCSim.new()
+	sim.new_game(5, "brujah")
+	var a := sim.spawn_npc("thug", Vector2(600.0, 600.0), {})
+	var b := sim.spawn_npc("thug", Vector2(650.0, 600.0), {})
+	b.apply_status("mesmerized", 120)   # b is frozen; a is not
+	var da := sim.damage_entity(sim.player, a, 20.0, { "crit_chance": 0.0 })
+	var db := sim.damage_entity(sim.player, b, 20.0, { "crit_chance": 0.0 })
+	assert_gt(db, da, "striking a mesmerized foe (Shatter combo) deals more damage")
+	sim.queue_free()
+
+
 func test_first_hunt_teaches_feeding_first() -> void:
 	var sim := VCSim.new()
 	sim.new_game(3, "brujah")

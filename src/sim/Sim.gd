@@ -185,6 +185,9 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 		dmg *= 1.0 + float(target.tags.get("damage_bonus", 0.0))
 	if target.has_status("mark"):
 		dmg *= 1.0 + float(target.status_data.get("mark", {}).get("amount", 0.25))
+	if attacker == player and target.has_status("mesmerized"):
+		dmg *= 1.5   # SHATTER combo: striking a frozen (mesmerized) foe lands far harder
+		emit_cue("combo.shatter", { "pos": target.pos, "target_id": target.id })
 	if target.has_status("shock"):
 		dmg *= 1.15
 	var crit_chance := float(opts.get("crit_chance", 0.0 if dot else 0.12))

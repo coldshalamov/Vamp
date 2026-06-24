@@ -31,6 +31,7 @@ var responder_spawn_ticks: int = 0
 var style_ledger: StyleLedger = null   # consequence loop: profiles play style -> styled hunter dispatch
 var contract: Dictionary = {}   # consequence loop: the active walkable bounty (empty = none)
 var wells: Array[Dictionary] = []   # active gravity wells (the Maw): radial pull + collapse burst
+var difficulty: int = 1   # 0=Masquerade (easy), 1=Danse Macabre (normal), 2=Bloodhunt (hard)
 var sigils: Array[Dictionary] = []   # Blood Grammar INSCRIBE: active blood-sigils rewriting local rules
 var player_last_attack_tick: int = -999999
 var escaped: bool = false
@@ -496,7 +497,7 @@ func state_hash() -> int:
 		_hash_variant(investigations),
 		style_ledger.state_hash() if style_ledger != null else 0,
 		_hash_variant(contract),
-		_hash_variant(wells)
+		_hash_variant(wells), difficulty
 	])
 	for e in entities:
 		if e != null:
@@ -523,6 +524,7 @@ func serialize_run() -> Dictionary:
 		"style_ledger": style_ledger.to_dict() if style_ledger != null else {},
 		"contract": contract.duplicate(true),
 		"wells": wells.duplicate(true),
+		"difficulty": difficulty,
 		"meta": meta.serialize(self) if meta != null else {},
 	}
 
@@ -551,6 +553,7 @@ func restore_run(data: Dictionary) -> bool:
 		for w in (data["wells"] as Array):
 			if w is Dictionary:
 				wells.append((w as Dictionary).duplicate(true))
+	difficulty = clampi(int(data.get("difficulty", difficulty)), 0, 2)
 	escaped = bool(data.get("escaped", escaped))
 	reached_haven = bool(data.get("reached_haven", reached_haven))
 	investigations = _clean_investigations(data.get("investigations", []))
@@ -742,20 +745,26 @@ func _spawn_responder() -> void:
 	emit_cue("dispatch.styled", { "type": type_id, "style": style_ledger.dominant() if style_ledger != null else "", "pos": pos, "stars": stars })
 
 func _desired_responders() -> int:
+	var base := 12
 	match heat_stars():
 		0:
-			return 0
+			base = 0
 		1:
-			return 1
+			base = 1
 		2:
-			return 3
+			base = 3
 		3:
-			return 5
+			base = 5
 		4:
-			return 7
+			base = 7
 		5:
-			return 9
-	return 12
+			base = 9
+	# Difficulty scales how hard the city hunts you (Masquerade eases off; Bloodhunt piles on).
+	var factor: float = [0.6, 1.0, 1.5][clampi(difficulty, 0, 2)]
+	return int(round(float(base) * factor))
+
+func set_difficulty(d: int) -> void:
+	difficulty = clampi(d, 0, 2)
 
 func _responder_count() -> int:
 	var count := 0

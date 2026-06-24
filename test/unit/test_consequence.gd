@@ -34,6 +34,18 @@ func test_objective_guides_the_player() -> void:
 	sim.queue_free()
 
 
+func test_difficulty_scales_the_hunt() -> void:
+	var sim := VCSim.new()
+	sim.new_game(5, "brujah")
+	sim.heat = 4.0
+	sim.set_difficulty(1)
+	var normal := sim._desired_responders()
+	sim.set_difficulty(2)
+	var bloodhunt := sim._desired_responders()
+	assert_gt(bloodhunt, normal, "Bloodhunt dispatches more hunters than Danse Macabre")
+	sim.queue_free()
+
+
 func test_hemomancy_empowers_casting_in_blood() -> void:
 	var sim := VCSim.new()
 	sim.new_game(5, "brujah")

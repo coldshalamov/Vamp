@@ -8,6 +8,7 @@ const DISPLAY_FONT := "res://art/fonts/Cinzel.ttf"
 const MONO_FONT := "res://art/fonts/ShareTechMono.ttf"
 
 var _title: Label
+var _stats: Label
 var _prompt: Label
 var _blink: float = 0.0
 
@@ -51,6 +52,11 @@ func _build() -> void:
 	_title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
 	vb.add_child(_title)
 
+	_stats = Label.new()
+	_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_font(_stats, MONO_FONT, 16, Color("#b9b3a6"))
+	vb.add_child(_stats)
+
 	_prompt = Label.new()
 	_prompt.text = "press any key to rise from torpor"
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -77,6 +83,28 @@ func _process(delta: float) -> void:
 func show_death() -> void:
 	visible = true
 	_blink = 0.0
+	if _stats != null:
+		_stats.text = _build_stats()
+
+
+## Run recap: level, feeds, kills, Humanity, and an epitaph keyed to how the soul fared.
+func _build_stats() -> String:
+	if Sim == null or Sim.player == null:
+		return ""
+	var b: Object = Sim.player.behaviour
+	if b == null:
+		return ""
+	var level := int(Sim.meta.get("level")) if Sim.meta != null else 1
+	var kills := int(b.get("kills"))
+	var feeds := int(b.get("fed_count"))
+	var inn := int(b.get("innocent_kills"))
+	var humanity := float(b.get("humanity"))
+	var epitaph := "The Beast outlived the man."
+	if humanity <= 1.0:
+		epitaph = "There was only the Beast."
+	elif inn == 0:
+		epitaph = "A predator, never a butcher."
+	return "Level %d    ·    %d fed    ·    %d slain (%d innocent)    ·    Humanity %.0f\n%s" % [level, feeds, kills, inn, humanity, epitaph]
 
 
 func hide_death() -> void:

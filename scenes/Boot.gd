@@ -25,6 +25,8 @@ var _in_gameplay: bool = false
 
 
 func _ready() -> void:
+	# Ship hygiene: drop Godot's automatic "(DEBUG)" suffix so the window reads "Vampire City".
+	get_window().title = "Vampire City"
 	# Wire UI intent -> host actions.
 	UIManager.cb_new_game = _on_new_game
 	UIManager.cb_continue_game = _on_continue_game

@@ -103,6 +103,7 @@ func tick_sim(delta: float) -> void:
 	for e in step_entities:
 		if e != null:
 			e.step(delta, self)
+	ImpulsePhysics.resolve(self)   # deterministic momentum/impact pass (throws, knockback, collisions)
 	tick_combat()
 	if world != null and tick % 18 == 0:
 		world.decay_blood()

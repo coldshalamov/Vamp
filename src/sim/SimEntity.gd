@@ -24,6 +24,8 @@ var stun: int = 0
 var hitstop: int = 0
 var knockback_vel: Vector2 = Vector2.ZERO   # impulse channel the AI can't erase (real hit shoves)
 var resonance: String = ""   # Blood Grammar: victim's humour (sanguine/choleric/melancholic/phlegmatic)
+var mass: float = 1.0   # ImpulsePhysics: heavier bodies resist shoves and deal more impact damage
+var tumble_ticks: int = 0   # >0 = TUMBLING from a hard impact: AI suppressed, the rig spins
 
 # Health, combat, and status state.
 var hp: float = 100.0
@@ -102,7 +104,9 @@ func step(delta: float, sim) -> void:
 			knockback_vel *= 0.80
 		else:
 			knockback_vel = Vector2.ZERO
-	if behaviour != null and behaviour.has_method("step"):
+	if tumble_ticks > 0 and kind == "npc":
+		tumble_ticks -= 1   # tumbling from an impact: physics carries the body, the brain is suppressed
+	elif behaviour != null and behaviour.has_method("step"):
 		behaviour.step(delta, sim)
 
 func on_damage_dealt(amount: float) -> void:
@@ -195,7 +199,7 @@ func state_hash() -> int:
 		snapped(last_seen_pos.x, 0.001), snapped(last_seen_pos.y, 0.001),
 		search_ticks, idle_ticks, snapped(exposure, 0.001),
 		victim_type, snapped(blood_yield, 0.001), snapped(blood_left, 0.001),
-		innocent
+		innocent, snapped(mass, 0.001), tumble_ticks
 	])
 	h = _hash_dict(h, cooldowns)
 	h = _hash_dict(h, statuses)

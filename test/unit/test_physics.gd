@@ -45,6 +45,25 @@ func _ram_damage(speed: float) -> float:
 	return lost
 
 
+func test_firebomb_sails_and_ignites_a_hazard() -> void:
+	var sim := VCSim.new()
+	sim.new_game(5, "brujah")
+	var target := Vector2(560.0, 600.0)   # on the open road (not inside a building)
+	BallisticLaunch.spawn(sim, Vector2(500.0, 600.0), target, {
+		"kind": "fire_bomb", "faction": "player", "owner_id": sim.player.id,
+		"damage": 0.0, "damage_type": "fire", "aoe_radius": 50.0,
+		"surface_effect": "fire", "surface_radius": 50.0, "flight_ticks": 24,
+	})
+	var ignited := false
+	for _t in range(50):
+		sim.tick_sim(DT)
+		if sim.world.fire_at(target) > 0:
+			ignited = true
+			break
+	assert_true(ignited, "a lobbed fire flask sails to the spot and ignites a fire hazard on landing")
+	sim.queue_free()
+
+
 func test_maw_pulls_entities_inward() -> void:
 	var sim := VCSim.new()
 	sim.new_game(5, "brujah")

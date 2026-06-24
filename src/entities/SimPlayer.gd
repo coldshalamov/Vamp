@@ -348,6 +348,9 @@ func cast_power(power_id: String, sim) -> bool:
 				sim.damage_entity(entity, cauldron_target, _spell_damage(def), { "cue": "power.blood.cauldron", "status": "bleed", "status_ticks": int(def.get("duration", 300)), "aoe_radius": float(def.get("splash", 70.0)) })
 				for spill in sim.entities_in_radius(cauldron_target.pos, float(def.get("splash", 70.0)), func(e): return e.kind == "npc" and e != cauldron_target and not e.dead):
 					spill.apply_status("bleed", int(def.get("duration", 300)) / 2)
+				# Lob a boiling flask that SAILS to the spot, bursts, and spreads a fire hazard
+				# (built on the deterministic ballistics + the existing fire layer).
+				BallisticLaunch.spawn(sim, entity.pos, cauldron_target.pos, { "kind": "fire_bomb", "faction": "player", "owner_id": entity.id, "damage": _spell_damage(def) * 0.5, "damage_type": "fire", "status": "burn", "aoe_radius": float(def.get("splash", 70.0)), "surface_effect": "fire", "surface_radius": float(def.get("splash", 70.0)), "flight_ticks": 36 })
 		"bs_ward":
 			_apply_buff(power_id, int(def.get("duration", 720)), { "shield": float(def.get("shield", 60.0)) })
 		"bs_theft":

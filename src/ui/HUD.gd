@@ -227,22 +227,26 @@ func _card_style() -> StyleBoxFlat:
 	return s
 
 
-## A mono "case-file" tag label.
+## A "case-file" tag label in the condensed UI face (Oswald) — the bulk of HUD text. The old
+## all-mono HUD read as a cheap DOS terminal; numeric figures still use _data_label (mono) below.
 func _tag(text: String, col: Color, fsize: int) -> Label:
 	var l := Label.new()
 	l.text = text
 	var th := UIManager.theme_resource if UIManager != null else null
-	if th != null and th.mono_font() != null:
-		l.add_theme_font_override("font", th.mono_font())
+	if th != null and th.ui_font() != null:
+		l.add_theme_font_override("font", th.ui_font())
 	l.add_theme_font_size_override("font_size", fsize)
 	l.add_theme_color_override("font_color", col)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
 
 
-## A mono data readout (vitae/flesh counters).
+## A mono data readout (vitae/flesh counters) — tabular figures stay monospaced for alignment.
 func _data_label(text: String) -> Label:
-	var l := _tag(text, _accent("text") if false else Color(0.90, 0.87, 0.80), 14)
+	var l := _tag(text, Color(0.90, 0.87, 0.80), 14)
+	var th := UIManager.theme_resource if UIManager != null else null
+	if th != null and th.mono_font() != null:
+		l.add_theme_font_override("font", th.mono_font())
 	return l
 
 

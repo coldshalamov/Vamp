@@ -34,6 +34,18 @@ func test_objective_guides_the_player() -> void:
 	sim.queue_free()
 
 
+func test_hemomancy_empowers_casting_in_blood() -> void:
+	var sim := VCSim.new()
+	sim.new_game(5, "brujah")
+	sim.world.spill_blood(sim.player.pos, 60)   # a deep pool at the caster's feet
+	sim.player.behaviour.set("blood", 100.0)
+	var a := InputAction.new(InputAction.Kind.POWER)
+	a.action_id = "bs_bolt"   # blood sorcery
+	sim.apply_input(a)
+	assert_true((sim.player.behaviour.get("buffs") as Dictionary).has("hemomancy"), "casting in spilled blood grants Hemomancy")
+	sim.queue_free()
+
+
 func test_shatter_combo_amps_damage_on_mesmerized() -> void:
 	var sim := VCSim.new()
 	sim.new_game(5, "brujah")

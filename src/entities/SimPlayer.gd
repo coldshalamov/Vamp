@@ -221,6 +221,12 @@ func cast_power(power_id: String, sim) -> bool:
 		sim.emit_cue("power.failed.no_blood", { "power_id": power_id, "blood": blood })
 		return false
 	blood -= cost
+	# Hemomancy: cast while standing in your own spilled blood and the spell draws on the pool,
+	# consuming it for a potent transmutation buff on your blood magic.
+	if sim.world != null and sim.world.blood_at(entity.pos) >= 30:
+		sim.world.siphon_blood(entity.pos, 18)
+		_apply_buff("hemomancy", 180, { "spell": 0.5 })
+		sim.emit_cue("power.hemomancy", { "pos": entity.pos })
 	power_cooldowns[power_id] = sim.meta.effective_power_cooldown(power_id) if sim.meta != null else int(def.get("cooldown", 60))
 	var ok := true
 	match power_id:
@@ -1000,6 +1006,8 @@ func _spell_damage(def: Dictionary) -> float:
 	var amount := float(def.get("damage", def.get("dmg", 0.0)))
 	if buffs.has("res_melancholic"):
 		amount *= 1.0 + float(buffs["res_melancholic"].get("spell", 0.25))
+	if buffs.has("hemomancy"):
+		amount *= 1.0 + float(buffs["hemomancy"].get("spell", 0.5))   # Hemomancy transmutation
 	return amount
 
 ## INSCRIBE atom: spend vitae to paint a blood-sigil at your feet that rewrites a local rule.

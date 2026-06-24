@@ -91,6 +91,21 @@ func new_game(new_seed_value: int, clan_id: String) -> void:
 
 	spawn_npc("ped", world.named_points.get("civilian", Vector2(245, 576)), { "state": "wander" })
 	spawn_npc("ped", world.named_points.get("witness", Vector2(330, 560)), { "state": "wander" })
+	# A LIVING BLOCK: the night is populated with mortals going about their lives — prey to stalk,
+	# witnesses to dread, a crowd that makes the player a predator loose in a PLACE rather than a lone
+	# figure in an empty lot. Deterministic fixed placements (no RNG). Every mortal starts NEUTRAL and
+	# calm — heat and aggro are consequences of the player's own violence, never a default.
+	var _crowd := [
+		Vector2(210, 600), Vector2(430, 560), Vector2(620, 592), Vector2(770, 552),
+		Vector2(910, 602), Vector2(1080, 566), Vector2(1245, 596), Vector2(1430, 560),
+		Vector2(1660, 590), Vector2(1840, 602),
+		Vector2(360, 1120), Vector2(720, 1150), Vector2(1180, 1116), Vector2(1560, 1145),
+	]
+	for _ci in range(_crowd.size()):
+		spawn_npc("ped", _crowd[_ci], { "state": "wander" })
+	# Two neutral toughs give the street some teeth — dangerous if you cross them, calm if left alone.
+	spawn_npc("thug", Vector2(980, 1140), { "state": "wander" })
+	spawn_npc("thug", Vector2(1500, 602), { "state": "wander" })
 	# The slice's first named foe is the HERALD — the sire's hunter. Tagged so the nemesis backend
 	# forces a flee on its first defeat (try_nemesis_escape) instead of a clean death: it returns
 	# scarred and resistant to the damage type that beat it. The slice's ending hook, in one tag.

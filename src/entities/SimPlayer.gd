@@ -359,7 +359,7 @@ func cast_power(power_id: String, sim) -> bool:
 		_:
 			ok = false
 	if ok:
-		sim.emit_cue("power.cast", { "power_id": power_id, "name": def.get("name", power_id), "pos": entity.pos, "cue": def.get("cue", "") })
+		sim.emit_cue("power.cast", _cast_cue_payload(power_id, def))
 		# Open Vein: paying vitae for power opens a small wound that spills at your feet.
 		if sim.world != null and cost > 0.0:
 			sim.world.spill_blood(entity.pos, clampi(int(cost * 0.5), 2, 14))
@@ -369,6 +369,44 @@ func cast_power(power_id: String, sim) -> bool:
 		blood = min(max_blood, blood + cost)
 		power_cooldowns.erase(power_id)
 	return ok
+
+
+## The Cast Contract: presentation reads this to render a DISTINCT effect per archetype, AT the aimed
+## point, instead of one red ring at the player. This is presentation-only — none of it feeds back
+## into Sim state, and cue_events is not in state_hash(), so the 20-run determinism hash is untouched.
+func _cast_cue_payload(power_id: String, def: Dictionary) -> Dictionary:
+	return {
+		"power_id": power_id,
+		"name": def.get("name", power_id),
+		"pos": entity.pos,
+		"origin": entity.pos,
+		"target_pos": _resolve_cast_target(def),
+		"aim_dir": entity.facing,
+		"archetype": SpellArchetype.archetype_of(def),
+		"range": float(def.get("range", 0.0)),
+		"radius": float(def.get("radius", def.get("splash", 0.0))),
+		"arc": float(def.get("arc", 0.0)),
+		"damage_type": SpellArchetype.damage_type_of(def),
+		"discipline": str(def.get("discipline", "")),
+		"color": SpellArchetype.color_of(def),
+		"cue": def.get("cue", ""),
+	}
+
+
+## The aimed ground point for a cast, clamped to the power's range (deterministic float math).
+## Self / buff powers (no range) resolve to the caster, so a buff never paints a ground ring.
+func _resolve_cast_target(def: Dictionary) -> Vector2:
+	var rng := float(def.get("range", 0.0))
+	if rng <= 0.0:
+		return entity.pos
+	var to: Vector2 = aim_point - entity.pos
+	var d := to.length()
+	if d <= 0.001:
+		return entity.pos + Vector2.RIGHT.rotated(entity.facing) * rng
+	if d > rng:
+		return entity.pos + to / d * rng
+	return aim_point
+
 
 func on_damage_dealt(amount: float) -> void:
 	damage_dealt += amount

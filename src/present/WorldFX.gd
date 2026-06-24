@@ -24,8 +24,9 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 			_add({"type": "spark", "pos": pos, "t": 0.0, "dur": 0.22, "col": Color("ffd2a0"), "crit": bool(payload.get("crit", false))})
 		"damage.player":
 			_add({"type": "spark", "pos": pos, "t": 0.0, "dur": 0.22, "col": Color("ff5a5a"), "crit": false})
-		"power.cast":
-			_on_power_cast(String(payload.get("power_id", "")), pos)
+		# power.cast is now owned by SpellFX (distinct per-archetype visuals); WorldFX no longer draws
+		# the generic expanding ring that made every spell look identical. (_on_power_cast retained
+		# for the potence hit cues below.)
 		"power.potence.quake_hit":
 			_add({"type": "shock", "pos": pos, "t": 0.0, "dur": 0.50, "rmax": 190.0, "col": Color("e0883a")})
 		"power.potence.hit":

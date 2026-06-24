@@ -16,6 +16,7 @@ const LightingDirectorScript := preload("res://src/present/LightingDirector.gd")
 const CameraDirectorScript := preload("res://src/present/CameraDirector.gd")
 const VisualFXScript := preload("res://src/present/VisualFX.gd")
 const WorldFXScript := preload("res://src/present/WorldFX.gd")
+const SpellFXScript := preload("res://src/present/SpellFX.gd")
 const NocturneGradeScript := preload("res://src/present/NocturneGrade.gd")
 const DebugOverlayScript := preload("res://src/present/DebugOverlay.gd")
 const DeathScreenScript := preload("res://src/ui/DeathScreen.gd")
@@ -25,6 +26,7 @@ var _blood_renderer: Node2D = null
 var _prop_renderer: Node2D = null
 var _entity_renderer: Node2D = null
 var _world_fx: Node2D = null
+var _spell_fx: Node2D = null
 var _lighting: Node2D = null
 var _camera: Camera2D = null
 var _visual_fx: CanvasLayer = null
@@ -77,6 +79,12 @@ func _ready() -> void:
 	_world_fx = WorldFXScript.new()
 	_world_fx.name = "WorldFX"
 	add_child(_world_fx)
+
+	# Archetype-driven spell visuals (the end of "every spell is a circle"). Its own seam, above
+	# WorldFX's swings/impacts — WorldFX stays owned by the ballistics pass.
+	_spell_fx = SpellFXScript.new()
+	_spell_fx.name = "SpellFX"
+	add_child(_spell_fx)
 
 	_camera = CameraDirectorScript.new()
 	_camera.name = "CameraDirector"

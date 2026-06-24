@@ -119,8 +119,9 @@ func _build() -> void:
 	_btn_continue = _dossier_button("02", tr("MENU_CONTINUE"), _on_continue)
 	_btn_continue.disabled = not _has_save()
 	_btn_settings = _dossier_button("03", tr("MENU_SETTINGS"), _on_settings)
-	_btn_quit = _dossier_button("04", tr("MENU_QUIT"), _on_quit)
-	for b in [_btn_new, _btn_continue, _btn_settings, _btn_quit]:
+	var btn_credits := _dossier_button("04", "CREDITS", _on_credits)
+	_btn_quit = _dossier_button("05", tr("MENU_QUIT"), _on_quit)
+	for b in [_btn_new, _btn_continue, _btn_settings, btn_credits, _btn_quit]:
 		col.add_child(b)
 		_reveal.append(b)
 
@@ -276,6 +277,9 @@ func _on_continue() -> void:
 
 func _on_settings() -> void:
 	UIManager.open_menu("settings")
+
+func _on_credits() -> void:
+	UIManager.open_menu("credits")
 
 func _on_quit() -> void:
 	if UIManager.cb_quit_to_desktop.is_valid():

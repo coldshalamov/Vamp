@@ -27,6 +27,7 @@ const SCREEN_SCENES := {
 	"main_menu": "res://scenes/ui/MainMenu.tscn",
 	"pause": "res://scenes/ui/PauseMenu.tscn",
 	"settings": "res://scenes/ui/SettingsMenu.tscn",
+	"credits": "res://scenes/ui/CreditsScreen.tscn",
 	"skill_tree": "res://scenes/ui/SkillTreeScreen.tscn",
 	"inventory": "res://scenes/ui/InventoryScreen.tscn",
 	"coterie": "res://scenes/ui/CoterieScreen.tscn",

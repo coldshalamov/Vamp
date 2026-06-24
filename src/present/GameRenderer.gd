@@ -17,6 +17,7 @@ const CameraDirectorScript := preload("res://src/present/CameraDirector.gd")
 const VisualFXScript := preload("res://src/present/VisualFX.gd")
 const WorldFXScript := preload("res://src/present/WorldFX.gd")
 const SpellFXScript := preload("res://src/present/SpellFX.gd")
+const AtmosphereScript := preload("res://src/present/AtmosphereDirector.gd")
 const NocturneGradeScript := preload("res://src/present/NocturneGrade.gd")
 const DebugOverlayScript := preload("res://src/present/DebugOverlay.gd")
 const DeathScreenScript := preload("res://src/ui/DeathScreen.gd")
@@ -27,6 +28,7 @@ var _prop_renderer: Node2D = null
 var _entity_renderer: Node2D = null
 var _world_fx: Node2D = null
 var _spell_fx: Node2D = null
+var _atmosphere: Control = null
 var _lighting: Node2D = null
 var _camera: Camera2D = null
 var _visual_fx: CanvasLayer = null
@@ -85,6 +87,15 @@ func _ready() -> void:
 	_spell_fx = SpellFXScript.new()
 	_spell_fx.name = "SpellFX"
 	add_child(_spell_fx)
+
+	# Screen-space rain + fog, above the world and below the mood grade + HUD.
+	var atmos_layer := CanvasLayer.new()
+	atmos_layer.name = "AtmosphereLayer"
+	atmos_layer.layer = 1
+	add_child(atmos_layer)
+	_atmosphere = AtmosphereScript.new()
+	_atmosphere.name = "AtmosphereDirector"
+	atmos_layer.add_child(_atmosphere)
 
 	_camera = CameraDirectorScript.new()
 	_camera.name = "CameraDirector"

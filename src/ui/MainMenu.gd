@@ -135,6 +135,24 @@ func _build() -> void:
 		overlay.material = m
 	add_child(overlay)
 
+	# Build-version stamp (ship hygiene).
+	var version := Label.new()
+	version.text = "v0.9.0"
+	version.set_anchors_preset(PRESET_BOTTOM_RIGHT)
+	version.anchor_left = 1.0
+	version.anchor_top = 1.0
+	version.anchor_right = 1.0
+	version.anchor_bottom = 1.0
+	version.offset_left = -120
+	version.offset_top = -34
+	version.offset_right = -18
+	version.offset_bottom = -12
+	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	version.add_theme_font_size_override("font_size", 13)
+	version.add_theme_color_override("font_color", Color(0.55, 0.53, 0.50, 0.8))
+	version.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(version)
+
 
 func _label(text: String, font: Font, fsize: int, col: Color) -> Label:
 	var l := Label.new()

@@ -345,8 +345,13 @@ func cast_power(power_id: String, sim) -> bool:
 			if arms_target == null:
 				ok = false
 			else:
-				sim.damage_entity(entity, arms_target, _spell_damage(def), { "cue": "power.dark.arms", "status": "root", "status_ticks": 60 })
-				arms_target.pos = sim.world.resolve_motion(arms_target.pos, arms_target.pos.move_toward(entity.pos, float(def.get("pull", 130.0))), arms_target.radius)
+				# THE TETHER: sling the seized foe toward your fangs through the impulse solver, so it
+				# bowls through anyone in the way — both bodies take impact damage and tumble (real
+				# telekinesis, not a frozen sprite gliding in a straight line at constant speed).
+				sim.damage_entity(entity, arms_target, _spell_damage(def), { "cue": "power.dark.arms", "status": "root", "status_ticks": 24 })
+				var sling_dir: Vector2 = entity.pos - arms_target.pos
+				sling_dir = sling_dir.normalized() if sling_dir.length() > 0.001 else Vector2.RIGHT.rotated(entity.facing)
+				arms_target.knockback_vel = sling_dir * float(def.get("sling", 560.0))
 		"dem_confuse":
 			var any_confused := false
 			for target in sim.entities_in_radius(entity.pos, float(def.get("radius", 190.0)), func(e): return e.kind == "npc" and e.faction != "player" and not e.dead):

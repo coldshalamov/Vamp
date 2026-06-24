@@ -34,6 +34,22 @@ func test_objective_guides_the_player() -> void:
 	sim.queue_free()
 
 
+func test_gamepad_bindings_overlay_the_keyboard() -> void:
+	Rebind.register_gamepad_defaults()
+	var has_btn := false
+	for ev in InputMap.action_get_events("attack"):
+		if ev is InputEventJoypadButton:
+			has_btn = true
+			break
+	assert_true(has_btn, "attack is also bound to a gamepad button")
+	var has_axis := false
+	for ev in InputMap.action_get_events("move_right"):
+		if ev is InputEventJoypadMotion:
+			has_axis = true
+			break
+	assert_true(has_axis, "movement is bound to the left stick")
+
+
 func test_save_slots_are_independent() -> void:
 	var prev: int = SaveSystem.current_slot
 	SaveSystem.current_slot = 1

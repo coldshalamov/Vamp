@@ -76,6 +76,7 @@ const PRESETS := {
 
 func _ready() -> void:
 	_load_settings()
+	register_gamepad_defaults()
 
 # Default physical keycodes per action. Used on first run (no settings.cfg yet) and as
 # the "reset to defaults" target. Physical keycodes make bindings keyboard-layout-agnostic.
@@ -103,6 +104,49 @@ const DEFAULTS := {
 ## Register the default bindings into Godot's InputMap. Called on first run.
 func register_defaults() -> void:
 	_apply_keycode_map(DEFAULTS)
+
+## Gamepad parity: overlay joypad bindings ON TOP of the keyboard ones so a controller drives the
+## game — left stick = move, face buttons = attack/dash/feed/interact, d-pad = slots 1-4, Start = pause.
+## (capture() already routes any bound event via is_action, so no capture changes are needed.)
+const GAMEPAD_BUTTONS := {
+	"attack": JOY_BUTTON_X, "dash": JOY_BUTTON_A, "feed": JOY_BUTTON_Y, "interact": JOY_BUTTON_B,
+	"slot_1": JOY_BUTTON_DPAD_UP, "slot_2": JOY_BUTTON_DPAD_RIGHT,
+	"slot_3": JOY_BUTTON_DPAD_DOWN, "slot_4": JOY_BUTTON_DPAD_LEFT,
+	"pause": JOY_BUTTON_START,
+}
+const GAMEPAD_AXES := {
+	"move_right": [JOY_AXIS_LEFT_X, 1.0], "move_left": [JOY_AXIS_LEFT_X, -1.0],
+	"move_down": [JOY_AXIS_LEFT_Y, 1.0], "move_up": [JOY_AXIS_LEFT_Y, -1.0],
+}
+
+func register_gamepad_defaults() -> void:
+	if not gamepad_enabled:
+		return
+	for action in GAMEPAD_BUTTONS:
+		if not InputMap.has_action(action):
+			InputMap.add_action(action)
+		if _has_joy_binding(action):
+			continue
+		var ev := InputEventJoypadButton.new()
+		ev.button_index = GAMEPAD_BUTTONS[action]
+		ev.device = -1
+		InputMap.action_add_event(action, ev)
+	for action in GAMEPAD_AXES:
+		if not InputMap.has_action(action):
+			InputMap.add_action(action)
+		if _has_joy_binding(action):
+			continue
+		var ax := InputEventJoypadMotion.new()
+		ax.axis = GAMEPAD_AXES[action][0]
+		ax.axis_value = GAMEPAD_AXES[action][1]
+		ax.device = -1
+		InputMap.action_add_event(action, ax)
+
+func _has_joy_binding(action: String) -> bool:
+	for e in InputMap.action_get_events(action):
+		if e is InputEventJoypadButton or e is InputEventJoypadMotion:
+			return true
+	return false
 
 func apply_preset(preset_id: String) -> void:
 	# Only keyboard-driven presets exist for the slice. Unknown id -> default.

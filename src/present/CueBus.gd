@@ -34,6 +34,7 @@ var _cue_defs: Dictionary = {}
 # --- runtime state ---
 var _active_high_priority: int = -1   # the highest-priority cue currently suppressing others
 var _concurrency: Dictionary = {}     # event_id -> active count, for rate-limiting
+const HISTORY_CAP := 1024             # bound the inspectable stream so it can't grow unboundedly (freeze fix)
 var history: Array[Dictionary] = []   # semantic stream the frontend/tests can inspect
 var reduced_motion: bool = false      # accessibility: flatten shake/flash when true
 var reduced_flash: bool = false       # accessibility: suppress full-screen flashes when true
@@ -62,6 +63,8 @@ func define(event_id: String, priority: int, cue: Dictionary) -> void:
 func emit_cue(event_id: String, payload: Dictionary = {}) -> void:
 	var rec := { "event_id": event_id, "payload": payload.duplicate(true) }
 	history.append(rec)
+	if history.size() > HISTORY_CAP:
+		history = history.slice(history.size() - (HISTORY_CAP / 2))
 	cue_emitted.emit(event_id, payload)
 	if not _cue_defs.has(event_id):
 		return

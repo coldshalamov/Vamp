@@ -35,6 +35,7 @@ var reached_haven: bool = false
 var investigations: Array[Dictionary] = []
 var last_body_carried_seen_tick: int = -999999
 
+const CUE_LOG_CAP := 1024  # bound the debug cue log; nothing reads it historically, so trimming is safe. This is the ~30s memory-growth freeze.
 var cue_events: Array[Dictionary] = []
 var cue_events_this_tick: Array[Dictionary] = []
 var _last_vitals_emit_tick: int = -999999
@@ -441,6 +442,8 @@ func emit_vitals_changed() -> void:
 func emit_cue(event_id: String, payload: Dictionary = {}) -> void:
 	var rec := { "tick": tick, "id": event_id, "payload": payload.duplicate(true) }
 	cue_events.append(rec)
+	if cue_events.size() > CUE_LOG_CAP:
+		cue_events = cue_events.slice(cue_events.size() - (CUE_LOG_CAP / 2))
 	cue_events_this_tick.append(rec)
 	if meta != null:
 		meta.mission_event(event_id, payload, self)

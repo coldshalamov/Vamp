@@ -17,6 +17,7 @@ var last_drive_tick: int = -999999
 var ai: bool = false
 var road_axis: int = 0
 var road_dir: int = 1
+var turn_cooldown: int = 0
 var burn_ticks: int = 0
 var siren: bool = false
 
@@ -109,7 +110,8 @@ func state_hash() -> int:
 		vehicle_type, snapped(speed, 0.001), snapped(angle, 0.001),
 		snapped(max_speed, 0.001), snapped(accel, 0.001),
 		snapped(handling, 0.001), driver_id, last_driver_id,
-		last_drive_tick, ai, road_axis, road_dir, burn_ticks, siren
+		last_drive_tick, ai, road_axis, road_dir, burn_ticks, siren,
+		turn_cooldown
 	])
 
 func _drive_player(delta: float, sim) -> void:
@@ -128,13 +130,37 @@ func _drive_player(delta: float, sim) -> void:
 	sim.player.pos = entity.pos
 
 func _drive_ai(delta: float, sim) -> void:
-	var target := max_speed * 0.35
-	var probe := entity.pos + Vector2.RIGHT.rotated(angle) * 78.0
-	if sim.world.is_blocked_world(probe, entity.radius * 0.6):
-		angle += PI * 0.5 * float(road_dir)
-		road_dir *= -1
-		target *= 0.3
-	speed = move_toward(speed, target, accel * delta)
+	# Lane-following: steer toward the road-axis heading and commit a SINGLE U-turn (with
+	# hysteresis) when blocked. The old code flipped road_dir AND added 90 degrees every blocked
+	# frame, so cars "flapped" between two perpendicular headings, drifted off at 45 degrees, and
+	# locked forever in map corners. This holds a stable heading and only reverses once per cooldown.
+	if turn_cooldown > 0:
+		turn_cooldown -= 1
+	angle = _steer_toward(angle, _axis_heading(), handling * delta)
+	var cruise := max_speed * 0.4
+	var probe := entity.pos + Vector2.RIGHT.rotated(angle) * 62.0
+	if sim.world.is_blocked_world(probe, entity.radius * 0.7):
+		if turn_cooldown <= 0:
+			road_dir = -road_dir              # commit a U-turn...
+			turn_cooldown = 50                # ...and forbid another for ~0.8s (this kills the flap)
+			angle = _axis_heading()           # snap to the new heading so we don't sweep through the wall
+		cruise = max_speed * 0.12             # ease off while clearing the obstacle
+	speed = move_toward(speed, cruise, accel * delta)
+
+
+## The heading this car should hold, derived from its road axis (0 = horizontal, 1 = vertical) + direction.
+func _axis_heading() -> float:
+	if road_axis == 0:
+		return 0.0 if road_dir > 0 else PI
+	return PI * 0.5 if road_dir > 0 else -PI * 0.5
+
+
+## Rotate `cur` toward `target` by at most `max_step` radians, taking the shortest way around.
+func _steer_toward(cur: float, target: float, max_step: float) -> float:
+	var diff := wrapf(target - cur, -PI, PI)
+	if absf(diff) <= max_step:
+		return target
+	return cur + (max_step if diff > 0.0 else -max_step)
 
 func _explode(sim) -> void:
 	entity.dead = true

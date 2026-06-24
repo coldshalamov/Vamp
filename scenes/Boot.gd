@@ -58,6 +58,7 @@ func _ready() -> void:
 
 func _on_new_game() -> void:
 	Sim.new_game(42, "brujah")
+	Sim.set_difficulty(UIManager.selected_difficulty)
 	_enter_gameplay()
 
 

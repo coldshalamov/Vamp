@@ -15,6 +15,7 @@ var _btn_new: Button = null
 var _btn_continue: Button = null
 var _btn_settings: Button = null
 var _btn_quit: Button = null
+var _btn_difficulty: Button = null
 var _reveal: Array[Control] = []
 
 
@@ -124,6 +125,9 @@ func _build() -> void:
 	for b in [_btn_new, _btn_continue, _btn_settings, btn_credits, _btn_quit]:
 		col.add_child(b)
 		_reveal.append(b)
+	_btn_difficulty = _dossier_button("DIF", _difficulty_label(), _on_cycle_difficulty)
+	col.add_child(_btn_difficulty)
+	_reveal.append(_btn_difficulty)
 
 	# --- scanline / vignette atmosphere overlay (top) ---
 	var overlay := ColorRect.new()
@@ -280,6 +284,15 @@ func _on_settings() -> void:
 
 func _on_credits() -> void:
 	UIManager.open_menu("credits")
+
+func _difficulty_label() -> String:
+	var names := ["MASQUERADE", "DANSE MACABRE", "BLOODHUNT"]
+	return "DIFFICULTY: %s" % names[clampi(UIManager.selected_difficulty, 0, 2)]
+
+func _on_cycle_difficulty() -> void:
+	UIManager.selected_difficulty = (UIManager.selected_difficulty + 1) % 3
+	if _btn_difficulty != null:
+		_btn_difficulty.text = "DIF    %s" % _difficulty_label()
 
 func _on_quit() -> void:
 	if UIManager.cb_quit_to_desktop.is_valid():

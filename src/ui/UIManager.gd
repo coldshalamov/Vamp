@@ -97,6 +97,8 @@ func _ensure_translations() -> void:
 
 # ---------------------------------------------------------------- screen stack
 
+var selected_difficulty: int = 1   # chosen at the main menu, applied at new game
+
 func open_menu(name: String) -> BaseScreen:
 	var path: String = SCREEN_SCENES.get(name, "")
 	if path == "":

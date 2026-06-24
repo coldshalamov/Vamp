@@ -96,18 +96,54 @@ func _add(fx: Dictionary) -> void:
 		_fx.pop_front()
 
 
-## A proper aim reticle at the cursor + a faint line from the predator, so aiming reads clearly
-## (replaces the lone "cartoony dot").
+## The Predator cursor: a context mark that reads what's under it — fangs over prey, a target-lock
+## over a hostile, a sharp predatory diamond otherwise. Replaces the incongruous "bullseye".
 func _draw_reticle() -> void:
 	var m := get_global_mouse_position()
-	var col := Color(0.88, 0.16, 0.22, 0.85)
-	if Sim != null and Sim.player != null and not Sim.player.dead:
-		draw_line(Sim.player.pos, m, Color(0.88, 0.16, 0.22, 0.12), 1.0)
-	draw_arc(m, 9.0, 0, TAU, 24, col, 1.6, true)
-	for k in range(4):
-		var ang := TAU * float(k) / 4.0
-		draw_line(m + Vector2.RIGHT.rotated(ang) * 5.0, m + Vector2.RIGHT.rotated(ang) * 12.0, col, 1.4)
-	draw_circle(m, 1.6, col)
+	if Sim == null or Sim.player == null or Sim.player.dead:
+		return
+	var crimson := Color(0.86, 0.14, 0.20, 0.9)
+	draw_line(Sim.player.pos, m, Color(0.86, 0.14, 0.20, 0.10), 1.0)   # faint aim line from the predator
+	var hover := _hover_entity(m)
+	if hover != null and (hover.faction == "civ" or hover.downed):
+		# PREY: fangs over a feedable mortal + a soft highlight on them
+		draw_arc(hover.pos, hover.radius + 5.0, 0, TAU, 20, Color(0.86, 0.14, 0.20, 0.5), 1.4)
+		var fcol := Color(0.96, 0.86, 0.86, 0.95)
+		draw_line(m + Vector2(-4, -7), m + Vector2(-2, 2), fcol, 1.8)   # left fang
+		draw_line(m + Vector2(4, -7), m + Vector2(2, 2), fcol, 1.8)     # right fang
+		draw_line(m + Vector2(-5, -7), m + Vector2(5, -7), fcol, 1.2)   # gumline
+	elif hover != null and hover.hostile_to_player:
+		# ENEMY: a target lock (corner brackets) — kill this one
+		var r := 11.0
+		for ix in range(2):
+			for iy in range(2):
+				var sx := -1.0 if ix == 0 else 1.0
+				var sy := -1.0 if iy == 0 else 1.0
+				var c := m + Vector2(sx * r, sy * r)
+				draw_line(c, c - Vector2(sx * 5.0, 0.0), crimson, 1.8)
+				draw_line(c, c - Vector2(0.0, sy * 5.0), crimson, 1.8)
+	else:
+		# DEFAULT: a sharp predatory diamond mark, no bullseye
+		for k in range(4):
+			var a := PI * 0.5 * float(k) + PI * 0.25
+			draw_line(m + Vector2.RIGHT.rotated(a) * 4.0, m + Vector2.RIGHT.rotated(a) * 10.0, crimson, 1.6)
+		draw_circle(m, 1.4, crimson)
+
+
+## The NPC the cursor is over (for the context cursor + future hover dossier). Presentation read only.
+func _hover_entity(m: Vector2) -> SimEntity:
+	if Sim == null:
+		return null
+	var best: SimEntity = null
+	var best_d := 99999.0
+	for e in Sim.entities:
+		if e == null or e.dead or e.kind != "npc":
+			continue
+		var d: float = e.pos.distance_to(m)
+		if d <= float(e.radius) + 14.0 and d < best_d:
+			best_d = d
+			best = e
+	return best
 
 
 func _facing_of(id: int) -> float:

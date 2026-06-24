@@ -39,6 +39,7 @@ var _buff_list: VBoxContainer = null
 var _phase_label: Label = null
 var _combo_label: Label = null
 var _flow_label: Label = null
+var _objective_label: Label = null
 var _minimap: ColorRect = null
 
 var _hunger_pips: Array[TextureRect] = []
@@ -70,6 +71,7 @@ func _process(_delta: float) -> void:
 	_refresh_action_phase()
 	_refresh_hotbar()
 	_refresh_pressure()
+	_refresh_objective()
 
 
 # ---------------------------------------------------------------- layout
@@ -209,6 +211,17 @@ func _build_layout() -> void:
 	_flow_label = _data_label(" ")
 	_flow_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	bottom_right.add_child(_flow_label)
+
+	# --- objective banner (top-center): tells the player what to do right now ---
+	_objective_label = _tag(" ", _accent("gold"), 15)
+	_objective_label.set_anchors_preset(PRESET_CENTER_TOP)
+	_objective_label.anchor_left = 0.5
+	_objective_label.anchor_right = 0.5
+	_objective_label.offset_left = -280
+	_objective_label.offset_right = 280
+	_objective_label.offset_top = 66
+	_objective_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(_objective_label)
 
 	# --- minimap placeholder (kept; Phase 2) ---
 	_minimap = ColorRect.new()
@@ -532,6 +545,13 @@ func _refresh_flow() -> void:
 		_flow_label.add_theme_color_override("font_color", Color(1.0, clampf(0.5 + 0.06 * float(stacks), 0.5, 1.0), 0.25))
 	else:
 		_flow_label.text = " "
+
+
+## The current objective ("what do I do now?"), pulled from deterministic Sim state.
+func _refresh_objective() -> void:
+	if _objective_label == null or Sim == null or not Sim.has_method("current_objective"):
+		return
+	_objective_label.text = Sim.current_objective()
 
 
 func _buff_display_name(buff_id: String) -> String:

@@ -616,6 +616,23 @@ func _update_heat(delta: float) -> void:
 		_spawn_responder()
 		responder_spawn_ticks = max(48, 156 - heat_stars() * 15)
 
+## A one-line "what do I do now?" objective derived purely from current state (no stored state, no
+## RNG), so the HUD can always point the player at their next move. Answers "I have no idea what to do".
+func current_objective() -> String:
+	if player == null or player.dead:
+		return "Rise from torpor"
+	for e in entities:
+		if e != null and e.responder and not e.dead and String(e.perception_state) == "searching":
+			return "A hunter searches your trail — break line of sight"
+	if heat_stars() >= 3:
+		return "Heat is high — lose your pursuers and lie low"
+	var pb := player.behaviour
+	if pb != null:
+		var maxb := float(pb.get("max_blood"))
+		if maxb > 0.0 and float(pb.get("blood")) / maxb < 0.5:
+			return "Vitae runs low — stalk a mortal and feed (hold F)"
+	return "Hunt the night"
+
 func record_style(channel: String, weight: float) -> void:
 	if style_ledger != null:
 		style_ledger.record(channel, weight)

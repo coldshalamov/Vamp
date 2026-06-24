@@ -24,3 +24,11 @@ func test_casting_records_style() -> void:
 	sim.apply_input(a)
 	assert_gt(float(sim.style_ledger.tallies["stealth"]), 0.0, "casting Obfuscate records the stealth style")
 	sim.queue_free()
+
+
+func test_objective_guides_the_player() -> void:
+	var sim := VCSim.new()
+	sim.new_game(3, "brujah")
+	sim.player.behaviour.set("blood", 5.0)   # nearly dry
+	assert_true(sim.current_objective().to_lower().contains("feed"), "low vitae should point the player at feeding")
+	sim.queue_free()

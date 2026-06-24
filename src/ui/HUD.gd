@@ -23,7 +23,9 @@ const TEX_ICON_PLACEHOLDER := "res://art/ui/icon_placeholder.png"
 const ICON_DIR := "res://art/ui/icons/"
 
 # Bar widgets.
+const VialGaugeScript := preload("res://src/ui/VialGauge.gd")
 var _vitae_bar: TextureProgressBar = null
+var _vitae_vial: Control = null
 var _hp_bar: TextureProgressBar = null
 var _vitae_label: Label = null
 var _hp_label: Label = null
@@ -36,6 +38,7 @@ var _hotbar: HBoxContainer = null
 var _buff_list: VBoxContainer = null
 var _phase_label: Label = null
 var _combo_label: Label = null
+var _flow_label: Label = null
 var _minimap: ColorRect = null
 
 var _hunger_pips: Array[TextureRect] = []
@@ -95,7 +98,12 @@ func _build_layout() -> void:
 	_vitae_label = _data_label("%s ---" % tr("HUD_VITAE"))
 	top_left.add_child(_vitae_label)
 	_vitae_bar = _tex_bar(TEX_BAR_VITAE)
+	_vitae_bar.visible = false   # kept for the test's state binding; the blood vial is the visible gauge
 	top_left.add_child(_vitae_bar)
+	_vitae_vial = VialGaugeScript.new()
+	_vitae_vial.custom_minimum_size = Vector2(260, 16)
+	_vitae_vial.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top_left.add_child(_vitae_vial)
 	_hp_label = _data_label("%s ---" % tr("HUD_HP"))
 	top_left.add_child(_hp_label)
 	_hp_bar = _tex_bar(TEX_BAR_HP)
@@ -198,6 +206,9 @@ func _build_layout() -> void:
 	_combo_label = _data_label(" ")
 	_combo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	bottom_right.add_child(_combo_label)
+	_flow_label = _data_label(" ")
+	_flow_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	bottom_right.add_child(_flow_label)
 
 	# --- minimap placeholder (kept; Phase 2) ---
 	_minimap = ColorRect.new()
@@ -398,11 +409,15 @@ func _refresh_vitals() -> void:
 		if _vitae_bar:
 			_vitae_bar.value = 0
 			_hp_bar.value = 0
+			if _vitae_vial != null:
+				_vitae_vial.call("set_fill", 0.0, _accent("blood"))
 			_vitae_label.text = "%s ---" % tr("HUD_VITAE")
 			_hp_label.text = "%s ---" % tr("HUD_HP")
 		return
 	_vitae_bar.max_value = b.max_blood
 	_vitae_bar.value = b.blood
+	if _vitae_vial != null:
+		_vitae_vial.call("set_fill", b.blood / maxf(b.max_blood, 1.0), _accent("blood"))
 	_vitae_label.text = "%s %d/%d" % [tr("HUD_VITAE"), int(b.blood), int(b.max_blood)]
 	_hp_bar.max_value = Sim.player.max_hp
 	_hp_bar.value = Sim.player.hp
@@ -497,12 +512,26 @@ func _refresh_buffs() -> void:
 func _refresh_action_phase() -> void:
 	if Sim == null or Sim.player == null or _phase_label == null:
 		return
+	_refresh_flow()
 	var phase := Sim.player.action_phase()
 	if phase == "":
 		_phase_label.text = " "
 		return
 	_phase_label.text = "%s: %s" % [tr("HUD_ACTION"), phase.to_upper()]
 	_phase_label.add_theme_color_override("font_color", _accent("gold"))
+
+
+## FLOW meter — surfaces the gulp-as-master-cancel combo skill (flow_stacks) that was invisible.
+func _refresh_flow() -> void:
+	if _flow_label == null:
+		return
+	var fb := _player_behaviour()
+	var stacks: int = int(fb.get("flow_stacks")) if fb != null and fb.get("flow_stacks") != null else 0
+	if stacks > 0:
+		_flow_label.text = "FLOW x%d" % stacks
+		_flow_label.add_theme_color_override("font_color", Color(1.0, clampf(0.5 + 0.06 * float(stacks), 0.5, 1.0), 0.25))
+	else:
+		_flow_label.text = " "
 
 
 func _buff_display_name(buff_id: String) -> String:

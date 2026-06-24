@@ -118,6 +118,7 @@ func tick_sim(delta: float) -> void:
 		_tick_fire()
 	_tick_sigils()
 	_tick_wells()
+	_tick_dread()
 	if meta != null:
 		meta.tick(delta, self)
 	_update_body_witnesses()
@@ -671,6 +672,21 @@ func _has_hostile() -> bool:
 		if e != null and not e.dead and e.kind == "npc" and e.hostile_to_player:
 			return true
 	return false
+
+## Dread Field: once you're notorious (heat), mortals near you break and flee — the city fears the
+## known predator. Gated by heat so the world stays calm until you earn the terror. Deterministic.
+func _tick_dread() -> void:
+	if player == null or player.dead or heat_stars() < 2 or tick % 12 != 0:
+		return
+	for e in entities:
+		if e == null or e.dead or e.kind != "npc" or e.faction != "civ":
+			continue
+		if e.ai_state == "flee" or e.has_status("mesmerized"):
+			continue
+		if e.pos.distance_to(player.pos) < 150.0:
+			e.ai_state = "flee"
+			e.perception_state = "alert"
+			e.tags["dread"] = 90
 
 func record_style(channel: String, weight: float) -> void:
 	if style_ledger != null:

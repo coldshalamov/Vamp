@@ -34,6 +34,19 @@ func test_objective_guides_the_player() -> void:
 	sim.queue_free()
 
 
+func test_dread_field_scatters_mortals_when_notorious() -> void:
+	var sim := VCSim.new()
+	sim.new_game(5, "brujah")
+	var civ := sim.spawn_npc("ped", sim.player.pos + Vector2(80.0, 0.0), {})
+	civ.faction = "civ"
+	civ.ai_state = "wander"
+	sim.heat = 3.0   # notorious
+	for _t in range(15):
+		sim.tick_sim(1.0 / 60.0)
+	assert_eq(civ.ai_state, "flee", "a notorious predator scatters nearby mortals (Dread Field)")
+	sim.queue_free()
+
+
 func test_difficulty_scales_the_hunt() -> void:
 	var sim := VCSim.new()
 	sim.new_game(5, "brujah")

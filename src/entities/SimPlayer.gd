@@ -18,9 +18,15 @@ const GULP_HIT_BONUS := 0.12   # fraction of victim blood_yield healed per perfe
 const GULP_MISS_SLOW := 0.6    # drain-speed factor while penalised after a miss (longer exposure)
 const GULP_SLOW_TICKS := 30
 
+# --- Piloted locomotion (deterministic) ---
+const MOVE_ACCEL := 5200.0   # snappy ramp from rest (~0.04s to full) so positioning stays tight
+const MOVE_BRAKE := 1600.0   # glide to a stop on release — real momentum, not an instant halt
+const MOVE_SKID := 1100.0    # slow redirect on a hard reversal -> a visible skid
+
 var entity: SimEntity
 
 var move_dir: Vector2 = Vector2.ZERO
+var move_vel: Vector2 = Vector2.ZERO   # piloted-locomotion velocity (accel/brake/skid), hashed
 var move_speed: float = 220.0
 var aim_point: Vector2 = Vector2.ZERO
 var aiming: bool = false
@@ -136,22 +142,42 @@ func step(delta: float, sim) -> void:
 		_tick_feeding(delta, sim)
 	var phase := entity.action_phase()
 	var can_move := (phase == "" or phase == "recovery") and feeding_target_id == 0
-	if can_move and move_dir != Vector2.ZERO:
-		var speed := move_speed
-		if buffs.has("cel_haste"):
-			speed *= 1.35
-		if buffs.has("pro_beast"):
-			speed *= 1.25
-		if sneaking:
-			speed *= 0.52
-		if carrying_body_id != 0:
-			speed *= 0.60
-		if sprinting and carrying_body_id == 0 and blood > 1.0:
-			speed *= 1.7
-			blood = max(0.0, blood - 6.0 * delta)
+	# Piloted locomotion: accelerate a real velocity toward the desired heading instead of snapping
+	# position at a constant speed (the "float"). Snappy from rest, glides to a stop, skids on a hard
+	# reversal, hydroplanes on a blood-slick floor. knockback_vel (shoves) is integrated separately by
+	# SimEntity.step, so you can be piloted AND flung at once.
+	var target_speed := move_speed
+	if buffs.has("cel_haste"):
+		target_speed *= 1.35
+	if buffs.has("pro_beast"):
+		target_speed *= 1.25
+	if sneaking:
+		target_speed *= 0.52
+	if carrying_body_id != 0:
+		target_speed *= 0.60
+	var wants_move: bool = can_move and move_dir != Vector2.ZERO
+	if sprinting and wants_move and carrying_body_id == 0 and blood > 1.0:
+		target_speed *= 1.7
+		blood = max(0.0, blood - 6.0 * delta)
+		if sim.tick % 6 == 0:
 			sim.emit_cue("move.sprint", { "entity_id": entity.id, "pos": entity.pos, "magnitude": 0.35 })
-		var next_pos := entity.pos + move_dir * speed * delta
-		entity.pos = sim.world.resolve_motion(entity.pos, next_pos, entity.radius)
+	var desired_vel: Vector2 = move_dir * target_speed if wants_move else Vector2.ZERO
+	var accel := MOVE_ACCEL
+	if desired_vel == Vector2.ZERO:
+		accel = MOVE_BRAKE
+	elif move_vel.dot(desired_vel) < 0.0 and move_vel.length() > 40.0:
+		accel = MOVE_SKID   # hard reversal -> slide before redirecting
+	if sim.world != null and sim.world.blood_at(entity.pos) >= 40:
+		accel *= 0.45        # blood-slick hydroplane: less grip, longer slide
+	move_vel = move_vel.move_toward(desired_vel, accel * delta)
+	if move_vel.length_squared() > 1.0:
+		var next_pos := entity.pos + move_vel * delta
+		var resolved: Vector2 = sim.world.resolve_motion(entity.pos, next_pos, entity.radius)
+		if resolved.distance_squared_to(next_pos) > 4.0:
+			move_vel *= 0.3   # ran into a wall: bleed the speed so we don't smear along it
+		entity.pos = resolved
+	else:
+		move_vel = Vector2.ZERO
 	_tick_drink(sim)
 	entity.exposure = _compute_exposure(sim)
 	entity.tags["cloaked"] = buffs.has("obf_cloak") or buffs.has("obf_vanish")
@@ -455,6 +481,7 @@ func try_toggle_carry(sim) -> bool:
 func state_hash() -> int:
 	var h := hash([
 		snapped(move_dir.x, 0.001), snapped(move_dir.y, 0.001),
+		snapped(move_vel.x, 0.001), snapped(move_vel.y, 0.001),
 		snapped(aim_point.x, 0.001), snapped(aim_point.y, 0.001),
 		snapped(blood, 0.001), snapped(max_blood, 0.001),
 		snapped(hunger, 0.001), snapped(humanity, 0.001),

@@ -1,0 +1,98 @@
+name: Visual evidence
+
+# Windowed, pixel-level acceptance for the shipping presentation layer.
+# This deliberately complements the headless GUT suite: rendering regressions cannot be
+# proven by headless tests alone, so the real GameView is exercised under Xvfb/llvmpipe.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: visual-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GODOT_VERSION: "4.7-stable"
+  GODOT_BIN: "Godot_v4.7-stable_linux.x86_64"
+  LIBGL_ALWAYS_SOFTWARE: "1"
+
+jobs:
+  capture:
+    name: Render, inspect, and stress the graphics pass
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install virtual display and Mesa
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libgl1-mesa-dri libglx-mesa0 mesa-utils
+
+      - name: Cache Godot binary
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: ~/godot-bin
+          key: godot-${{ env.GODOT_VERSION }}-linux-visual
+
+      - name: Download Godot ${{ env.GODOT_VERSION }}
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p ~/godot-bin
+          URL="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_BIN}.zip"
+          curl -fL --retry 3 --retry-delay 5 -o /tmp/godot.zip "$URL"
+          unzip -o /tmp/godot.zip -d ~/godot-bin
+          rm -f /tmp/godot.zip
+
+      - name: Install Godot on PATH
+        run: |
+          set -euo pipefail
+          chmod +x "$HOME/godot-bin/${GODOT_BIN}"
+          ln -sf "$HOME/godot-bin/${GODOT_BIN}" "$HOME/godot-bin/godot"
+          echo "$HOME/godot-bin" >> "$GITHUB_PATH"
+
+      - name: Print renderer environment
+        run: |
+          godot --headless --version
+          xvfb-run -a -s "-screen 0 1280x720x24" glxinfo -B || true
+
+      - name: Import project resources
+        run: |
+          godot --headless --import || true
+          godot --headless --import || true
+
+      - name: Capture real GameView frames
+        run: |
+          set -euo pipefail
+          timeout 180s xvfb-run -a -s "-screen 0 1280x720x24" \
+            godot --path "$GITHUB_WORKSPACE" \
+            --rendering-method gl_compatibility \
+            --audio-driver Dummy \
+            --windowed \
+            res://test/CaptureGraphicsPass.tscn \
+            2>&1 | tee visual_capture.log
+
+      - name: Inspect pixels and performance evidence
+        run: python3 test/verify_visual_capture.py
+
+      - name: Upload graphics evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphics-pass-evidence
+          path: |
+            docs/evidence/graphics_pass/*.png
+            docs/evidence/graphics_pass/*.json
+            visual_capture.log
+          if-no-files-found: error
+          retention-days: 14

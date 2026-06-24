@@ -28,6 +28,7 @@ var last_crime_tick: int = -999999
 var last_provoke_tick: int = -999999
 var last_seen_pos: Vector2 = Vector2.ZERO
 var responder_spawn_ticks: int = 0
+var style_ledger: StyleLedger = null   # consequence loop: profiles play style -> styled hunter dispatch
 var sigils: Array[Dictionary] = []   # Blood Grammar INSCRIBE: active blood-sigils rewriting local rules
 var player_last_attack_tick: int = -999999
 var escaped: bool = false
@@ -59,6 +60,7 @@ func new_game(new_seed_value: int, clan_id: String) -> void:
 	escaped = false
 	reached_haven = false
 	investigations.clear()
+	style_ledger = StyleLedger.new()
 	last_body_carried_seen_tick = -999999
 	_next_entity_seq = 1
 	entities.clear()
@@ -482,7 +484,8 @@ func state_hash() -> int:
 		snapped(last_seen_pos.y, 0.001), responder_spawn_ticks,
 		player_last_attack_tick, _last_vitals_emit_tick, time_scale,
 		escaped, reached_haven, last_body_carried_seen_tick,
-		_hash_variant(investigations)
+		_hash_variant(investigations),
+		style_ledger.state_hash() if style_ledger != null else 0
 	])
 	for e in entities:
 		if e != null:
@@ -506,6 +509,7 @@ func serialize_run() -> Dictionary:
 		"reached_haven": reached_haven,
 		"investigations": investigations.duplicate(true),
 		"last_body_carried_seen_tick": last_body_carried_seen_tick,
+		"style_ledger": style_ledger.to_dict() if style_ledger != null else {},
 		"meta": meta.serialize(self) if meta != null else {},
 	}
 
@@ -525,6 +529,8 @@ func restore_run(data: Dictionary) -> bool:
 		last_seen_pos = data["last_seen_pos"]
 	responder_spawn_ticks = int(data.get("responder_spawn_ticks", responder_spawn_ticks))
 	player_last_attack_tick = int(data.get("player_last_attack_tick", player_last_attack_tick))
+	if style_ledger != null and data.get("style_ledger", null) is Dictionary:
+		style_ledger.from_dict(data["style_ledger"])
 	escaped = bool(data.get("escaped", escaped))
 	reached_haven = bool(data.get("reached_haven", reached_haven))
 	investigations = _clean_investigations(data.get("investigations", []))
@@ -610,21 +616,22 @@ func _update_heat(delta: float) -> void:
 		_spawn_responder()
 		responder_spawn_ticks = max(48, 156 - heat_stars() * 15)
 
+func record_style(channel: String, weight: float) -> void:
+	if style_ledger != null:
+		style_ledger.record(channel, weight)
+
 func _spawn_responder() -> void:
 	var stars := heat_stars()
-	var type_id := "cop"
-	if stars >= 6 and draw_float() < 0.5:
-		type_id = "elder"
-	elif stars >= 5:
-		type_id = "hunter" if draw_float() < 0.6 else "swat"
-	elif stars >= 3:
-		type_id = "swat" if draw_float() < 0.5 else "cop"
+	# Style-aware dispatch: the city sends a hunter that COUNTERS how you play (a Tracker for the
+	# unseen, a bruiser for the brute) instead of a style-blind coin flip.
+	var type_id := style_ledger.counter_type(stars, draw_float()) if style_ledger != null else "cop"
 	var pos := world.nearest_open_around(last_seen_pos, 120.0, 520.0, draw_index(997) + _responder_count() * 13)
 	var e := spawn_npc(type_id, pos, { "responder": true, "hostile_to_player": true, "state": "chase" })
 	e.responder = true
 	e.hostile_to_player = true
 	e.last_seen_pos = last_seen_pos
 	e.search_ticks = 420
+	emit_cue("dispatch.styled", { "type": type_id, "style": style_ledger.dominant() if style_ledger != null else "", "pos": pos, "stars": stars })
 
 func _desired_responders() -> int:
 	match heat_stars():

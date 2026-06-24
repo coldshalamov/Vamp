@@ -392,6 +392,7 @@ func cast_power(power_id: String, sim) -> bool:
 			ok = false
 	if ok:
 		sim.emit_cue("power.cast", _cast_cue_payload(power_id, def))
+		sim.record_style(_style_channel(def), 1.0)   # consequence loop: your discipline shapes who hunts you
 		# Open Vein: paying vitae for power opens a small wound that spills at your feet.
 		if sim.world != null and cost > 0.0:
 			sim.world.spill_blood(entity.pos, clampi(int(cost * 0.5), 2, 14))
@@ -438,6 +439,15 @@ func _resolve_cast_target(def: Dictionary) -> Vector2:
 	if d > rng:
 		return entity.pos + to / d * rng
 	return aim_point
+
+
+## Which play-style channel a discipline feeds (consequence-loop StyleLedger).
+func _style_channel(def: Dictionary) -> String:
+	match str(def.get("discipline", "")):
+		"obfuscate": return "stealth"
+		"dominate", "presence": return "social"
+		"sorcery": return "blood"
+		_: return "force"
 
 
 func on_damage_dealt(amount: float) -> void:

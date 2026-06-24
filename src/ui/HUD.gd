@@ -24,6 +24,7 @@ const ICON_DIR := "res://art/ui/icons/"
 
 # Bar widgets.
 const VialGaugeScript := preload("res://src/ui/VialGauge.gd")
+const MinimapRadarScript := preload("res://src/ui/MinimapRadar.gd")
 var _vitae_bar: TextureProgressBar = null
 var _vitae_vial: Control = null
 var _hp_bar: TextureProgressBar = null
@@ -223,16 +224,20 @@ func _build_layout() -> void:
 	_objective_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_objective_label)
 
-	# --- minimap placeholder (kept; Phase 2) ---
+	# --- blood-scent radar (replaces the Phase-2 placeholder) ---
 	_minimap = ColorRect.new()
-	_minimap.color = Color(0.05, 0.05, 0.08, 0.5)
+	_minimap.color = Color(0, 0, 0, 0.0)   # transparent host; the radar draws its own dial
 	_minimap.set_anchors_preset(PRESET_CENTER_TOP)
 	_minimap.anchor_left = 0.5
 	_minimap.anchor_right = 0.5
-	_minimap.offset_left = -40
-	_minimap.offset_right = 40
+	_minimap.offset_left = -52
+	_minimap.offset_right = 52
 	_minimap.offset_top = margin
-	_minimap.offset_bottom = margin + 40
+	_minimap.offset_bottom = margin + 104
+	var radar := MinimapRadarScript.new()
+	radar.set_anchors_preset(PRESET_FULL_RECT)
+	radar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_minimap.add_child(radar)
 	_minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_minimap)
 

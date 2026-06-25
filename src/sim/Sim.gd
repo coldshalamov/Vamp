@@ -718,6 +718,17 @@ func current_objective() -> String:
 			return "FIRST HUNT — Drink: stalk a mortal and hold F beside them to feed"
 		if int(fh.get("kills")) == 0 and _has_hostile():
 			return "FIRST HUNT — Hunt: strike with Space, dash clear with Shift"
+	# DAWN PRESSURE — the night runs on a clock to 06:00 and the sun is a guillotine. Once dawn nears,
+	# this goal overrides everything: reach the haven before you burn. It is the night's spine, the
+	# thing that turns "wander a sandbox" into "survive until the sun, then do it again."
+	if meta != null and not player.dead:
+		var clk: float = meta.clock
+		var hours_left: float = (24.0 - clk + SimMeta.DAWN_HOUR) if clk >= SimMeta.NIGHT_START else (SimMeta.DAWN_HOUR - clk)
+		var mins_left: int = maxi(0, int(hours_left * (SimMeta.NIGHT_SECONDS / SimMeta.NIGHT_HOURS) / 60.0))
+		if clk >= 4.5 and clk < SimMeta.NIGHT_START:
+			if world != null and world.is_in_haven(player.pos):
+				return "Dawn breaks — hold in the haven and let the sun pass (%dm)" % mins_left
+			return "DAWN NEARS — reach your haven before the sun finds you (%dm)" % mins_left
 	for e in entities:
 		if e != null and e.responder and not e.dead and String(e.perception_state) == "searching":
 			return "A hunter searches your trail — break line of sight"
@@ -731,7 +742,7 @@ func current_objective() -> String:
 		var maxb := float(pb.get("max_blood"))
 		if maxb > 0.0 and float(pb.get("blood")) / maxb < 0.5:
 			return "Vitae runs low — stalk a mortal and feed (hold F)"
-	return "Hunt the night"
+	return "Hunt the night — feed to survive, then reach your haven before dawn"
 
 func _has_hostile() -> bool:
 	for e in entities:

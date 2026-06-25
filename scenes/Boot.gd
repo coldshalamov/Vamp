@@ -57,7 +57,7 @@ func _ready() -> void:
 # ---------------------------------------------------------------- flow
 
 func _on_new_game() -> void:
-	Sim.new_game(42, "brujah")
+	Sim.new_game(42, "brujah", true)   # populated: a living block for the playable night
 	Sim.set_difficulty(UIManager.selected_difficulty)
 	_enter_gameplay()
 

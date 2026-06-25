@@ -45,7 +45,7 @@ func _ready() -> void:
 		push_error("GameRenderer: Sim autoload is missing")
 		return
 	if Sim.player == null:
-		Sim.new_game(42, "brujah")
+		Sim.new_game(42, "brujah", true)   # populated: a living block for the playable night
 
 	# Build the view hierarchy.
 	_world_renderer = WorldRendererScript.new()

@@ -50,7 +50,7 @@ var _replay_queue: Array = []
 var _recording: bool = false
 var _input_seq: int = 0
 
-func new_game(new_seed_value: int, clan_id: String) -> void:
+func new_game(new_seed_value: int, clan_id: String, populated: bool = false) -> void:
 	seed_value = int(new_seed_value)
 	rng = _seed_to_state(seed_value)
 	tick = 0
@@ -91,21 +91,11 @@ func new_game(new_seed_value: int, clan_id: String) -> void:
 
 	spawn_npc("ped", world.named_points.get("civilian", Vector2(245, 576)), { "state": "wander" })
 	spawn_npc("ped", world.named_points.get("witness", Vector2(330, 560)), { "state": "wander" })
-	# A LIVING BLOCK: the night is populated with mortals going about their lives — prey to stalk,
-	# witnesses to dread, a crowd that makes the player a predator loose in a PLACE rather than a lone
-	# figure in an empty lot. Deterministic fixed placements (no RNG). Every mortal starts NEUTRAL and
-	# calm — heat and aggro are consequences of the player's own violence, never a default.
-	var _crowd := [
-		Vector2(210, 600), Vector2(430, 560), Vector2(620, 592), Vector2(770, 552),
-		Vector2(910, 602), Vector2(1080, 566), Vector2(1245, 596), Vector2(1430, 560),
-		Vector2(1660, 590), Vector2(1840, 602),
-		Vector2(360, 1120), Vector2(720, 1150), Vector2(1180, 1116), Vector2(1560, 1145),
-	]
-	for _ci in range(_crowd.size()):
-		spawn_npc("ped", _crowd[_ci], { "state": "wander" })
-	# Two neutral toughs give the street some teeth — dangerous if you cross them, calm if left alone.
-	spawn_npc("thug", Vector2(980, 1140), { "state": "wander" })
-	spawn_npc("thug", Vector2(1500, 602), { "state": "wander" })
+	# A LIVING BLOCK (real game only): populate the night with ambient mortals so it reads as a city
+	# to prowl, not an empty lot. Skipped for the test/determinism harnesses, which pin the minimal
+	# deterministic world — the crowd is presentation-scope population the playable game opts into.
+	if populated:
+		_populate_ambient_crowd()
 	# The slice's first named foe is the HERALD — the sire's hunter. Tagged so the nemesis backend
 	# forces a flee on its first defeat (try_nemesis_escape) instead of a clean death: it returns
 	# scarred and resistant to the damage type that beat it. The slice's ending hook, in one tag.
@@ -379,6 +369,24 @@ func revive_player() -> void:
 			e.ai_state = "wander"
 			e.perception_state = "unaware"
 	emit_cue("player.respawn", { "pos": player.pos })
+
+
+## Ambient nightlife for the playable slice: a deterministic crowd of mortals living their night —
+## prey to stalk, witnesses to dread — so the player is a predator loose in a PLACE, not a lone
+## figure in an empty lot. Fixed placements (no RNG). All start NEUTRAL; heat/aggro are consequences
+## of the player's own violence, never a default. Presentation-scope only (see new_game `populated`).
+func _populate_ambient_crowd() -> void:
+	const CROWD := [
+		Vector2(210, 600), Vector2(430, 560), Vector2(620, 592), Vector2(770, 552),
+		Vector2(910, 602), Vector2(1080, 566), Vector2(1245, 596), Vector2(1430, 560),
+		Vector2(1660, 590), Vector2(1840, 602),
+		Vector2(360, 1120), Vector2(720, 1150), Vector2(1180, 1116), Vector2(1560, 1145),
+	]
+	for ci in range(CROWD.size()):
+		spawn_npc("ped", CROWD[ci], { "state": "wander" })
+	# Two neutral toughs give the street some teeth — dangerous if you cross them, calm if left alone.
+	spawn_npc("thug", Vector2(980, 1140), { "state": "wander" })
+	spawn_npc("thug", Vector2(1500, 602), { "state": "wander" })
 
 
 func spawn_npc(type_id: String, pos: Vector2, opts: Dictionary = {}) -> SimEntity:

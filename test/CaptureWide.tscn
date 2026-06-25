@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bvampcapturewide02"]
+
+[ext_resource type="Script" path="res://test/CaptureWide.gd" id="1_capw"]
+
+[node name="CaptureWide" type="Node"]
+script = ExtResource("1_capw")

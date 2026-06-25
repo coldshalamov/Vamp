@@ -13,13 +13,13 @@ extends Node2D
 class_name BloomFX
 
 # Glow sprite half-extent relative to the light's radius. ~1.4x so the bleed spills past the lit pool.
-const GLOW_SCALE := 1.4
+const GLOW_SCALE := 1.3
 # Soft-radial texture resolution (one shared texture, scaled per light — small is plenty when blurred).
 const TEX_SIZE := 64
 # Additive overlap blows to white fast, so keep the per-light gain restrained: this reads as "bleed",
 # not a blown highlight. Final modulate = color * (BASE_GAIN + ENERGY_GAIN * energy).
-const BASE_GAIN := 0.35
-const ENERGY_GAIN := 0.45
+const BASE_GAIN := 0.20
+const ENERGY_GAIN := 0.22
 # Hard cap so a malformed world can never spawn an unbounded number of nodes (freeze-safe).
 const MAX_GLOWS := 64
 

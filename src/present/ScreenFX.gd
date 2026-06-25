@@ -28,6 +28,7 @@ const DAMAGE_REF := 18.0
 const DAMAGE_PEAK := 0.9   # hard ceiling on vignette intensity even at/over DAMAGE_REF
 
 var _mat: ShaderMaterial = null
+var _rect: ColorRect = null
 var _damage: float = 0.0
 var _aberration: float = 0.0
 
@@ -41,12 +42,17 @@ func _ready() -> void:
 		return
 	_mat = ShaderMaterial.new()
 	_mat.shader = sh
-	var rect := ColorRect.new()
-	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	rect.material = _mat
-	rect.color = Color(1, 1, 1, 1)
-	add_child(rect)
+	# No always-on framing vignette: the full-screen screen-sampling pass is the cost, so the rect is
+	# HIDDEN whenever no effect is live (the common case, incl. the FPS stress showcase) — zero idle
+	# cost on the iGPU. NocturneGrade (layer 2) carries the constant mood/edge grade.
+	_mat.set_shader_parameter("framing_vignette", 0.0)
+	_rect = ColorRect.new()
+	_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rect.material = _mat
+	_rect.color = Color(1, 1, 1, 1)
+	_rect.visible = false
+	add_child(_rect)
 	if CueBus != null:
 		CueBus.cue_emitted.connect(_on_cue)
 
@@ -73,12 +79,17 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 
 
 func _process(delta: float) -> void:
-	if _mat == null:
+	if _mat == null or _rect == null:
 		return
 	# Linear decay of both timers toward zero over their windows.
 	if _damage > 0.0:
 		_damage = maxf(0.0, _damage - delta / DAMAGE_FADE)
 	if _aberration > 0.0:
 		_aberration = maxf(0.0, _aberration - delta / ABERRATION_FADE)
-	_mat.set_shader_parameter("damage", _damage)
-	_mat.set_shader_parameter("aberration", _aberration)
+	var active := _damage > 0.0 or _aberration > 0.0
+	# Hide the rect when idle so the full-screen screen-sampling pass doesn't run every frame.
+	if _rect.visible != active:
+		_rect.visible = active
+	if active:
+		_mat.set_shader_parameter("damage", _damage)
+		_mat.set_shader_parameter("aberration", _aberration)

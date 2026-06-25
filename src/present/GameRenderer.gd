@@ -24,6 +24,7 @@ const AmbientFXScript := preload("res://src/present/AmbientFX.gd")
 const BloomFXScript := preload("res://src/present/BloomFX.gd")
 const ScreenFXScript := preload("res://src/present/ScreenFX.gd")
 const ParallaxBackdropScript := preload("res://src/present/ParallaxBackdrop.gd")
+const CityDetailLayerScript := preload("res://src/present/CityDetailLayer.gd")
 const AtmosphereScript := preload("res://src/present/AtmosphereDirector.gd")
 const NocturneGradeScript := preload("res://src/present/NocturneGrade.gd")
 const DebugOverlayScript := preload("res://src/present/DebugOverlay.gd")
@@ -42,6 +43,7 @@ var _ambient_fx: Node2D = null
 var _bloom_fx: Node2D = null
 var _screen_fx: CanvasLayer = null
 var _parallax: CanvasLayer = null
+var _city_detail: Node2D = null
 var _atmosphere: Control = null
 var _lighting: Node2D = null
 var _camera: Camera2D = null
@@ -71,6 +73,13 @@ func _ready() -> void:
 	_world_renderer.name = "WorldRenderer"
 	_world_renderer.setup(Sim.world)
 	add_child(_world_renderer)
+
+	# City ground detail (lane lines, crosswalks, manholes — z 6, below actors) + foreground props
+	# (awnings/signs that overlap the player near buildings — z 30). Additive over WorldRenderer.
+	_city_detail = CityDetailLayerScript.new()
+	_city_detail.name = "CityDetailLayer"
+	add_child(_city_detail)
+	_city_detail.setup(Sim.world)
 
 	# Dynamic blood pools (the SPILL layer), under props/actors.
 	_blood_renderer = BloodRendererScript.new()

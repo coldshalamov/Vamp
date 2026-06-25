@@ -1,0 +1,69 @@
+{
+  "archetypes": [
+    "hero",
+    "thug",
+    "gunner",
+    "cop",
+    "swat",
+    "hunter",
+    "elder",
+    "thrall",
+    "civilian",
+    "rat"
+  ],
+  "baseline_y": 112,
+  "blood_decal_frame_size": [
+    64,
+    64
+  ],
+  "columns": [
+    "east",
+    "southeast",
+    "south",
+    "southwest",
+    "west",
+    "northwest",
+    "north",
+    "northeast"
+  ],
+  "direction_runtime_map": {
+    "0": [
+      0,
+      false
+    ],
+    "1": [
+      1,
+      false
+    ],
+    "2": [
+      2,
+      false
+    ],
+    "3": [
+      3,
+      false
+    ],
+    "4": [
+      4,
+      false
+    ],
+    "5": [
+      5,
+      false
+    ],
+    "6": [
+      6,
+      false
+    ],
+    "7": [
+      7,
+      false
+    ]
+  },
+  "generator": "tools/visual/generate_visual_atlas.py",
+  "vehicle_size": [
+    192,
+    96
+  ],
+  "version": 3
+}

@@ -1,0 +1,10 @@
+[gd_resource type="CanvasTexture" load_steps=4 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/visual/atlases/swat_diffuse.png" id="1"]
+[ext_resource type="Texture2D" path="res://assets/visual/atlases/swat_normal.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/visual/atlases/swat_specular.png" id="3"]
+
+[resource]
+diffuse_texture = ExtResource("1")
+normal_texture = ExtResource("2")
+specular_texture = ExtResource("3")

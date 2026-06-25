@@ -6,7 +6,10 @@
 extends Node2D
 class_name EntityRenderer
 
-const CharacterRigScript := preload("res://src/present/CharacterRig2D.gd")
+## Live actor renderer: authored normal/specular atlas sprites (replaces the procedural
+## CharacterRig2D "asparagus people"). Same setup/physics_sync/advance_visual/notify_event/
+## set_detail_level contract, so this is a drop-in swap.
+const CharacterRigScript := preload("res://src/present/CharacterAtlas2D.gd")
 const TRAIL_POINTS := 8
 
 var _entities: Array[SimEntity] = []

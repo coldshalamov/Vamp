@@ -16,6 +16,17 @@ const TELEPORT_DISTANCE := 180.0
 const MAX_AFTERIMAGES := 6
 const TAU_INV := 1.0 / TAU
 
+## One shared rim-light material for every actor (cold-moon silhouette so dark bodies pop from the
+## dark ground). Shared, not per-actor, so no per-actor material allocation. See character_rim.gdshader.
+const RIM_SHADER := preload("res://art/shaders/character_rim.gdshader")
+static var _rim_material: ShaderMaterial = null
+
+static func _shared_rim_material() -> ShaderMaterial:
+	if _rim_material == null:
+		_rim_material = ShaderMaterial.new()
+		_rim_material.shader = RIM_SHADER
+	return _rim_material
+
 const ATLAS_MATERIALS := {
 	"hero": preload("res://assets/visual/materials/characters/hero.tres"),
 	"thug": preload("res://assets/visual/materials/characters/thug.tres"),
@@ -65,6 +76,7 @@ func setup(sim_entity: SimEntity) -> void:
 	entity = sim_entity
 	if entity == null:
 		return
+	material = _shared_rim_material()
 	position = entity.pos
 	_facing = entity.facing
 	_last_sim_pos = entity.pos
@@ -179,7 +191,9 @@ func _draw() -> void:
 		var col := _direction_column(_facing)
 		var tint := _entity_tint()
 		if _flash > 0.0:
-			tint = tint.lerp(Color(1.0, 0.52, 0.58, 1.0), clampf(_flash, 0.0, 1.0) * 0.58)
+			# White-hot hit pop: brighten the body FAR past 1.0 so it survives the night ambient and
+			# the brighter texels clip toward white — a clear "I connected" flash.
+			tint = tint.lerp(Color(8.0, 8.0, 8.4, tint.a), clampf(_flash, 0.0, 1.0))
 		_draw_frame(_atlas, row, col, tint, Vector2.ZERO, _sprite_scale())
 	_draw_status()
 	_draw_alert()

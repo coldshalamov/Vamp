@@ -8,11 +8,14 @@
 extends Node2D
 class_name LightingDirector
 
-# Moonlit night: dark enough to read as night, bright enough to SEE the textured street.
-# (The old #08080c made the whole frame a void.) Lights ADD warm pools on top of this.
-const AMBIENT_NIGHT := Color(0.22, 0.25, 0.31)
+# Moonlit night. Lowered from 0.22 -> 0.16 (deliberate, rim-light-enabled): 0.22 was raised to fix a
+# "black void" before characters had a rim. Now the rim shader keeps ACTORS readable in any light, so
+# a darker base buys more noir chiaroscuro — kept at 0.16 (not deeper) so street/walls/props/blood
+# stay legible. Lights ADD warm pools on top. Re-tune from a real playtest. See [[visual-night-legibility]].
+const AMBIENT_NIGHT := Color(0.16, 0.18, 0.225)
 
 var _lights: Array[PointLight2D] = []
+var _occluders: Array[LightOccluder2D] = []
 var _modulate: CanvasModulate = null
 var _player_light: PointLight2D = null
 
@@ -22,20 +25,82 @@ func setup(world: SimWorld) -> void:
 	_modulate.color = AMBIENT_NIGHT
 	add_child(_modulate)
 
-	# Authored world lights (neon / streetlamp / haven sign).
+	# Buildings become real shadow casters so the predator's follow-light pool is SHAPED by the
+	# architecture: light spills down the street and stops at the wall, carving dark pockets behind
+	# buildings (stealth) and bright pools in the open (danger). Light/shadow becomes tactical.
+	_build_occluders(world)
+
+	# Authored world lights (neon / streetlamp / haven sign). STATIC and many, so they do NOT cast
+	# shadows — N shadow-casting lights against the occluders would cost FPS on the iGPU for little
+	# gain (their shadows fall behind buildings, already dark). Only the predator's light casts.
 	for light_data in world.lights:
 		var light := _make_light(
 			light_data["pos"],
 			int(light_data["radius"]),
 			light_data["color"],
-			float(light_data["energy"]) * 1.4)
+			float(light_data["energy"]) * 1.4,
+			false)
 		add_child(light)
 		_lights.append(light)
 
-	# The predator's travelling pool of light — a tighter, brighter pool for real chiaroscuro
-	# (bright around the predator, moody dark beyond) instead of a flat wash over everything.
-	_player_light = _make_light(Vector2.ZERO, 240, Color(0.95, 0.9, 0.86), 1.35)
+	# The predator's travelling pool of light — a tighter, brighter pool for real chiaroscuro. This
+	# ONE light casts shadows, so the pool is carved by the architecture as the predator moves.
+	_player_light = _make_light(Vector2.ZERO, 240, Color(0.95, 0.9, 0.86), 1.35, true)
 	add_child(_player_light)
+
+
+## Greedy-mesh the solid wall cells into a handful of large rectangular LightOccluder2D nodes.
+## Per-cell occluders (2560 cells) would melt an Intel iGPU once a moving shadow-casting light is
+## added; merging solid runs into maximal rectangles keeps the occluder edge count tiny.
+func _build_occluders(world: SimWorld) -> void:
+	var ts: int = world.tile_size
+	var w: int = int(world.size.x)
+	var h: int = int(world.size.y)
+	var covered: Dictionary = {}
+	var rects := 0
+	for y in range(h):
+		for x in range(w):
+			var cell := Vector2i(x, y)
+			if covered.has(cell) or not world.is_solid(cell):
+				continue
+			var x2 := x
+			while x2 + 1 < w and world.is_solid(Vector2i(x2 + 1, y)) and not covered.has(Vector2i(x2 + 1, y)):
+				x2 += 1
+			var y2 := y
+			var growing := true
+			while growing and y2 + 1 < h:
+				for xx in range(x, x2 + 1):
+					var c := Vector2i(xx, y2 + 1)
+					if not world.is_solid(c) or covered.has(c):
+						growing = false
+						break
+				if growing:
+					y2 += 1
+			for yy in range(y, y2 + 1):
+				for xx in range(x, x2 + 1):
+					covered[Vector2i(xx, yy)] = true
+			_add_occluder(Rect2(
+				float(x * ts), float(y * ts),
+				float((x2 - x + 1) * ts), float((y2 - y + 1) * ts)))
+			rects += 1
+	print("[LightingDirector] built ", rects, " merged wall occluders")
+
+
+func _add_occluder(rect: Rect2) -> void:
+	var poly := OccluderPolygon2D.new()
+	poly.closed = true
+	poly.cull_mode = OccluderPolygon2D.CULL_DISABLED
+	poly.polygon = PackedVector2Array([
+		rect.position,
+		rect.position + Vector2(rect.size.x, 0.0),
+		rect.position + rect.size,
+		rect.position + Vector2(0.0, rect.size.y),
+	])
+	var occ := LightOccluder2D.new()
+	occ.occluder = poly
+	occ.occluder_light_mask = 1
+	add_child(occ)
+	_occluders.append(occ)
 
 
 func _process(_delta: float) -> void:
@@ -43,14 +108,21 @@ func _process(_delta: float) -> void:
 		_player_light.position = Sim.player.pos
 
 
-func _make_light(pos: Vector2, radius: int, color: Color, energy: float) -> PointLight2D:
+func _make_light(pos: Vector2, radius: int, color: Color, energy: float, cast_shadow: bool = false) -> PointLight2D:
 	var light := PointLight2D.new()
 	light.position = pos
 	light.texture = _make_light_texture(radius)
 	light.color = color
 	light.energy = energy
 	light.blend_mode = Light2D.BLEND_MODE_ADD
-	light.shadow_enabled = false  # no occluders yet; enable when walls become LightOccluder2D
+	if cast_shadow:
+		light.shadow_enabled = true
+		light.shadow_filter = Light2D.SHADOW_FILTER_PCF5
+		light.shadow_filter_smooth = 1.5
+		light.shadow_item_cull_mask = 1
+		light.shadow_color = Color(0.0, 0.0, 0.0, 0.92)
+	else:
+		light.shadow_enabled = false
 	return light
 
 

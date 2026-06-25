@@ -32,12 +32,5 @@ func _draw() -> void:
 		var fx := fmod(_t * (8.0 + float(i) * 5.0) + float(i) * 420.0, w + 420.0) - 210.0
 		var fy := h * (0.22 + 0.24 * float(i))
 		draw_circle(Vector2(fx, fy), 180.0 + float(i) * 44.0, Color(0.30, 0.33, 0.42, FOG_ALPHA))
-	# diagonal rain streaks, wrapping in screen space
-	var col := Color(0.62, 0.70, 0.85, RAIN_ALPHA)
-	for i in range(RAIN):
-		var sx := float((i * 73) % 1000) / 1000.0
-		var speed := 620.0 + float(i % 7) * 60.0
-		var x := fmod(sx * w + _t * 40.0, w)
-		var y := fmod(sx * h + _t * speed, h + 20.0)
-		var ln := 12.0 + float(i % 5) * 2.0
-		draw_line(Vector2(x, y), Vector2(x - 4.0, y - ln), col, 1.0)
+	# Rain is now GPUParticles2D-based RainFX (world-space, camera-following); the old draw_line
+	# streaks are disabled so the two don't stack into a curtain — only the fog banks remain here.

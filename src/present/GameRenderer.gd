@@ -17,6 +17,13 @@ const CameraDirectorScript := preload("res://src/present/CameraDirector.gd")
 const VisualFXScript := preload("res://src/present/VisualFX.gd")
 const WorldFXScript := preload("res://src/present/WorldFX.gd")
 const SpellFXScript := preload("res://src/present/SpellFX.gd")
+const ParticleFXScript := preload("res://src/present/ParticleFX.gd")
+const SpellParticlesScript := preload("res://src/present/SpellParticles.gd")
+const RainFXScript := preload("res://src/present/RainFX.gd")
+const AmbientFXScript := preload("res://src/present/AmbientFX.gd")
+const BloomFXScript := preload("res://src/present/BloomFX.gd")
+const ScreenFXScript := preload("res://src/present/ScreenFX.gd")
+const ParallaxBackdropScript := preload("res://src/present/ParallaxBackdrop.gd")
 const AtmosphereScript := preload("res://src/present/AtmosphereDirector.gd")
 const NocturneGradeScript := preload("res://src/present/NocturneGrade.gd")
 const DebugOverlayScript := preload("res://src/present/DebugOverlay.gd")
@@ -28,6 +35,13 @@ var _prop_renderer: Node2D = null
 var _entity_renderer: Node2D = null
 var _world_fx: Node2D = null
 var _spell_fx: Node2D = null
+var _particle_fx: Node2D = null
+var _spell_particles: Node2D = null
+var _rain_fx: Node2D = null
+var _ambient_fx: Node2D = null
+var _bloom_fx: Node2D = null
+var _screen_fx: CanvasLayer = null
+var _parallax: CanvasLayer = null
 var _atmosphere: Control = null
 var _lighting: Node2D = null
 var _camera: Camera2D = null
@@ -46,6 +60,11 @@ func _ready() -> void:
 		return
 	if Sim.player == null:
 		Sim.new_game(42, "brujah", true)   # populated: a living block for the playable night
+
+	# Distant parallax city silhouettes BEHIND the play field (it forces its own layer = -1).
+	_parallax = ParallaxBackdropScript.new()
+	_parallax.name = "ParallaxBackdrop"
+	add_child(_parallax)
 
 	# Build the view hierarchy.
 	_world_renderer = WorldRendererScript.new()
@@ -70,6 +89,17 @@ func _ready() -> void:
 	_lighting.setup(Sim.world)
 	add_child(_lighting)
 
+	# Manual additive bloom/glow over each authored light (no HDR-2D on GL Compat) — neon bleeds.
+	_bloom_fx = BloomFXScript.new()
+	_bloom_fx.name = "BloomFX"
+	add_child(_bloom_fx)
+	_bloom_fx.setup(Sim.world)
+
+	# Lean ambient atmosphere — drifting dust motes / faint steam (z 14, above ground, below actors).
+	_ambient_fx = AmbientFXScript.new()
+	_ambient_fx.name = "AmbientFX"
+	add_child(_ambient_fx)
+
 	_entity_renderer = EntityRendererScript.new()
 	_entity_renderer.name = "EntityRenderer"
 	_entity_renderer.setup(Sim.entities)
@@ -88,7 +118,22 @@ func _ready() -> void:
 	_spell_fx.name = "SpellFX"
 	add_child(_spell_fx)
 
-	# Screen-space rain + fog, above the world and below the mood grade + HUD.
+	# GPUParticles2D combat spectacle (blood spray, death dissolve, dash/footstep dust) — read-only cues.
+	_particle_fx = ParticleFXScript.new()
+	_particle_fx.name = "ParticleFX"
+	add_child(_particle_fx)
+
+	# Per-discipline GPU spell particles layered over SpellFX's line-art (z 53).
+	_spell_particles = SpellParticlesScript.new()
+	_spell_particles.name = "SpellParticles"
+	add_child(_spell_particles)
+
+	# GPU rain + ground splash, camera-following world-space (z 55). Replaces the old draw_line rain.
+	_rain_fx = RainFXScript.new()
+	_rain_fx.name = "RainFX"
+	add_child(_rain_fx)
+
+	# Screen-space fog, above the world and below the mood grade + HUD.
 	var atmos_layer := CanvasLayer.new()
 	atmos_layer.name = "AtmosphereLayer"
 	atmos_layer.layer = 1
@@ -105,6 +150,12 @@ func _ready() -> void:
 	_nocturne = NocturneGradeScript.new()
 	_nocturne.name = "NocturneGrade"
 	add_child(_nocturne)
+
+	# Event-driven screen feedback (damage red-vignette + crit chromatic aberration) on layer 3,
+	# composited above the NocturneGrade (layer 2) and below the HUD (layer 100).
+	_screen_fx = ScreenFXScript.new()
+	_screen_fx.name = "ScreenFX"
+	add_child(_screen_fx)
 
 	_visual_fx = VisualFXScript.new()
 	_visual_fx.name = "VisualFX"

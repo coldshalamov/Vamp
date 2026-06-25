@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bvampcapturedeath01"]
+
+[ext_resource type="Script" path="res://test/CaptureDeathProbe.gd" id="1_dth"]
+
+[node name="CaptureDeathProbe" type="Node"]
+script = ExtResource("1_dth")

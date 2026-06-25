@@ -14,8 +14,8 @@ const BASE_ZOOM := 2.4   # pull the camera in so the character reads as a charac
 # B4 — directional kick on melee connect. Added into offset after the noise shake each frame,
 # then decays to zero. Separate from trauma so the direction reads clearly.
 const KICK_DECAY := 6.0
-const KICK_MAG := 7.0         # pixels on a normal hit
-const KICK_MAG_CRIT := 14.0   # pixels on a crit
+const KICK_MAG := 22.0         # pixels on a normal hit (7 was imperceptible)
+const KICK_MAG_CRIT := 42.0    # pixels on a crit — a real jolt
 
 @export var trauma: float = 0.0
 @export var push_scale: float = 1.0
@@ -62,6 +62,12 @@ func _register_cues() -> void:
 	CueBus.define("frenzy.start", CueBus.Priority.CRITICAL, {
 		"camera": _on_frenzy_cue,
 		"duration_ms": 800,
+	})
+	# A kill should FEEL like one: a brief zoom-punch in + a thump of trauma, easing back.
+	CueBus.define("enemy.death", CueBus.Priority.COMBAT, {
+		"camera": _on_kill_cue,
+		"duration_ms": 300,
+		"max_concurrent": 4,
 	})
 
 func _process(delta: float) -> void:
@@ -141,3 +147,10 @@ func _on_alert_cue(_payload: Dictionary) -> void:
 func _on_frenzy_cue(_payload: Dictionary) -> void:
 	add_trauma(0.7)
 	push_in(0.04)
+
+## A kill: snap the camera in ~5% (zoom-punch) and thump — it recovers via the push_scale lerp.
+func _on_kill_cue(_payload: Dictionary) -> void:
+	if CueBus != null and CueBus.reduced_motion:
+		return
+	push_in(0.05)
+	add_trauma(0.3)

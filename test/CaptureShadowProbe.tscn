@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bvampcaptureshadow01"]
+
+[ext_resource type="Script" path="res://test/CaptureShadowProbe.gd" id="1_shdw"]
+
+[node name="CaptureShadowProbe" type="Node"]
+script = ExtResource("1_shdw")

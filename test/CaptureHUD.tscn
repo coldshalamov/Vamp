@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bvampcapturehud01"]
+
+[ext_resource type="Script" path="res://test/CaptureHUD.gd" id="1_caphud"]
+
+[node name="CaptureHUD" type="Node"]
+script = ExtResource("1_caphud")

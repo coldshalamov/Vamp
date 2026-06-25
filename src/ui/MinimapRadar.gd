@@ -36,3 +36,42 @@ func _draw() -> void:
 			col = Color(0.50, 0.52, 0.58, 0.70)
 		draw_circle(blip, 2.2, col)
 	draw_circle(c, 2.8, Color(0.92, 0.85, 0.60, 1.0))   # the predator, at center
+	_draw_waypoint(c, r, ppos)
+
+
+## A single objective arrow clamped to the radar ring. The night's spine is "reach your haven
+## before dawn", so while you have not yet made the haven it points cyan to the haven; once reached
+## it falls back to a gold arrow toward the nearest feedable mortal (the "find someone to feed"
+## goal). Note: reached_haven stays false until you physically enter the haven, so in practice the
+## haven arrow leads the whole hunt and the gold feed arrow surfaces only after you have arrived.
+func _draw_waypoint(c: Vector2, r: float, ppos: Vector2) -> void:
+	var target := Vector2.ZERO
+	var col := Color(0.55, 0.85, 1.0, 0.95)   # cyan: head for the haven
+	var have_target := false
+	if Sim.world != null and not Sim.reached_haven:
+		target = Sim.world.haven_zone.get_center()
+		have_target = Sim.world.haven_zone.get_area() > 0.0
+	if not have_target:
+		# Point at the nearest mortal worth feeding on.
+		var best_d := INF
+		for e in Sim.entities:
+			if e == null or e.dead or e.kind != "npc" or e.hostile_to_player:
+				continue
+			var d: float = e.pos.distance_to(ppos)
+			if d < best_d:
+				best_d = d
+				target = e.pos
+				have_target = true
+		col = Color(0.95, 0.78, 0.30, 0.95)   # gold: prey to feed on
+	if not have_target:
+		return
+	var rel: Vector2 = target - ppos
+	if rel.length() < 0.5:
+		return
+	var dir := rel.normalized()
+	# Clamp to just inside the ring so the arrow always sits on the radar edge, pointing the way.
+	var tip: Vector2 = c + dir * (r - 1.0)
+	var back: Vector2 = tip - dir * 9.0
+	var side: Vector2 = Vector2(-dir.y, dir.x) * 4.0
+	var pts: PackedVector2Array = [tip, back + side, back - side]
+	draw_colored_polygon(pts, col)

@@ -27,6 +27,7 @@ var lights: Array[Dictionary] = []
 var roads: PackedByteArray = PackedByteArray()
 var districts: Array[Dictionary] = []
 var pois: Dictionary = {}
+var encounter_points: Array[Dictionary] = []
 var exit_zone: Rect2 = Rect2()
 var haven_zone: Rect2 = Rect2()
 
@@ -41,6 +42,7 @@ func load_vertical_slice() -> void:
 	named_points.clear()
 	lights.clear()
 	pois.clear()
+	encounter_points.clear()
 	districts = [
 		{ "id": "old_town", "name": "Old Town", "rect": Rect2(Vector2(0, 0), Vector2(1024, 640)), "danger": 0.2 },
 		{ "id": "docks", "name": "Docks", "rect": Rect2(Vector2(1024, 0), Vector2(1024, 640)), "danger": 0.45 },
@@ -54,24 +56,110 @@ func load_vertical_slice() -> void:
 	_set_wall_rect(0, 0, 1, size.y, true)
 	_set_wall_rect(size.x - 1, 0, 1, size.y, true)
 
-	# Two city-block buildings with alleys between them.
-	_set_wall_rect(8, 6, 10, 11, true)
-	_set_wall_rect(24, 4, 9, 12, true)
-	_set_wall_rect(42, 7, 12, 10, true)
-	_set_wall_rect(10, 24, 13, 9, true)
-	_set_wall_rect(34, 24, 13, 8, true)
+	## CITY GRID — a navigable street network, not a parking lot.
+	##
+	## Two arterials carve the city into quadrants and double as the load-bearing corridors the
+	## tests walk: the MIDWAY (rows 17-20, the E-W main street the player sprints east to escape
+	## along) and the SPINE (cols 30-33, the N-S avenue). They cross at the central PLAZA
+	## (cols 28-35, rows 16-22) — the open arena where all four districts meet. District character
+	## is expressed through building geometry: Old Town irregular & alleyed, Docks open & exposed,
+	## Red Row dense & neon-lit, Financial gridded & orderly. Tiles referenced as (col, row).
 
-	# Shadowed alleys and a safe haven.
-	_set_surface_rect(18, 7, 5, 10, Surface.SHADOW)
-	_set_surface_rect(33, 8, 7, 7, Surface.SHADOW)
-	_set_surface_rect(26, 30, 8, 5, Surface.HAVEN)
-	_set_road_rect(1, 17, 62, 6, true)
-	_set_road_rect(1, 34, 62, 4, true)
-	_set_road_rect(2, 1, 5, 38, true)
-	_set_road_rect(55, 1, 6, 38, true)
+	# --- OLD TOWN (NW): irregular gothic blocks, winding alleys, easy stealth ---
+	_set_wall_rect(3, 2, 6, 5, true)      # OT1 chapel row
+	_set_wall_rect(12, 2, 5, 4, true)     # OT2 townhouse
+	_set_wall_rect(20, 2, 7, 5, true)     # OT3 guildhall (abuts the Docks border)
+	_set_wall_rect(3, 8, 4, 7, true)      # OT4 west tenement
+	_set_wall_rect(8, 8, 3, 3, true)      # OT5 kiosk
+	_set_wall_rect(15, 8, 4, 3, true)     # OT6 row house
+	_set_wall_rect(20, 8, 4, 2, true)     # OT7 guard post (stops at row 9 — leaves (22,10) walkable)
+	# OT8: the sightline occluder. It blocks LOS from the hunter perch at (22,10) down to the
+	# player spawn at (5,18) so the AI must pathfind around, while staying short of row 15 so the
+	# maw/physics tiles (18,15) and (21,15) stay open. A path still exists via the row-16 lip.
+	_set_wall_rect(17, 11, 7, 4, true)    # OT8 cloister wall (rows 11-14)
+
+	# --- DOCKS (NE): big open warehouses, wide gaps, long sight lines, exposed ---
+	_set_wall_rect(36, 2, 10, 5, true)    # DK1 north warehouse
+	_set_wall_rect(48, 7, 12, 6, true)    # DK2 main warehouse (the waterfront landmark)
+	_set_wall_rect(36, 8, 8, 7, true)     # DK3 bonded store
+	_set_wall_rect(46, 14, 12, 2, true)   # DK4 low quay shed (stops at row 15 — row 16 stays open)
+
+	# --- RED ROW (SW): dense small buildings, narrow streets, neon nightlife ---
+	_set_wall_rect(3, 21, 4, 2, true)     # RR1 bar (north face of the strip)
+	_set_wall_rect(9, 21, 4, 2, true)     # RR2 club
+	_set_wall_rect(15, 21, 3, 2, true)    # RR3 dive
+	_set_wall_rect(20, 21, 4, 2, true)    # RR4 cabaret
+	_set_wall_rect(3, 27, 3, 3, true)     # RR5 lodging
+	_set_wall_rect(8, 27, 4, 4, true)     # RR6 tenement
+	_set_wall_rect(14, 27, 3, 3, true)    # RR7 flop house
+	_set_wall_rect(3, 31, 5, 4, true)     # RR8 stack
+	_set_wall_rect(10, 32, 4, 3, true)    # RR9 annexe
+	_set_wall_rect(15, 30, 3, 5, true)    # RR10 narrow row
+	_set_wall_rect(20, 31, 4, 4, true)    # RR11 corner block (col 24 left open as the haven approach)
+
+	# --- FINANCIAL (SE): uniform grid blocks, wide straight streets, orderly ---
+	_set_wall_rect(36, 24, 6, 6, true)    # FN1 office tower
+	_set_wall_rect(44, 27, 6, 5, true)    # FN2 bank (south of the exit corridor)
+	_set_wall_rect(52, 24, 7, 6, true)    # FN3 corporate block
+	_set_wall_rect(36, 31, 7, 6, true)    # FN4 plaza tower
+	_set_wall_rect(46, 33, 7, 5, true)    # FN5 exchange
+	_set_wall_rect(54, 31, 6, 6, true)    # FN6 atrium
+
+	# --- HAVEN COURTYARD (cols 26-34, rows 30-35): enclosed, 2 entrances, defensible ---
+	# Walls ring the courtyard leaving a north gate (col 30, off the Spine) and a west gate
+	# (row 32, off the Red Row approach). Interior stays open and is marked HAVEN surface.
+	_set_wall_rect(25, 29, 5, 1, true)    # top wall, west half (gap at col 30 = north gate)
+	_set_wall_rect(31, 29, 5, 1, true)    # top wall, east half
+	_set_wall_rect(25, 30, 1, 2, true)    # left wall, upper (gap at row 32 = west gate)
+	_set_wall_rect(25, 33, 1, 3, true)    # left wall, lower
+	_set_wall_rect(35, 30, 1, 6, true)    # right wall
+	_set_wall_rect(25, 36, 11, 1, true)   # bottom wall
+
+	# --- SURFACES: shadowed alleys (stealth zones) + the haven floor ---
+	_set_surface_rect(7, 8, 1, 6, Surface.SHADOW)     # OT alley behind OT4
+	_set_surface_rect(11, 8, 4, 3, Surface.SHADOW)    # OT gap between OT5 and OT6
+	_set_surface_rect(24, 11, 2, 4, Surface.SHADOW)   # OT alley east of OT8 -> towards Docks
+	_set_surface_rect(4, 15, 5, 1, Surface.SHADOW)    # dark lip just north of the player spawn
+	_set_surface_rect(7, 21, 2, 2, Surface.SHADOW)    # RR alley between RR1 and RR2
+	_set_surface_rect(13, 21, 2, 2, Surface.SHADOW)   # RR alley between RR2 and RR3
+	_set_surface_rect(18, 21, 2, 2, Surface.SHADOW)   # RR alley between RR3 and RR4
+	_set_surface_rect(6, 27, 2, 3, Surface.SHADOW)    # RR alley between RR5 and RR6
+	_set_surface_rect(12, 27, 2, 3, Surface.SHADOW)   # RR alley between RR6 and RR7
+	_set_surface_rect(44, 8, 4, 6, Surface.SHADOW)    # Docks loading gap (the one dark spot)
+	_set_surface_rect(26, 30, 8, 5, Surface.HAVEN)    # the safe haven floor
+
+	# --- ROADS: visual treatment only (never blocks movement) ---
+	_set_road_rect(1, 17, 62, 4, true)    # MIDWAY: the E-W main street, full width
+	_set_road_rect(30, 1, 4, 28, true)    # SPINE: the N-S avenue, down to the haven gate
+	_set_road_rect(1, 23, 24, 4, true)    # Red Row nightlife strip (wide sidewalk)
+	_set_road_rect(1, 30, 24, 1, true)    # Red Row south lane
+	_set_road_rect(32, 7, 4, 9, true)     # Docks waterfront drive
+	_set_road_rect(46, 13, 16, 1, true)   # Docks quay road
+	_set_road_rect(36, 24, 27, 1, true)   # Financial east-west boulevard
+	_set_road_rect(36, 30, 27, 1, true)   # Financial mid boulevard
+	_set_road_rect(36, 37, 27, 1, true)   # Financial south boulevard
+	_set_road_rect(43, 24, 1, 13, true)   # Financial vertical: col 43
+	_set_road_rect(50, 24, 2, 13, true)   # Financial vertical: cols 50-51
+	_set_road_rect(60, 24, 2, 13, true)   # Financial vertical: cols 60-61
+
 	haven_zone = Rect2(Vector2(26 * tile_size, 30 * tile_size), Vector2(8 * tile_size, 5 * tile_size))
 	exit_zone = Rect2(Vector2(44 * tile_size, 18 * tile_size), Vector2(18 * tile_size, 6 * tile_size))
 
+	# World-space cell centres for the points below: (col,row) -> ((col+0.5)*32, (row+0.5)*32).
+	var plaza := _cell_center(Vector2i(31, 19))
+	var waterfront := _cell_center(Vector2i(50, 4))
+	var strip := _cell_center(Vector2i(12, 25))
+	var alley := _cell_center(Vector2i(12, 9))
+	var bloodbank := _cell_center(Vector2i(13, 30))
+	var shop := _cell_center(Vector2i(46, 10))
+	var mission_board := _cell_center(Vector2i(31, 16))
+	var rr_strip_enc := _cell_center(Vector2i(19, 25))
+	var docks_quay_enc := _cell_center(Vector2i(46, 13))
+	var financial_enc := _cell_center(Vector2i(60, 30))
+
+	# named_points: the first seven are test fixtures (coordinates are load-bearing — the slice
+	# script and many unit tests spawn relative to them). Thematic extras are appended for patrol
+	# anchors and are safe to leave unread.
 	named_points = {
 		"player": Vector2(160, 576),
 		"civilian": Vector2(245, 576),
@@ -79,25 +167,90 @@ func load_vertical_slice() -> void:
 		"enemy": Vector2(560, 560),
 		"heat_search": Vector2(335, 560),
 		"exit": exit_zone.get_center(),
-		"haven": haven_zone.get_center()
+		"haven": haven_zone.get_center(),
+		"plaza": plaza,
+		"waterfront": waterfront,
+		"strip": strip,
+		"alley": alley,
 	}
 	pois = {
-		"bloodbank": Vector2(420, 640),
-		"shop": Vector2(735, 675),
+		"bloodbank": bloodbank,
+		"shop": shop,
 		"haven": haven_zone.get_center(),
-		"mission_board": Vector2(185, 640),
+		"mission_board": mission_board,
 	}
+	encounter_points = [
+		{ "template": "street_thugs", "pos": rr_strip_enc },
+		{ "template": "gang_squad", "pos": docks_quay_enc },
+		{ "template": "hunter_cell", "pos": financial_enc },
+	]
 	spawn_points = [
 		named_points["player"],
 		named_points["civilian"],
 		named_points["witness"],
-		named_points["enemy"]
+		named_points["enemy"],
+		_cell_center(Vector2i(6, 18)),
+		_cell_center(Vector2i(15, 18)),
+		_cell_center(Vector2i(23, 17)),
+		_cell_center(Vector2i(31, 17)),
+		_cell_center(Vector2i(41, 21)),
+		_cell_center(Vector2i(51, 21)),
+		_cell_center(Vector2i(7, 25)),
+		_cell_center(Vector2i(19, 26)),
+		_cell_center(Vector2i(35, 28)),
+		_cell_center(Vector2i(56, 17)),
+		_cell_center(Vector2i(31, 6)),
+		_cell_center(Vector2i(46, 7)),
+		_cell_center(Vector2i(50, 4)),
+		_cell_center(Vector2i(30, 21)),
+		_cell_center(Vector2i(43, 30)),
+		_cell_center(Vector2i(52, 30)),
+		_cell_center(Vector2i(17, 28)),
+		_cell_center(Vector2i(6, 28)),
 	]
 
+	# LIGHTS — strategic, not decorative. ~28 lights across the four districts.
+	var amber := Color(1.0, 0.78, 0.45, 1.0)          # warm streetlamp glow
+	var neon := Color(0.92, 0.10, 0.40, 1.0)          # crimson/magenta nightlife
+	var flood := Color(0.72, 0.82, 1.0, 1.0)          # cold industrial white
+	var haven_blue := Color(0.45, 0.65, 1.0, 1.0)     # haven sign
 	lights = [
-		{ "id": "street_neon_west", "pos": Vector2(220, 505), "radius": 190.0, "color": Color(0.75, 0.08, 0.18, 1.0), "energy": 0.8 },
-		{ "id": "streetlamp_center", "pos": Vector2(520, 520), "radius": 220.0, "color": Color(1.0, 0.78, 0.45, 1.0), "energy": 0.7 },
-		{ "id": "haven_sign", "pos": haven_zone.get_center(), "radius": 150.0, "color": Color(0.45, 0.65, 1.0, 1.0), "energy": 0.6 }
+		# Streetlamps along the Midway and at the Plaza (intersections).
+		{ "id": "lamp_mid_w1", "pos": _cell_center(Vector2i(10, 18)), "radius": 210.0, "color": amber, "energy": 0.7 },
+		{ "id": "lamp_mid_w2", "pos": _cell_center(Vector2i(22, 18)), "radius": 210.0, "color": amber, "energy": 0.7 },
+		{ "id": "lamp_plaza", "pos": _cell_center(Vector2i(31, 19)), "radius": 240.0, "color": amber, "energy": 0.85 },
+		{ "id": "lamp_mid_e1", "pos": _cell_center(Vector2i(44, 18)), "radius": 210.0, "color": amber, "energy": 0.7 },
+		{ "id": "lamp_mid_e2", "pos": _cell_center(Vector2i(56, 18)), "radius": 210.0, "color": amber, "energy": 0.7 },
+		# Spine avenue lamps.
+		{ "id": "lamp_spine_n", "pos": _cell_center(Vector2i(31, 8)), "radius": 200.0, "color": amber, "energy": 0.65 },
+		{ "id": "lamp_spine_s", "pos": _cell_center(Vector2i(31, 25)), "radius": 200.0, "color": amber, "energy": 0.65 },
+		# Plaza corner lamps.
+		{ "id": "lamp_plaza_sw", "pos": _cell_center(Vector2i(28, 21)), "radius": 180.0, "color": amber, "energy": 0.6 },
+		{ "id": "lamp_plaza_se", "pos": _cell_center(Vector2i(34, 21)), "radius": 180.0, "color": amber, "energy": 0.6 },
+		{ "id": "lamp_strip_w", "pos": _cell_center(Vector2i(8, 25)), "radius": 190.0, "color": amber, "energy": 0.6 },
+		# Neon signs on the Red Row nightlife strip (north face of the bars).
+		{ "id": "neon_rr1", "pos": _cell_center(Vector2i(5, 23)), "radius": 130.0, "color": neon, "energy": 0.8 },
+		{ "id": "neon_rr2", "pos": _cell_center(Vector2i(11, 23)), "radius": 130.0, "color": neon, "energy": 0.8 },
+		{ "id": "neon_rr3", "pos": _cell_center(Vector2i(16, 23)), "radius": 130.0, "color": neon, "energy": 0.8 },
+		{ "id": "neon_rr4", "pos": _cell_center(Vector2i(22, 23)), "radius": 130.0, "color": neon, "energy": 0.8 },
+		# Neon on the deeper Red Row blocks.
+		{ "id": "neon_rr6", "pos": _cell_center(Vector2i(10, 30)), "radius": 135.0, "color": neon, "energy": 0.75 },
+		{ "id": "neon_rr7", "pos": _cell_center(Vector2i(15, 30)), "radius": 135.0, "color": neon, "energy": 0.75 },
+		{ "id": "neon_rr9", "pos": _cell_center(Vector2i(12, 31)), "radius": 130.0, "color": neon, "energy": 0.7 },
+		{ "id": "neon_rr11", "pos": _cell_center(Vector2i(22, 31)), "radius": 130.0, "color": neon, "energy": 0.7 },
+		# Industrial floods on the Docks warehouses (cold, exposing).
+		{ "id": "flood_dk1a", "pos": _cell_center(Vector2i(41, 7)), "radius": 230.0, "color": flood, "energy": 0.9 },
+		{ "id": "flood_dk1b", "pos": _cell_center(Vector2i(40, 12)), "radius": 220.0, "color": flood, "energy": 0.85 },
+		{ "id": "flood_dk2", "pos": _cell_center(Vector2i(54, 10)), "radius": 250.0, "color": flood, "energy": 0.95 },
+		{ "id": "flood_dk3", "pos": _cell_center(Vector2i(50, 13)), "radius": 220.0, "color": flood, "energy": 0.85 },
+		{ "id": "flood_quay", "pos": _cell_center(Vector2i(52, 15)), "radius": 210.0, "color": flood, "energy": 0.8 },
+		{ "id": "flood_water", "pos": _cell_center(Vector2i(50, 4)), "radius": 240.0, "color": flood, "energy": 0.9 },
+		# The haven sign — the one blue beacon, visible from the plaza.
+		{ "id": "haven_sign", "pos": haven_zone.get_center(), "radius": 150.0, "color": haven_blue, "energy": 0.7 },
+		# Financial boulevard lamps (orderly, even spacing).
+		{ "id": "lamp_fn1", "pos": _cell_center(Vector2i(44, 24)), "radius": 200.0, "color": amber, "energy": 0.7 },
+		{ "id": "lamp_fn2", "pos": _cell_center(Vector2i(56, 24)), "radius": 200.0, "color": amber, "energy": 0.7 },
+		{ "id": "lamp_fn3", "pos": _cell_center(Vector2i(50, 37)), "radius": 200.0, "color": amber, "energy": 0.65 },
 	]
 
 func world_size() -> Vector2:

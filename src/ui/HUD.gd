@@ -25,6 +25,7 @@ const ICON_DIR := "res://art/ui/icons/"
 # Bar widgets.
 const VialGaugeScript := preload("res://src/ui/VialGauge.gd")
 const MinimapRadarScript := preload("res://src/ui/MinimapRadar.gd")
+const CooldownRingScript := preload("res://src/ui/CooldownRing.gd")
 var _vitae_bar: TextureProgressBar = null
 var _vitae_vial: Control = null
 var _hp_bar: TextureProgressBar = null
@@ -34,6 +35,7 @@ var _level_label: Label = null
 var _pressure_icons: Array = []
 const RESIDUE_SVG := "res://glowup_2026/art/residue_icons.svg"
 var _hunger_row: HBoxContainer = null
+var _heat_card: PanelContainer = null
 var _heat_row: HBoxContainer = null
 var _hotbar: HBoxContainer = null
 var _buff_list: VBoxContainer = null
@@ -138,6 +140,7 @@ func _build_layout() -> void:
 
 	# --- top-right heat row ---
 	var heat_card := PanelContainer.new()
+	_heat_card = heat_card
 	heat_card.set_anchors_preset(PRESET_TOP_RIGHT)
 	heat_card.anchor_left = 1.0
 	heat_card.anchor_right = 1.0
@@ -351,19 +354,28 @@ func _make_hotbar_slot(slot_index: int) -> Dictionary:
 	name_lbl.offset_bottom = -2
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	panel.add_child(name_lbl)
-	# cooldown shade
+	# cooldown shade (legacy flat darken — kept hidden; the radial ring below supersedes it)
 	var cd := ColorRect.new()
 	cd.color = Color(0, 0, 0, 0.6)
 	cd.set_anchors_preset(PRESET_FULL_RECT)
 	cd.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cd.visible = false
 	panel.add_child(cd)
+	# radial cooldown WIPE + READY pulse, centered over the slot art
+	var ring: Control = CooldownRingScript.new()
+	ring.set_anchors_preset(PRESET_FULL_RECT)
+	ring.offset_left = 5
+	ring.offset_top = 5
+	ring.offset_right = -5
+	ring.offset_bottom = -15
+	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(ring)
 	# keybind number (mono, corner, bold)
 	var key_label := _tag(str(slot_index), _accent("gold"), 13)
 	key_label.position = Vector2(5, 1)
 	panel.add_child(key_label)
 	_hotbar.add_child(panel)
-	return { "panel": panel, "glyph": glyph, "name": name_lbl, "key": key_label, "cd": cd, "slot": slot_index }
+	return { "panel": panel, "glyph": glyph, "name": name_lbl, "key": key_label, "cd": cd, "ring": ring, "slot": slot_index }
 
 
 func _residue_icon(idx: int) -> TextureRect:
@@ -466,6 +478,10 @@ func _refresh_heat() -> void:
 	if stars == _cached_heat:
 		return
 	_cached_heat = stars
+	# Hide the whole heat card (tag + stars) when there's no heat — an empty 6-star row read as
+	# permanent surveillance pressure; the card only matters once the player is actually hot.
+	if _heat_card != null:
+		_heat_card.visible = stars > 0
 	var moon := _accent("moon")
 	for i in HEAT_STARS:
 		var lit := i < stars
@@ -484,11 +500,13 @@ func _refresh_hotbar() -> void:
 		var glyph = slot["glyph"]
 		var name_lbl: Label = slot["name"]
 		var cd: ColorRect = slot["cd"]
+		var ring: Control = slot["ring"]
 		var power_id: String = String(slots[i]) if i < slots.size() and slots[i] != null else ""
+		cd.visible = false   # legacy flat shade stays off; the radial ring is the cooldown readout
 		if power_id == "":
 			glyph.set_power("", Color(0.4, 0.4, 0.45), true)
 			name_lbl.text = ""
-			cd.visible = false
+			ring.call("clear_ring")
 			(slot["panel"] as Control).tooltip_text = ""
 			continue
 		var prefix: String = power_id.split("_")[0]
@@ -504,10 +522,9 @@ func _refresh_hotbar() -> void:
 			var remaining := int(b.power_cooldowns[power_id])
 			var total := int(def.get("cooldown", remaining)) if not def.is_empty() else remaining
 			var frac := clampf(float(remaining) / maxf(float(total), 1.0), 0.0, 1.0)
-			cd.visible = remaining > 0
-			cd.color = Color(0, 0, 0, 0.25 + 0.55 * frac)
+			ring.call("set_fraction", frac, col)
 		else:
-			cd.visible = false
+			ring.call("set_fraction", 0.0, col)
 
 
 func _refresh_buffs() -> void:
@@ -617,11 +634,13 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 			UIManager.show_banner(tr("BANNER_FRENZY_TITLE"), tr("BANNER_FRENZY_BODY"), _accent("danger"))
 		"frenzy.end", "player.heal", "power.cast", "power.cooldown":
 			_refresh_hotbar()
-		"damage.dealt", "attack.slash.hit", "power.potence.hit", "power.potence.charge_hit", "pounce.hit", "power.blood_bolt.hit":
-			_spawn_damage_number(payload, false)
-		"damage.taken":
-			_spawn_damage_number(payload, true)
-		"feed.start", "feed.gulp", "feed.kill", "feed.spare", "feed.interrupt", "finisher.start":
+		"feed.kill", "feed.spare", "feed.end":
+			# Surge the vial on a vitae refill (damage numbers are owned by VisualFX, not the HUD).
+			if _vitae_vial != null:
+				_vitae_vial.call("surge")
+			_refresh_vitals()
+			_refresh_hotbar()
+		"feed.start", "feed.gulp", "feed.interrupt", "finisher.start":
 			_refresh_vitals()
 			_refresh_hotbar()
 		"npc.spawn", "npc.death", "npc.alarm", "player.spotted", "player.lost", "player.escape":
@@ -630,16 +649,6 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 			UIManager.show_notification(_cue_to_notify(event_id), _accent("moon"))
 		"ui.notify":
 			UIManager.show_notification(String(payload.get("text", "")), payload.get("color", Color.WHITE))
-
-
-func _spawn_damage_number(payload: Dictionary, taken: bool) -> void:
-	var amount := float(payload.get("amount", 0.0))
-	if amount <= 0.0:
-		return
-	var pos_v = payload.get("pos", Vector2.ZERO)
-	var world_pos: Vector2 = pos_v if pos_v is Vector2 else Vector2.ZERO
-	var color := _accent("danger") if taken else _accent("good")
-	UIManager.spawn_floating_text(world_pos, "%d" % int(amount), color)
 
 
 func _cue_to_notify(event_id: String) -> String:

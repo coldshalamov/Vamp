@@ -8,9 +8,18 @@ const DISPLAY_FONT := "res://art/fonts/Cinzel.ttf"
 const MONO_FONT := "res://art/fonts/ShareTechMono.ttf"
 
 var _title: Label
+var _why: Label
+var _hint: Label
 var _stats: Label
 var _prompt: Label
 var _blink: float = 0.0
+
+# Cached cause-of-death, set from the last player.death cue (and player.torpor for dawn deaths).
+# Persisted between the killing blow and show_death() so the recap can say WHY you fell.
+var _cause: String = ""
+var _killer_id: int = 0
+var _explanation: String = ""
+var _dawn_death: bool = false
 
 
 func _ready() -> void:
@@ -18,6 +27,24 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build()
 	visible = false
+	if CueBus != null:
+		CueBus.cue_emitted.connect(_on_cue)
+
+
+## Cache the cause of death the moment it happens — show_death() may run a frame later (and the
+## dawn path reports a generic damage_type, so player.torpor is the authoritative sunrise signal).
+func _on_cue(event_id: String, payload: Dictionary) -> void:
+	match event_id:
+		"player.death":
+			_cause = String(payload.get("cause", ""))
+			_killer_id = int(payload.get("killer_id", 0))
+			_explanation = String(payload.get("explanation", ""))
+			_dawn_death = false   # a fresh death; torpor (if any) re-sets this true right after
+		"player.torpor":
+			_dawn_death = true
+			_cause = "dawn"
+			_killer_id = 0
+			_explanation = "Caught by the dawn"
 
 
 func _build() -> void:
@@ -52,6 +79,17 @@ func _build() -> void:
 	_title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
 	vb.add_child(_title)
 
+	# WHY you died — one clear line built from the cached cause/killer, with a do-better hint below.
+	_why = Label.new()
+	_why.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_font(_why, DISPLAY_FONT, 24, Color("#d6b46a"))
+	vb.add_child(_why)
+
+	_hint = Label.new()
+	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_font(_hint, MONO_FONT, 15, Color("#9a9488"))
+	vb.add_child(_hint)
+
 	_stats = Label.new()
 	_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_font(_stats, MONO_FONT, 16, Color("#b9b3a6"))
@@ -83,8 +121,57 @@ func _process(delta: float) -> void:
 func show_death() -> void:
 	visible = true
 	_blink = 0.0
+	if _why != null:
+		_why.text = _build_why()
+		_why.visible = _why.text != ""
+	if _hint != null:
+		_hint.text = _build_hint()
+		_hint.visible = _hint.text != ""
 	if _stats != null:
 		_stats.text = _build_stats()
+
+
+## The one-line WHY: resolve the killer's type and map the cause to noir copy. Falls back to a
+## generic line (and an empty hint) when no player.death/torpor cue was received this run.
+func _build_why() -> String:
+	var killer := _killer_name()
+	var lc := _cause.to_lower()
+	if _dawn_death or lc.find("dawn") != -1 or lc.find("sun") != -1:
+		return "Caught by the dawn — the sun found you in the open."
+	if lc.find("fire") != -1 or lc.find("burn") != -1:
+		return "Burned alive."
+	if killer != "":
+		return "Slain by %s." % killer
+	if _cause == "":
+		return "The night outlasted you."
+	return "Slain by the night."
+
+
+## A short, actionable "do this next time" line, keyed to how you fell. Empty when cause is unknown.
+func _build_hint() -> String:
+	var lc := _cause.to_lower()
+	if _dawn_death or lc.find("dawn") != -1 or lc.find("sun") != -1:
+		return "Reach your haven before sunrise."
+	if lc.find("fire") != -1 or lc.find("burn") != -1:
+		return "Mind the flames — spilled blood catches and spreads."
+	if _killer_id != 0:
+		return "Feed before you fight — and don't get cornered."
+	if _cause == "":
+		return ""
+	return "Feed before you fight."
+
+
+## Resolve the killer entity to a capitalized type name, or "" if there is no live killer to name.
+func _killer_name() -> String:
+	if _killer_id == 0 or Sim == null:
+		return ""
+	var e: SimEntity = Sim.get_entity(_killer_id)
+	if e == null:
+		return ""
+	var t := e.type_id
+	if t == "":
+		return ""
+	return t.substr(0, 1).to_upper() + t.substr(1)
 
 
 ## Run recap: level, feeds, kills, Humanity, and an epitaph keyed to how the soul fared.
@@ -109,3 +196,8 @@ func _build_stats() -> String:
 
 func hide_death() -> void:
 	visible = false
+	# Clear the cached cause so a later, unrelated show_death() can't inherit a stale epitaph.
+	_cause = ""
+	_killer_id = 0
+	_explanation = ""
+	_dawn_death = false

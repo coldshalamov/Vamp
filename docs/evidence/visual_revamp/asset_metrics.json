@@ -1,98 +1,129 @@
 {
+  "errors": [],
+  "warnings": [
+    "rat: normal map is flat placeholder (legacy) \u2014 skipping normal checks"
+  ],
+  "production_files": 50,
   "characters": {
     "civilian": {
-      "compressed_bytes": 943540,
       "frames": 128,
-      "standing_min_area": 1714,
-      "standing_min_height": 77,
-      "standing_min_occupancy": 0.3604,
-      "standing_min_width": 48
+      "cell": [
+        192,
+        256
+      ],
+      "compressed_bytes": 2406864,
+      "empty_cells": 0,
+      "narrow_cells": 0,
+      "baseline_drift": 0,
+      "normal_normalized_frac": 1.0
     },
     "cop": {
-      "compressed_bytes": 1039589,
       "frames": 128,
-      "standing_min_area": 1870,
-      "standing_min_height": 78,
-      "standing_min_occupancy": 0.2898,
-      "standing_min_width": 48
+      "cell": [
+        192,
+        256
+      ],
+      "compressed_bytes": 2498215,
+      "empty_cells": 0,
+      "narrow_cells": 0,
+      "baseline_drift": 0,
+      "normal_normalized_frac": 1.0
     },
     "elder": {
-      "compressed_bytes": 1100583,
       "frames": 128,
-      "standing_min_area": 2117,
-      "standing_min_height": 77,
-      "standing_min_occupancy": 0.3426,
-      "standing_min_width": 50
+      "cell": [
+        192,
+        256
+      ],
+      "compressed_bytes": 2779738,
+      "empty_cells": 0,
+      "narrow_cells": 0,
+      "baseline_drift": 0,
+      "normal_normalized_frac": 1.0
     },
     "gunner": {
-      "compressed_bytes": 955853,
       "frames": 128,
-      "standing_min_area": 1794,
-      "standing_min_height": 77,
-      "standing_min_occupancy": 0.2874,
-      "standing_min_width": 48
+      "cell": [
+        192,
+        256
+      ],
+      "compressed_bytes": 2459151,
+      "empty_cells": 0,
+      "narrow_cells": 0,
+      "baseline_drift": 0,
+      "normal_normalized_frac": 1.0
     },
     "hero": {
-      "compressed_bytes": 935438,
       "frames": 128,
-      "standing_min_area": 1821,
-      "standing_min_height": 77,
-      "standing_min_occupancy": 0.3021,
-      "standing_min_width": 48
+      "cell": [
+        192,
+        256
+      ],
+      "compressed_bytes": 2515219,
+      "empty_cells": 0,
+      "narrow_cells": 0,
+      "baseline_drift": 0,
+      "normal_normalized_frac": 1.0
     },
     "hunter": {
-      "compressed_bytes": 1074715,
       "frames": 128,
-      "standing_min_area": 2032,
-      "standing_min_height": 77,
-      "standing_min_occupancy": 0.3229,
-      "standing_min_width": 50
+      "cell": [
+        192,
+        256
+      ],
+      "compressed_bytes": 2706068,
+      "empty_cells": 0,
+      "narrow_cells": 0,
+      "baseline_drift": 0,
+      "normal_normalized_frac": 1.0
     },
     "rat": {
-      "compressed_bytes": 722958,
       "frames": 128,
-      "standing_min_area": 738,
-      "standing_min_height": 22,
-      "standing_min_occupancy": 0.0933,
-      "standing_min_width": 20
+      "cell": [
+        96,
+        128
+      ],
+      "compressed_bytes": 332047,
+      "empty_cells": 0,
+      "narrow_cells": 0,
+      "baseline_drift": 0,
+      "normal_normalized_frac": null
     },
     "swat": {
-      "compressed_bytes": 1133160,
       "frames": 128,
-      "standing_min_area": 2083,
-      "standing_min_height": 78,
-      "standing_min_occupancy": 0.3251,
-      "standing_min_width": 50
+      "cell": [
+        192,
+        256
+      ],
+      "compressed_bytes": 2589901,
+      "empty_cells": 0,
+      "narrow_cells": 0,
+      "baseline_drift": 0,
+      "normal_normalized_frac": 1.0
     },
     "thrall": {
-      "compressed_bytes": 928483,
       "frames": 128,
-      "standing_min_area": 1829,
-      "standing_min_height": 77,
-      "standing_min_occupancy": 0.2941,
-      "standing_min_width": 48
+      "cell": [
+        192,
+        256
+      ],
+      "compressed_bytes": 2572742,
+      "empty_cells": 0,
+      "narrow_cells": 0,
+      "baseline_drift": 0,
+      "normal_normalized_frac": 1.0
     },
     "thug": {
-      "compressed_bytes": 1049843,
       "frames": 128,
-      "standing_min_area": 1958,
-      "standing_min_height": 77,
-      "standing_min_occupancy": 0.3106,
-      "standing_min_width": 50
-    }
-  },
-  "compressed_bytes": 9941989,
-  "errors": [],
-  "estimated_raw_texture_bytes": 76026880,
-  "production_files": 49,
-  "vehicles": {
-    "police_cruiser": {
-      "compressed_bytes": 23385,
-      "opaque_area": 8408
-    },
-    "sedan": {
-      "compressed_bytes": 20910,
-      "opaque_area": 8408
+      "cell": [
+        192,
+        256
+      ],
+      "compressed_bytes": 2541586,
+      "empty_cells": 0,
+      "narrow_cells": 0,
+      "baseline_drift": 0,
+      "normal_normalized_frac": 1.0
     }
   }
 }

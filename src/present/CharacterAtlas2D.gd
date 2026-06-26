@@ -7,38 +7,64 @@
 extends Node2D
 class_name CharacterAtlas2D
 
-const FRAME_W := 96.0
-const FRAME_H := 128.0
-const BASELINE_Y := 112.0
+# Cell size + baseline are derived per-atlas from the bound texture (see
+# _refresh_atlas) so the legacy 96x128 SVG atlases and the new 192x256 Blender
+# atlases can coexist while the roster is migrated one archetype at a time.
+var _frame_w := 96.0
+var _frame_h := 128.0
+var _baseline_y := 112.0
 const HIT_REACT_DURATION := 0.24
 const DASH_TRAIL_DURATION := 0.30
 const TELEPORT_DISTANCE := 180.0
 const MAX_AFTERIMAGES := 6
 const TAU_INV := 1.0 / TAU
+const RuntimeSafetyScript := preload("res://src/core/RuntimeSafety.gd")
 
 ## One shared rim-light material for every actor (cold-moon silhouette so dark bodies pop from the
 ## dark ground). Shared, not per-actor, so no per-actor material allocation. See character_rim.gdshader.
-const RIM_SHADER := preload("res://art/shaders/character_rim.gdshader")
+## The HERO gets an upgraded directional "wet edge" rim (hero_rim.gdshader) — also shared, so the player
+## still costs one material, not one per frame.
+const RIM_SHADER_PATH := "res://art/shaders/character_rim.gdshader"
+const HERO_RIM_SHADER_PATH := "res://art/shaders/hero_rim.gdshader"
 static var _rim_material: ShaderMaterial = null
+static var _hero_rim_material: ShaderMaterial = null
 
 static func _shared_rim_material() -> ShaderMaterial:
 	if _rim_material == null:
+		if not ResourceLoader.exists(RIM_SHADER_PATH):
+			return null
+		var rim_shader := load(RIM_SHADER_PATH) as Shader
+		if rim_shader == null:
+			return null
 		_rim_material = ShaderMaterial.new()
-		_rim_material.shader = RIM_SHADER
+		_rim_material.shader = rim_shader
 	return _rim_material
 
-const ATLAS_MATERIALS := {
-	"hero": preload("res://assets/visual/materials/characters/hero.tres"),
-	"thug": preload("res://assets/visual/materials/characters/thug.tres"),
-	"gunner": preload("res://assets/visual/materials/characters/gunner.tres"),
-	"cop": preload("res://assets/visual/materials/characters/cop.tres"),
-	"swat": preload("res://assets/visual/materials/characters/swat.tres"),
-	"hunter": preload("res://assets/visual/materials/characters/hunter.tres"),
-	"elder": preload("res://assets/visual/materials/characters/elder.tres"),
-	"thrall": preload("res://assets/visual/materials/characters/thrall.tres"),
-	"civilian": preload("res://assets/visual/materials/characters/civilian.tres"),
-	"rat": preload("res://assets/visual/materials/characters/rat.tres"),
+## The hero's upgraded wet-edge rim. Falls back to the shared rim if the hero shader is missing.
+static func _shared_hero_rim_material() -> ShaderMaterial:
+	if _hero_rim_material == null:
+		if not ResourceLoader.exists(HERO_RIM_SHADER_PATH):
+			return _shared_rim_material()
+		var hero_shader := load(HERO_RIM_SHADER_PATH) as Shader
+		if hero_shader == null:
+			return _shared_rim_material()
+		_hero_rim_material = ShaderMaterial.new()
+		_hero_rim_material.shader = hero_shader
+	return _hero_rim_material
+
+const ATLAS_MATERIAL_PATHS := {
+	"hero": "res://assets/visual/materials/characters/hero.tres",
+	"thug": "res://assets/visual/materials/characters/thug.tres",
+	"gunner": "res://assets/visual/materials/characters/gunner.tres",
+	"cop": "res://assets/visual/materials/characters/cop.tres",
+	"swat": "res://assets/visual/materials/characters/swat.tres",
+	"hunter": "res://assets/visual/materials/characters/hunter.tres",
+	"elder": "res://assets/visual/materials/characters/elder.tres",
+	"thrall": "res://assets/visual/materials/characters/thrall.tres",
+	"civilian": "res://assets/visual/materials/characters/civilian.tres",
+	"rat": "res://assets/visual/materials/characters/rat.tres",
 }
+static var _atlas_cache: Dictionary = {}
 
 const CIVILIAN_TINTS := [
 	Color(1.00, 1.00, 1.00, 1.0),
@@ -76,10 +102,10 @@ func setup(sim_entity: SimEntity) -> void:
 	entity = sim_entity
 	if entity == null:
 		return
-	material = _shared_rim_material()
 	position = entity.pos
 	_facing = entity.facing
 	_last_sim_pos = entity.pos
+	# _refresh_atlas selects the rim material from _atlas_key (hero gets the upgraded wet-edge rim).
 	_refresh_atlas(true)
 	reset_physics_interpolation()
 	queue_redraw()
@@ -183,6 +209,7 @@ func _draw() -> void:
 	if entity == null:
 		return
 	_draw_resonance()
+	_draw_contact_shadow()
 	_draw_afterimages()
 	if _atlas == null:
 		_draw_missing_asset()
@@ -200,12 +227,24 @@ func _draw() -> void:
 
 
 func _draw_frame(texture: Texture2D, row: int, col: int, tint: Color, offset: Vector2, scale_value: float) -> void:
-	var source := Rect2(float(col) * FRAME_W, float(row) * FRAME_H, FRAME_W, FRAME_H)
+	var source := Rect2(float(col) * _frame_w, float(row) * _frame_h, _frame_w, _frame_h)
 	var destination := Rect2(
-		Vector2(-FRAME_W * 0.5 * scale_value, -BASELINE_Y * scale_value),
-		Vector2(FRAME_W * scale_value, FRAME_H * scale_value))
+		Vector2(-_frame_w * 0.5 * scale_value, -_baseline_y * scale_value),
+		Vector2(_frame_w * scale_value, _frame_h * scale_value))
 	var placed := Rect2(destination.position + offset, destination.size)
 	draw_texture_rect_region(texture, placed, source, tint, false, true)
+
+
+## Contact shadow drawn in-engine (the Blender sprites are figure-only; no baked
+## ground shadow, which would smear across the cell and pollute the normal pass).
+func _draw_contact_shadow() -> void:
+	if entity == null or entity.dead:
+		return
+	var rr := maxf(entity.radius, 8.0) * _sprite_scale() * (2.7 if _frame_h >= 200.0 else 1.2)
+	draw_set_transform(Vector2(0.0, 2.0), 0.0, Vector2(1.0, 0.36))
+	draw_circle(Vector2.ZERO, rr * 1.3, Color(0.0, 0.0, 0.0, 0.26))   # soft wide pool
+	draw_circle(Vector2.ZERO, rr * 0.72, Color(0.0, 0.0, 0.0, 0.52))  # dark grounding core
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _draw_afterimages() -> void:
@@ -258,9 +297,12 @@ func _direction_column(angle: float) -> int:
 func _sprite_scale() -> float:
 	if entity == null:
 		return 0.68
+	# Larger 192x256 cells have more headroom, so a lower multiplier keeps the
+	# on-screen figure the same size as the legacy 96x128 art.
+	var big := _frame_h >= 200.0
 	if _atlas_key == "rat":
-		return maxf(entity.radius / 8.0, 0.58) * 0.56
-	return maxf(entity.radius / 12.0, 0.72) * 0.68
+		return maxf(entity.radius / 8.0, 0.58) * (0.41 if big else 0.56)
+	return maxf(entity.radius / 12.0, 0.72) * (0.62 if big else 0.68)
 
 
 func _refresh_atlas(force: bool) -> void:
@@ -271,9 +313,24 @@ func _refresh_atlas(force: bool) -> void:
 		return
 	_profile_key = key
 	_atlas_key = _select_atlas_key()
-	_atlas = ATLAS_MATERIALS.get(_atlas_key, ATLAS_MATERIALS["civilian"]) as Texture2D
+	if RuntimeSafetyScript.safe_mode_enabled():
+		material = null
+		_atlas = null
+		queue_redraw()
+		return
+	# Hero gets the upgraded directional wet-edge rim; every other actor shares the cheap cold rim.
+	material = _shared_hero_rim_material() if _atlas_key == "hero" else _shared_rim_material()
+	_atlas = _atlas_for(_atlas_key)
 	if _atlas == null:
 		push_error("Missing visual atlas material for '%s'" % _atlas_key)
+	else:
+		# 8 columns x 16 rows; baseline at 7/8 of cell height (Y=224 of 256, 112 of 128).
+		var w := float(_atlas.get_width())
+		var h := float(_atlas.get_height())
+		if w > 0.0 and h > 0.0:
+			_frame_w = w / 8.0
+			_frame_h = h / 16.0
+			_baseline_y = _frame_h * 0.875
 	queue_redraw()
 
 
@@ -286,7 +343,7 @@ func _select_atlas_key() -> String:
 		return "rat"
 	if faction == "thrall":
 		return "thrall"
-	if ATLAS_MATERIALS.has(type_id):
+	if ATLAS_MATERIAL_PATHS.has(type_id):
 		return type_id
 	if type_id in ["ped", "civilian", "witness"]:
 		return "civilian"
@@ -318,11 +375,13 @@ func _entity_tint() -> Color:
 
 func _draw_missing_asset() -> void:
 	var s := maxf(entity.radius, 8.0)
+	var body := _safe_body_color() if RuntimeSafetyScript.safe_mode_enabled() else Color(0.96, 0.0, 0.82, 0.9)
 	var points := PackedVector2Array([
 		Vector2(0, -s * 2.2), Vector2(s, -s), Vector2(s * 0.72, 0),
 		Vector2(-s * 0.72, 0), Vector2(-s, -s),
 	])
-	draw_colored_polygon(points, Color(0.96, 0.0, 0.82, 0.9))
+	draw_colored_polygon(points, body)
+	draw_circle(Vector2(0.0, -s * 2.55), s * 0.45, body.lightened(0.18))
 
 
 func _draw_resonance() -> void:
@@ -354,7 +413,7 @@ func _draw_status() -> void:
 func _draw_alert() -> void:
 	if entity == null or entity.dead or entity.kind != "npc" or not (entity.hostile_to_player or entity.responder):
 		return
-	var p := Vector2(0.0, -BASELINE_Y * _sprite_scale() - 4.0)
+	var p := Vector2(0.0, -_baseline_y * _sprite_scale() - 4.0)
 	var state := String(entity.ai_state)
 	var perception := String(entity.perception_state)
 	if state in ["chase", "attack"] or perception in ["alert", "combat"]:
@@ -375,3 +434,29 @@ func _resonance_color(humour: String) -> Color:
 		"melancholic": return Color("6f8ce0")
 		"phlegmatic": return Color("6fd6a0")
 	return Color("a0a0a8")
+
+
+static func _atlas_for(key: String) -> Texture2D:
+	var resolved := key if ATLAS_MATERIAL_PATHS.has(key) else "civilian"
+	if _atlas_cache.has(resolved):
+		return _atlas_cache[resolved] as Texture2D
+	var path := String(ATLAS_MATERIAL_PATHS[resolved])
+	if not ResourceLoader.exists(path):
+		return null
+	var tex := load(path) as Texture2D
+	_atlas_cache[resolved] = tex
+	return tex
+
+
+func _safe_body_color() -> Color:
+	if entity == null:
+		return Color("9ba8b5")
+	if entity.kind == "player":
+		return Color("d9dde7")
+	if entity.faction == "police":
+		return Color("7aa6d8")
+	if entity.hostile_to_player:
+		return Color("d87878")
+	if entity.downed or entity.dead:
+		return Color("777a80")
+	return Color("a4b8aa")

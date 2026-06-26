@@ -1,0 +1,79 @@
+name: Cinematic visual proof
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: visual-proof-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GODOT_VERSION: "4.7-stable"
+  GODOT_BIN: "Godot_v4.7-stable_linux.x86_64"
+
+jobs:
+  capture-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Godot
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: ~/godot-bin
+          key: godot-${{ env.GODOT_VERSION }}-linux-visual
+
+      - name: Download Godot
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p ~/godot-bin
+          url="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_BIN}.zip"
+          curl -fL --retry 3 --retry-delay 5 -o /tmp/godot.zip "$url"
+          unzip -o /tmp/godot.zip -d ~/godot-bin
+          rm -f /tmp/godot.zip
+
+      - name: Install runtime dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1 libglu1-mesa
+          chmod +x "$HOME/godot-bin/${GODOT_BIN}"
+          ln -sf "$HOME/godot-bin/${GODOT_BIN}" "$HOME/godot-bin/godot"
+          echo "$HOME/godot-bin" >> "$GITHUB_PATH"
+
+      - name: Import project
+        run: |
+          godot --headless --path . --import || true
+          godot --headless --path . --import || true
+
+      - name: Run all GUT tests
+        run: |
+          godot --headless --path . --display-driver headless --audio-driver Dummy \
+            -s res://addons/gut/gut_cmdln.gd \
+            -gjunit_xml_file=res://cinematic_test_results.xml \
+            -gexit
+
+      - name: Capture live rendering under Xvfb
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" \
+            godot --path . --rendering-method gl_compatibility --audio-driver Dummy \
+            res://test/CaptureSlice.tscn
+
+      - name: Upload visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cinematic-visual-evidence-${{ github.sha }}
+          path: |
+            docs/evidence/*.png
+            cinematic_test_results.xml
+          if-no-files-found: warn
+          retention-days: 21

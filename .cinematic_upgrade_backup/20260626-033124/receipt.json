@@ -1,0 +1,14 @@
+{
+  "package": "Vampire City cinematic graphics upgrade",
+  "installed_at": "2026-06-26T07:31:24.948494+00:00",
+  "repository": "C:\\Users\\93rob\\Documents\\GitHub\\Vamp",
+  "backup": "C:\\Users\\93rob\\Documents\\GitHub\\Vamp\\.cinematic_upgrade_backup\\20260626-033124",
+  "overwritten_files": [
+    "src/present/EntityRenderer.gd"
+  ],
+  "added_files": [
+    "docs/CINEMATIC_GRAPHICS_RESEARCH.md",
+    "docs/CINEMATIC_UPGRADE_HANDOFF.md"
+  ],
+  "validation_warnings": []
+}

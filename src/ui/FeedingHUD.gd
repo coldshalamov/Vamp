@@ -35,6 +35,7 @@ const PULSE_HZ_HIGH := 3.4   # racing pulse as the victim fades
 # Outcome popup lifetime.
 const OUTCOME_DURATION := 1.6
 const OUTCOME_RISE := 40.0
+const MAX_OUTCOME_LABELS := 6
 
 # Resonance color + buff text map (verbatim from the deliverable spec).
 const RESONANCE := {
@@ -283,6 +284,11 @@ func _pop_outcome(payload: Dictionary, killed: bool) -> void:
 
 
 func _spawn_outcome_label(text: String, color: Color, screen_pos: Vector2) -> void:
+	while _outcomes.size() >= MAX_OUTCOME_LABELS:
+		var old: Dictionary = _outcomes.pop_front()
+		var old_label = old.get("label", null)
+		if old_label != null and is_instance_valid(old_label):
+			old_label.queue_free()
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.add_theme_font_size_override("font_size", _font_size() + 6)

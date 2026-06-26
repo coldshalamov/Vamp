@@ -7,6 +7,8 @@
 extends Control
 class_name FloatingText
 
+const MAX_LABELS := 48
+
 var world_to_screen: Callable = Callable()   # Vector2 -> Vector2, set by the game host
 
 
@@ -18,6 +20,8 @@ func _ready() -> void:
 
 
 func spawn(world_pos: Vector2, text: String, color: Color = Color.WHITE) -> void:
+	while get_child_count() >= MAX_LABELS:
+		_remove_child_now(get_child(0))
 	var label := Label.new()
 	label.text = text
 	label.z_index = 50
@@ -30,13 +34,20 @@ func spawn(world_pos: Vector2, text: String, color: Color = Color.WHITE) -> void
 	var reduced := UIManager.is_reduced_motion() if UIManager != null else false
 	if reduced:
 		label.modulate.a = 1.0
-		var tw := create_tween()
+		var tw := label.create_tween()
 		tw.tween_interval(0.4)
 		tw.tween_property(label, "modulate:a", 0.0, 0.1)
 		tw.tween_callback(label.queue_free)
 		return
-	var tw := create_tween()
+	var tw := label.create_tween()
 	tw.set_parallel(true)
 	tw.tween_property(label, "position:y", label.position.y - 34.0, 0.7).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tw.tween_property(label, "modulate:a", 0.0, 0.7).set_delay(0.25)
 	tw.chain().tween_callback(label.queue_free)
+
+
+func _remove_child_now(child: Node) -> void:
+	if child == null or not is_instance_valid(child):
+		return
+	remove_child(child)
+	child.queue_free()

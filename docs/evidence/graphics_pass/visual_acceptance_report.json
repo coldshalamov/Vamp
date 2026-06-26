@@ -1,0 +1,87 @@
+{
+  "failures": [
+    "stress capture averaged only 17.3 FPS"
+  ],
+  "images": {
+    "graphics_01_lineup.png": {
+      "edge_energy": 2.699450334787198,
+      "file_bytes": 723125,
+      "height": 720,
+      "luma_stddev": 15.489426021699211,
+      "sampled_pixels": 57600,
+      "sha256": "a0a9c710531a856e27d635dd4f7b977f1a14ebb112eff3ecd9c090ba4ffde3c1",
+      "unique_colors": 962,
+      "visible_ratio": 0.7182638888888889,
+      "width": 1280
+    },
+    "graphics_02_locomotion.png": {
+      "edge_energy": 2.783447428073424,
+      "file_bytes": 623476,
+      "height": 720,
+      "luma_stddev": 16.94835292957705,
+      "sampled_pixels": 57600,
+      "sha256": "0e6e98b84489eab0e9ccb16e05671893ca8b9dedb0becaa2c9239d7785b56905",
+      "unique_colors": 1170,
+      "visible_ratio": 0.6741493055555555,
+      "width": 1280
+    },
+    "graphics_03_attack.png": {
+      "edge_energy": 2.8776750026156854,
+      "file_bytes": 616232,
+      "height": 720,
+      "luma_stddev": 17.08818550691762,
+      "sampled_pixels": 57600,
+      "sha256": "b20cd145213d905e9b11f2ac2c17726fdc7d47590d5e5dd30f58d9e9ae5a96f7",
+      "unique_colors": 1172,
+      "visible_ratio": 0.6696180555555555,
+      "width": 1280
+    },
+    "graphics_04_ballistics.png": {
+      "edge_energy": 3.143292376634988,
+      "file_bytes": 612897,
+      "height": 720,
+      "luma_stddev": 18.199892209052244,
+      "sampled_pixels": 57600,
+      "sha256": "9775e52fc99ae4fd423a1b197115f78e1eb1b38a5a5eb6152c280baae24d7317",
+      "unique_colors": 1616,
+      "visible_ratio": 0.6385590277777777,
+      "width": 1280
+    },
+    "graphics_05_impacts.png": {
+      "edge_energy": 2.9979092519618242,
+      "file_bytes": 590343,
+      "height": 720,
+      "luma_stddev": 17.914575778527706,
+      "sampled_pixels": 57600,
+      "sha256": "b938763fb71b6632f70ff85fd0eae10f3231295b749003429f018f866b741096",
+      "unique_colors": 1470,
+      "visible_ratio": 0.6251215277777777,
+      "width": 1280
+    },
+    "graphics_06_stress.png": {
+      "edge_energy": 3.6292222266787055,
+      "file_bytes": 596918,
+      "height": 720,
+      "luma_stddev": 17.87486777065493,
+      "sampled_pixels": 57600,
+      "sha256": "fe15573119caeaf05f574aa92bfcf7fd3b79705387191893340f478ebb2a6351",
+      "unique_colors": 1498,
+      "visible_ratio": 0.5603298611111112,
+      "width": 1280
+    }
+  },
+  "passed": false,
+  "runtime": {
+    "average_fps": 17.3,
+    "engine": "4.7-stable (official)",
+    "entity_count": 37,
+    "minimum_sampled_fps": 10.3,
+    "physics_interpolation_fraction": 0.391399999999978,
+    "physics_ticks_per_second": 60,
+    "renderer": "gl_compatibility",
+    "viewport": [
+      1280.0,
+      720.0
+    ]
+  }
+}

@@ -6,7 +6,7 @@ Research date: 2026-06-21. Target: Godot 4.3, GDScript, 2D top-down action-RPG. 
 
 | Name | Repo URL | License | Last commit | Godot 4 status | Verdict |
 |---|---|---:|---:|---|---|
-| GUT (Godot Unit Test) | https://github.com/bitwes/Gut | MIT | 2026-06-19 | GUT 9.x is Godot 4.x; for Godot 4.3 use GUT 9.4.0, not the latest 4.6+ asset. CLI docs run via `godot --headless -s addons/gut/gut_cmdln.gd --path "$PWD" -gdir=res://test -ginclude_subdirs -gexit`; returns 0/1 and can emit JUnit XML. | Install first. The `--script` SceneTree runner is exactly right for deterministic-sim tests: instantiate sim classes, seed RNG, step fixed ticks, assert snapshots. |
+| GUT (Godot Unit Test) | https://github.com/bitwes/Gut | MIT | 2026-06-19 | GUT 9.x is Godot 4.x; for Godot 4.3 use GUT 9.4.0, not the latest 4.6+ asset. Upstream CLI docs support recursive headless runs, but this repo must not run raw recursive GUT on Windows; use `scripts/RunGutSafe.ps1` locally and CI for the full suite. | Install first. The `--script` SceneTree runner is useful for deterministic-sim tests, but local Windows runs must stay bounded. |
 | GdUnit4 | https://github.com/godot-gdunit-labs/gdUnit4 | MIT | 2026-06-15 | Compatibility matrix includes Godot 4.3 via v5.x. Headless command-line/CI and JUnit/HTML reports are supported. | Good alternative if we later want richer reports or C# coverage; GUT is simpler for GDScript-first sim tests. |
 
 ## 2. Steering / Behavior AI

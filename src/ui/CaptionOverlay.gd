@@ -32,7 +32,7 @@ func push_caption(text: String, direction: String = "") -> void:
 	if _box == null:
 		_build_box()
 	while _box.get_child_count() >= MAX_LINES:
-		_box.get_child(0).queue_free()
+		_remove_child_now(_box, _box.get_child(0))
 	var label := Label.new()
 	# Only annotate OFF-CENTRE sounds with a direction (a center "[center]" tag is just noise).
 	var prefix := "[%s] " % direction if direction == "left" or direction == "right" else ""
@@ -45,10 +45,11 @@ func push_caption(text: String, direction: String = "") -> void:
 	label.add_theme_color_override("font_shadow_color", bg)
 	_box.add_child(label)
 	var reduced := UIManager.is_reduced_motion() if UIManager != null else false
+	var tw := label.create_tween()
 	if reduced:
-		get_tree().create_timer(DWELL).timeout.connect(label.queue_free)
+		tw.tween_interval(DWELL)
+		tw.tween_callback(label.queue_free)
 		return
-	var tw := create_tween()
 	tw.tween_interval(DWELL)
 	tw.tween_property(label, "modulate:a", 0.0, 0.4)
 	tw.tween_callback(label.queue_free)
@@ -69,6 +70,13 @@ func _build_box() -> void:
 
 func _size() -> int:
 	return UIManager.theme_font_size("font_size", "Label", 16) if UIManager != null else 16
+
+
+func _remove_child_now(parent: Node, child: Node) -> void:
+	if parent == null or child == null or not is_instance_valid(child):
+		return
+	parent.remove_child(child)
+	child.queue_free()
 
 
 func _on_cue(event_id: String, payload: Dictionary) -> void:

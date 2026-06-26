@@ -131,7 +131,7 @@ python3 tools/visual/validate_visual_assets.py
 python3 tools/visual/render_visual_contact_sheet.py
 ```
 
-Then run the full Godot import/GUT suite and the windowed `Visual evidence` workflow. Review the uploaded six-frame evidence at 100% scale. A green script is necessary, not sufficient; humans must inspect silhouette, temporal consistency, faction identity, and scene readability.
+On local Windows, do not run raw Godot, recursive GUT, or windowed capture from this guide. Use `powershell -ExecutionPolicy Bypass -File .\scripts\RunGutSafe.ps1` for bounded local smoke, and leave full recursive GUT plus windowed `Visual evidence` to CI or an explicitly approved machine. Review uploaded evidence at 100% scale; a green script is necessary, not sufficient. Humans must inspect silhouette, temporal consistency, faction identity, and scene readability.
 
 ## Performance budget
 

@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="GutTests" failures="0" tests="120" >
+  <testsuite name="test/unit/test_backend_port_systems.gd" tests="12" failures="0" skipped="0" time="0.380238" >
+      <testcase name="test_catalog_ports_legacy_power_and_progression_data" assertions="18" status="pass" classname="test/unit/test_backend_port_systems.gd" time="0.000284" >
+      </testcase>
+      <testcase name="test_skill_tree_hotbar_and_power_cast_are_authoritative_in_meta" assertions="6" status="pass" classname="test/unit/test_backend_port_systems.gd" time="0.001484" >
+      </testcase>
+      <testcase name="test_inventory_economy_haven_coterie_domain_and_mission_backend" assertions="16" status="pass" classname="test/unit/test_backend_port_systems.gd" time="0.002394" >
+      </testcase>
+      <testcase name="test_projectiles_vehicles_day_night_and_save_restore_are_deterministic" assertions="9" status="pass" classname="test/unit/test_backend_port_systems.gd" time="0.022483" >
+      </testcase>
+      <testcase name="test_elite_affixes_combat_statuses_and_resists_are_deterministic" assertions="6" status="pass" classname="test/unit/test_backend_port_systems.gd" time="0.00935" >
+      </testcase>
+      <testcase name="test_ai_uses_pathfinding_and_thrall_follow_attacks" assertions="4" status="pass" classname="test/unit/test_backend_port_systems.gd" time="0.105354" >
+      </testcase>
+      <testcase name="test_body_carry_and_evidence_heat_are_authoritative" assertions="14" status="pass" classname="test/unit/test_backend_port_systems.gd" time="0.203921" >
+      </testcase>
+      <testcase name="test_carried_body_seen_and_legacy_achievements_are_backend_state" assertions="8" status="pass" classname="test/unit/test_backend_port_systems.gd" time="0.017018" >
+      </testcase>
+      <testcase name="test_business_legend_progress_and_domain_caps" assertions="16" status="pass" classname="test/unit/test_backend_port_systems.gd" time="0.004082" >
+      </testcase>
+      <testcase name="test_nemesis_escape_return_and_death_are_persistent_backend_state" assertions="12" status="pass" classname="test/unit/test_backend_port_systems.gd" time="0.003477" >
+      </testcase>
+      <testcase name="test_emergent_events_domain_raids_and_childer_backend" assertions="38" status="pass" classname="test/unit/test_backend_port_systems.gd" time="0.006241" >
+      </testcase>
+      <testcase name="test_persistent_mastery_trophies_codex_alchemy_and_legacy" assertions="16" status="pass" classname="test/unit/test_backend_port_systems.gd" time="0.00415" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_blood_drink.gd" tests="2" failures="0" skipped="0" time="0.055187" >
+      <testcase name="test_drink_reclaims_vitae_and_drains_the_pool" assertions="3" status="pass" classname="test/unit/test_blood_drink.gd" time="0.02287" >
+      </testcase>
+      <testcase name="test_spill_then_drink_is_deterministic" assertions="2" status="pass" classname="test/unit/test_blood_drink.gd" time="0.032317" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_cast_contract.gd" tests="4" failures="0" skipped="0" time="0.006377" >
+      <testcase name="test_every_power_classifies_to_a_valid_archetype" assertions="36" status="pass" classname="test/unit/test_cast_contract.gd" time="0.000678" >
+      </testcase>
+      <testcase name="test_spot_check_archetypes" assertions="9" status="pass" classname="test/unit/test_cast_contract.gd" time="0.000737" >
+      </testcase>
+      <testcase name="test_cast_cue_carries_the_contract" assertions="6" status="pass" classname="test/unit/test_cast_contract.gd" time="0.002609" >
+      </testcase>
+      <testcase name="test_self_buff_targets_the_caster" assertions="3" status="pass" classname="test/unit/test_cast_contract.gd" time="0.002353" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_command_bolts.gd" tests="2" failures="0" skipped="0" time="0.008844" >
+      <testcase name="test_commanding_a_pool_fires_more_bolts" assertions="2" status="pass" classname="test/unit/test_command_bolts.gd" time="0.004512" >
+      </testcase>
+      <testcase name="test_command_is_deterministic" assertions="1" status="pass" classname="test/unit/test_command_bolts.gd" time="0.004332" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_consequence.gd" tests="11" failures="0" skipped="0" time="0.041513" >
+      <testcase name="test_ledger_counters_player_style" assertions="3" status="pass" classname="test/unit/test_consequence.gd" time="0.000591" >
+      </testcase>
+      <testcase name="test_casting_records_style" assertions="1" status="pass" classname="test/unit/test_consequence.gd" time="0.003116" >
+      </testcase>
+      <testcase name="test_objective_guides_the_player" assertions="1" status="pass" classname="test/unit/test_consequence.gd" time="0.002181" >
+      </testcase>
+      <testcase name="test_gamepad_bindings_overlay_the_keyboard" assertions="2" status="pass" classname="test/unit/test_consequence.gd" time="0.000419" >
+      </testcase>
+      <testcase name="test_save_slots_are_independent" assertions="2" status="pass" classname="test/unit/test_consequence.gd" time="0.005339" >
+      </testcase>
+      <testcase name="test_dread_field_scatters_mortals_when_notorious" assertions="1" status="pass" classname="test/unit/test_consequence.gd" time="0.016791" >
+      </testcase>
+      <testcase name="test_difficulty_scales_the_hunt" assertions="1" status="pass" classname="test/unit/test_consequence.gd" time="0.002433" >
+      </testcase>
+      <testcase name="test_hemomancy_empowers_casting_in_blood" assertions="1" status="pass" classname="test/unit/test_consequence.gd" time="0.002773" >
+      </testcase>
+      <testcase name="test_shatter_combo_amps_damage_on_mesmerized" assertions="1" status="pass" classname="test/unit/test_consequence.gd" time="0.002658" >
+      </testcase>
+      <testcase name="test_first_hunt_teaches_feeding_first" assertions="1" status="pass" classname="test/unit/test_consequence.gd" time="0.002711" >
+      </testcase>
+      <testcase name="test_contract_offer_and_complete" assertions="3" status="pass" classname="test/unit/test_consequence.gd" time="0.002501" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_cuebus_merge.gd" tests="3" failures="0" skipped="0" time="0.002055" >
+      <testcase name="test_define_merges_colliding_modalities_instead_of_clobbering" assertions="5" status="pass" classname="test/unit/test_cuebus_merge.gd" time="0.000466" >
+      </testcase>
+      <testcase name="test_define_still_sets_a_fresh_event" assertions="2" status="pass" classname="test/unit/test_cuebus_merge.gd" time="0.000316" >
+      </testcase>
+      <testcase name="test_registered_caption_routes_to_caption_overlay" assertions="4" status="pass" classname="test/unit/test_cuebus_merge.gd" time="0.001273" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_determinism.gd" tests="3" failures="0" skipped="0" time="6.05968" >
+      <testcase name="test_state_hash_identical_across_runs" assertions="20" status="pass" classname="test/unit/test_determinism.gd" time="5.400989" >
+      </testcase>
+      <testcase name="test_different_seeds_diverge" assertions="1" status="pass" classname="test/unit/test_determinism.gd" time="0.452895" >
+      </testcase>
+      <testcase name="test_recorded_inputs_replay_to_identical_state_and_cues" assertions="3" status="pass" classname="test/unit/test_determinism.gd" time="0.205796" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_director_service.gd" tests="5" failures="0" skipped="0" time="0.019119" >
+      <testcase name="test_director_stages_a_style_aware_opportunity" assertions="3" status="pass" classname="test/unit/test_director_service.gd" time="0.003205" >
+      </testcase>
+      <testcase name="test_kills_make_force_the_dominant_style" assertions="1" status="pass" classname="test/unit/test_director_service.gd" time="0.003464" >
+      </testcase>
+      <testcase name="test_stealth_powers_make_stealth_dominant" assertions="1" status="pass" classname="test/unit/test_director_service.gd" time="0.002859" >
+      </testcase>
+      <testcase name="test_witnesses_build_the_citys_belief" assertions="2" status="pass" classname="test/unit/test_director_service.gd" time="0.002919" >
+      </testcase>
+      <testcase name="test_observer_is_deterministic" assertions="1" status="pass" classname="test/unit/test_director_service.gd" time="0.006672" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_feeding_spare.gd" tests="1" failures="0" skipped="0" time="0.041038" >
+      <testcase name="test_releasing_midfeed_spares_a_living_downed_victim" assertions="9" status="pass" classname="test/unit/test_feeding_spare.gd" time="0.041038" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_feeding_visceral.gd" tests="1" failures="0" skipped="0" time="0.049474" >
+      <testcase name="test_lethal_feed_sprays_real_blood_and_drains_to_corpse_white" assertions="4" status="pass" classname="test/unit/test_feeding_visceral.gd" time="0.049474" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_flow_cancel.gd" tests="2" failures="0" skipped="0" time="0.016603" >
+      <testcase name="test_flow_raises_melee_damage" assertions="1" status="pass" classname="test/unit/test_flow_cancel.gd" time="0.00378" >
+      </testcase>
+      <testcase name="test_perfect_cancel_builds_flow" assertions="2" status="pass" classname="test/unit/test_flow_cancel.gd" time="0.012823" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_freeze_regression.gd" tests="4" failures="0" skipped="0" time="2.748248" >
+      <testcase name="test_cue_log_stays_bounded_over_long_run" assertions="2" status="pass" classname="test/unit/test_freeze_regression.gd" time="2.712437" >
+      </testcase>
+      <testcase name="test_cuebus_history_is_bounded" assertions="1" status="pass" classname="test/unit/test_freeze_regression.gd" time="0.030112" >
+      </testcase>
+      <testcase name="test_melee_connect_keeps_damage_dealt_and_emits_hit_connect_once" assertions="3" status="pass" classname="test/unit/test_freeze_regression.gd" time="0.004302" >
+      </testcase>
+      <testcase name="test_perfect_gulp_alias_cues_only_trigger_one_freeze" assertions="4" status="pass" classname="test/unit/test_freeze_regression.gd" time="0.001397" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_glowup_hidden_game.gd" tests="7" failures="0" skipped="0" time="0.012672" >
+      <testcase name="test_style_profile_infers_practiced_resolution_not_button_count" assertions="3" status="pass" classname="test/unit/test_glowup_hidden_game.gd" time="0.002722" >
+      </testcase>
+      <testcase name="test_style_profile_round_trips_with_identical_hash" assertions="2" status="pass" classname="test/unit/test_glowup_hidden_game.gd" time="0.001962" >
+      </testcase>
+      <testcase name="test_ambiguous_witness_creates_event_claim_without_true_identity_link" assertions="3" status="pass" classname="test/unit/test_glowup_hidden_game.gd" time="0.000792" >
+      </testcase>
+      <testcase name="test_duplicate_observations_merge_instead_of_multiplying_claims" assertions="2" status="pass" classname="test/unit/test_glowup_hidden_game.gd" time="0.000896" >
+      </testcase>
+      <testcase name="test_rumor_graph_round_trip_is_hash_identical" assertions="2" status="pass" classname="test/unit/test_glowup_hidden_game.gd" time="0.001399" >
+      </testcase>
+      <testcase name="test_opportunity_choice_is_deterministic_for_sorted_context_and_rolls" assertions="3" status="pass" classname="test/unit/test_glowup_hidden_game.gd" time="0.004363" >
+      </testcase>
+      <testcase name="test_opportunity_director_blocks_consecutive_hard_counters" assertions="2" status="pass" classname="test/unit/test_glowup_hidden_game.gd" time="0.000538" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_gulp_window.gd" tests="2" failures="0" skipped="0" time="0.192141" >
+      <testcase name="test_well_timed_gulps_yield_more_vitae" assertions="6" status="pass" classname="test/unit/test_gulp_window.gd" time="0.092036" >
+      </testcase>
+      <testcase name="test_gulp_outcome_is_deterministic" assertions="4" status="pass" classname="test/unit/test_gulp_window.gd" time="0.100105" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_hud_binding.gd" tests="7" failures="0" skipped="0" time="0.624639" >
+      <testcase name="test_hud_builds_without_error" assertions="3" status="pass" classname="test/unit/test_hud_binding.gd" time="0.054492" >
+      </testcase>
+      <testcase name="test_vitae_and_hp_bars_track_sim_state" assertions="2" status="pass" classname="test/unit/test_hud_binding.gd" time="0.053743" >
+      </testcase>
+      <testcase name="test_hunger_pips_render_count" assertions="1" status="pass" classname="test/unit/test_hud_binding.gd" time="0.09469" >
+      </testcase>
+      <testcase name="test_heat_stars_render_count" assertions="1" status="pass" classname="test/unit/test_hud_binding.gd" time="0.109971" >
+      </testcase>
+      <testcase name="test_damage_cue_routes_to_floating_text" assertions="1" status="pass" classname="test/unit/test_hud_binding.gd" time="0.093988" >
+      </testcase>
+      <testcase name="test_blood_changed_cue_refreshes_vitals_without_error" assertions="1" status="pass" classname="test/unit/test_hud_binding.gd" time="0.109896" >
+      </testcase>
+      <testcase name="test_hud_tolerates_missing_player" assertions="1" status="pass" classname="test/unit/test_hud_binding.gd" time="0.107859" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_humanity_world.gd" tests="2" failures="0" skipped="0" time="0.043948" >
+      <testcase name="test_innocent_kill_makes_the_world_react" assertions="6" status="pass" classname="test/unit/test_humanity_world.gd" time="0.042335" >
+      </testcase>
+      <testcase name="test_low_humanity_raises_exposure" assertions="1" status="pass" classname="test/unit/test_humanity_world.gd" time="0.001613" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_input_capture_remap.gd" tests="8" failures="0" skipped="0" time="0.029901" >
+      <testcase name="test_capture_translates_move_keys_into_move_intent" assertions="6" status="pass" classname="test/unit/test_input_capture_remap.gd" time="0.000614" >
+      </testcase>
+      <testcase name="test_capture_translates_attack_into_attack_intent" assertions="4" status="pass" classname="test/unit/test_input_capture_remap.gd" time="0.000413" >
+      </testcase>
+      <testcase name="test_capture_translates_feed_into_feed_intent_with_held" assertions="6" status="pass" classname="test/unit/test_input_capture_remap.gd" time="0.000499" >
+      </testcase>
+      <testcase name="test_capture_translates_dash_into_dash_intent" assertions="3" status="pass" classname="test/unit/test_input_capture_remap.gd" time="0.000375" >
+      </testcase>
+      <testcase name="test_capture_translates_slot_keys_into_power_intent" assertions="20" status="pass" classname="test/unit/test_input_capture_remap.gd" time="0.000947" >
+      </testcase>
+      <testcase name="test_capture_returns_null_while_remapping" assertions="3" status="pass" classname="test/unit/test_input_capture_remap.gd" time="0.000335" >
+      </testcase>
+      <testcase name="test_capture_returns_null_for_unmapped_event" assertions="1" status="pass" classname="test/unit/test_input_capture_remap.gd" time="0.000247" >
+      </testcase>
+      <testcase name="test_rebind_persists_and_reloads" assertions="7" status="pass" classname="test/unit/test_input_capture_remap.gd" time="0.026471" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_inscribe.gd" tests="3" failures="0" skipped="0" time="0.1169" >
+      <testcase name="test_fear_sigil_sears_feared_enemies" assertions="2" status="pass" classname="test/unit/test_inscribe.gd" time="0.042491" >
+      </testcase>
+      <testcase name="test_player_inscribe_spends_vitae_and_paints_a_sigil" assertions="2" status="pass" classname="test/unit/test_inscribe.gd" time="0.002391" >
+      </testcase>
+      <testcase name="test_sigil_is_deterministic" assertions="1" status="pass" classname="test/unit/test_inscribe.gd" time="0.072018" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_locomotion.gd" tests="2" failures="0" skipped="0" time="0.019289" >
+      <testcase name="test_accelerates_from_rest_not_instant" assertions="3" status="pass" classname="test/unit/test_locomotion.gd" time="0.010493" >
+      </testcase>
+      <testcase name="test_glides_to_a_stop" assertions="3" status="pass" classname="test/unit/test_locomotion.gd" time="0.008796" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_overlay_queue_caps.gd" tests="2" failures="0" skipped="0" time="0.107947" >
+      <testcase name="test_caption_overlay_stays_bounded_when_pushing_past_cap" assertions="9" status="pass" classname="test/unit/test_overlay_queue_caps.gd" time="0.005187" >
+      </testcase>
+      <testcase name="test_notification_panel_caps_toasts_and_banners_without_hanging" assertions="14" status="pass" classname="test/unit/test_overlay_queue_caps.gd" time="0.10276" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_physics.gd" tests="5" failures="0" skipped="0" time="0.311758" >
+      <testcase name="test_impulse_damages_both_bodies" assertions="2" status="pass" classname="test/unit/test_physics.gd" time="0.013156" >
+      </testcase>
+      <testcase name="test_impact_damage_scales_with_speed" assertions="1" status="pass" classname="test/unit/test_physics.gd" time="0.031198" >
+      </testcase>
+      <testcase name="test_firebomb_sails_and_ignites_a_hazard" assertions="1" status="pass" classname="test/unit/test_physics.gd" time="0.01615" >
+      </testcase>
+      <testcase name="test_maw_pulls_entities_inward" assertions="1" status="pass" classname="test/unit/test_physics.gd" time="0.017896" >
+      </testcase>
+      <testcase name="test_physics_is_deterministic" assertions="1" status="pass" classname="test/unit/test_physics.gd" time="0.233358" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_power_upgrade.gd" tests="2" failures="0" skipped="0" time="0.013334" >
+      <testcase name="test_leveling_upgrades_slots_and_learns_the_powers" assertions="6" status="pass" classname="test/unit/test_power_upgrade.gd" time="0.004078" >
+      </testcase>
+      <testcase name="test_upgrade_is_deterministic" assertions="1" status="pass" classname="test/unit/test_power_upgrade.gd" time="0.009256" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_react_fire.gd" tests="2" failures="0" skipped="0" time="0.075197" >
+      <testcase name="test_igniting_blood_burns_an_occupant" assertions="3" status="pass" classname="test/unit/test_react_fire.gd" time="0.027237" >
+      </testcase>
+      <testcase name="test_fire_is_deterministic" assertions="1" status="pass" classname="test/unit/test_react_fire.gd" time="0.04796" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_resonance.gd" tests="3" failures="0" skipped="0" time="0.076388" >
+      <testcase name="test_npcs_have_a_resonance" assertions="4" status="pass" classname="test/unit/test_resonance.gd" time="0.004693" >
+      </testcase>
+      <testcase name="test_feeding_grants_the_victims_resonance_buff" assertions="2" status="pass" classname="test/unit/test_resonance.gd" time="0.067518" >
+      </testcase>
+      <testcase name="test_choleric_resonance_raises_melee_damage" assertions="1" status="pass" classname="test/unit/test_resonance.gd" time="0.004177" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_save_load_resync.gd" tests="3" failures="0" skipped="0" time="0.017672" >
+      <testcase name="test_full_run_round_trips" assertions="9" status="pass" classname="test/unit/test_save_load_resync.gd" time="0.006619" >
+      </testcase>
+      <testcase name="test_empty_save_fails_without_building_world" assertions="2" status="pass" classname="test/unit/test_save_load_resync.gd" time="0.000568" >
+      </testcase>
+      <testcase name="test_savesystem_text_round_trips_backend" assertions="6" status="pass" classname="test/unit/test_save_load_resync.gd" time="0.010485" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_skill_gap.gd" tests="2" failures="0" skipped="0" time="0.587649" >
+      <testcase name="test_expert_takes_less_damage_than_masher" assertions="3" status="pass" classname="test/unit/test_skill_gap.gd" time="0.292279" >
+      </testcase>
+      <testcase name="test_masher_is_deterministic" assertions="1" status="pass" classname="test/unit/test_skill_gap.gd" time="0.29537" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_spatial_queries.gd" tests="3" failures="0" skipped="0" time="0.025022" >
+      <testcase name="test_entities_in_radius_matches_bruteforce_order" assertions="1" status="pass" classname="test/unit/test_spatial_queries.gd" time="0.015075" >
+      </testcase>
+      <testcase name="test_nearest_entity_keeps_later_tie_wins_behavior" assertions="1" status="pass" classname="test/unit/test_spatial_queries.gd" time="0.005445" >
+      </testcase>
+      <testcase name="test_spatial_queries_do_not_mutate_authoritative_state" assertions="1" status="pass" classname="test/unit/test_spatial_queries.gd" time="0.004502" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_spellfx.gd" tests="2" failures="0" skipped="0" time="0.004068" >
+      <testcase name="test_handles_all_archetypes_and_stays_bounded" assertions="2" status="pass" classname="test/unit/test_spellfx.gd" time="0.003187" >
+      </testcase>
+      <testcase name="test_ignores_unrelated_cues" assertions="1" status="pass" classname="test/unit/test_spellfx.gd" time="0.000881" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_ui_flow.gd" tests="7" failures="0" skipped="0" time="0.841127" >
+      <testcase name="test_main_menu_opens_via_ui_manager" assertions="4" status="pass" classname="test/unit/test_ui_flow.gd" time="0.141668" >
+      </testcase>
+      <testcase name="test_pause_toggles_sim_time_scale" assertions="3" status="pass" classname="test/unit/test_ui_flow.gd" time="0.002599" >
+      </testcase>
+      <testcase name="test_ui_code_does_not_mutate_gameplay_state" assertions="2" status="pass" classname="test/unit/test_ui_flow.gd" time="0.002259" >
+      </testcase>
+      <testcase name="test_close_all_menus_is_synchronous_and_does_not_hang" assertions="2" status="pass" classname="test/unit/test_ui_flow.gd" time="0.057498" >
+      </testcase>
+      <testcase name="test_closed_screens_do_not_accumulate_in_the_tree" assertions="1" status="pass" classname="test/unit/test_ui_flow.gd" time="0.480043" >
+      </testcase>
+      <testcase name="test_settings_menu_builds_all_tabs_without_errors" assertions="3" status="pass" classname="test/unit/test_ui_flow.gd" time="0.143921" >
+      </testcase>
+      <testcase name="test_settings_persist_round_trip" assertions="1" status="pass" classname="test/unit/test_ui_flow.gd" time="0.013139" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_vertical_slice_backend.gd" tests="2" failures="0" skipped="0" time="0.774365" >
+      <testcase name="test_power_catalog_contains_vertical_slice_set" assertions="14" status="pass" classname="test/unit/test_vertical_slice_backend.gd" time="0.000681" >
+      </testcase>
+      <testcase name="test_player_can_feed_fight_trigger_heat_and_escape_deterministically" assertions="16" status="pass" classname="test/unit/test_vertical_slice_backend.gd" time="0.773684" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_visual_assets.gd" tests="3" failures="0" skipped="0" time="0.313896" >
+      <testcase name="test_character_canvas_texture_triplets_load" assertions="120" status="pass" classname="test/unit/test_visual_assets.gd" time="0.309754" >
+      </testcase>
+      <testcase name="test_visual_asset_metrics_cover_the_runtime_materials" assertions="34" status="pass" classname="test/unit/test_visual_assets.gd" time="0.003046" >
+      </testcase>
+      <testcase name="test_entity_renderer_uses_authored_atlas_renderer" assertions="2" status="pass" classname="test/unit/test_visual_assets.gd" time="0.001096" >
+      </testcase>
+  </testsuite>
+  <testsuite name="test/unit/test_xp_leveling.gd" tests="3" failures="0" skipped="0" time="0.015135" >
+      <testcase name="test_killing_grants_xp" assertions="3" status="pass" classname="test/unit/test_xp_leveling.gd" time="0.004132" >
+      </testcase>
+      <testcase name="test_gain_xp_levels_up" assertions="1" status="pass" classname="test/unit/test_xp_leveling.gd" time="0.004001" >
+      </testcase>
+      <testcase name="test_xp_gain_is_deterministic" assertions="2" status="pass" classname="test/unit/test_xp_leveling.gd" time="0.007002" >
+      </testcase>
+  </testsuite>
+</testsuites>

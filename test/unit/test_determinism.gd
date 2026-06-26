@@ -4,8 +4,7 @@
 ## The merge gate for the deterministic sim core. If this fails, every downstream test
 ## (combat skill-gap, AI diversity, replay) is meaningless.
 ##
-## Run via GUT headless:
-##   godot --headless -s addons/gut/gut_cmdln.gd
+## LOCAL WINDOWS SAFETY: use scripts/RunGutSafe.ps1 locally. Full recursive GUT belongs in CI.
 ##
 ## Uses the VCSim type directly (VCSim.new()) rather than the global `Sim` autoload,
 ## because GUT's CLI entry point does not always initialise project autoloads. Each run

@@ -1,0 +1,44 @@
+Godot Engine v4.7.stable.official.5b4e0cb0f - https://godotengine.org
+
+[AudioDirector] Safe profile: procedural audio generators disabled.
+[DirectorService] Safe profile: hidden observer systems disabled.
+---  GUT  ---
+[1m[INFO]:  [0musing [C:/Users/93rob/AppData/Roaming/Godot/app_userdata/Vampire City] for temporary output.
+Godot version:  4.7.0
+GUT version:  9.6.0
+[4m
+
+res://test/unit/test_freeze_regression.gd
+[0m* test_cue_log_stays_bounded_over_long_run
+* test_cuebus_history_is_bounded
+[1m2/2 passed.
+[0m[4m
+
+res://test/unit/test_overlay_queue_caps.gd
+[0m* test_caption_overlay_stays_bounded_when_pushing_past_cap
+* test_notification_panel_caps_toasts_and_banners_without_hanging
+[1m2/2 passed.
+[0m
+
+
+
+[33m==============================================
+[0m[33m= Run Summary
+[0m[33m==============================================
+[0m
+Totals
+------
+Scripts               2
+Tests                 4
+Passing Tests         4
+Asserts              26
+Time              3.429s
+
+
+[32m---- All tests passed! ----
+[0mGUT 9.7.0:  https://github.com/bitwes/Gut/releases/tag/v9.7.0 is now available!
+
+WARNING: 29 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2535)
+ERROR: 4 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)

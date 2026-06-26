@@ -65,9 +65,9 @@ already made and validated). Then:
    `preload("res://src/present/CharacterRig2D.gd")` with `CharacterAtlas2D.gd` (the report says it
    exposes the same setup/physics_sync/advance_visual/notify_event/set_detail_level contract).
 4. Add `test/unit/test_visual_assets.gd` (imports every `CanvasTexture`, checks map dims).
-5. Run boot + GUT (determinism must stay green — this is presentation only) and the windowed
-   `CapturePlay`/`CaptureGraphicsPass` capture; **review the frames by eye** (the project's law:
-   green tests do not prove the screen).
+5. On local Windows, use only the bounded `scripts/RunGutSafe.ps1` smoke wrapper; full boot/GUT and
+   windowed `CapturePlay`/`CaptureGraphicsPass` captures belong in CI or on an explicitly approved
+   machine. **Review the frames by eye** (the project's law: green tests do not prove the screen).
 
 Alternate path — provide the full `tools/visual/` pipeline + install Inkscape, then run the four
 generator commands in `docs/AGENT_VISUAL_REVAMP_GUIDE.md` §9 to regenerate `assets/visual/`, and

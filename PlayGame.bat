@@ -25,6 +25,32 @@ if /I "%~1"=="--check" (
   shift
 )
 
+set "SAFE_VISUALS=0"
+if /I "%~1"=="--safe" (
+  set "SAFE_VISUALS=1"
+  shift
+) else if /I "%~1"=="/safe" (
+  set "SAFE_VISUALS=1"
+  shift
+) else if /I "%~1"=="--safe-visuals" (
+  set "SAFE_VISUALS=1"
+  shift
+) else if /I "%~1"=="--full-visuals" (
+  set "SAFE_VISUALS=0"
+  shift
+) else if /I "%~1"=="/full-visuals" (
+  set "SAFE_VISUALS=0"
+  shift
+)
+if /I "%VAMP_SAFE_MODE%"=="1" set "SAFE_VISUALS=1"
+if /I "%VAMP_SAFE_MODE%"=="true" set "SAFE_VISUALS=1"
+if /I "%VAMP_SAFE_MODE%"=="yes" set "SAFE_VISUALS=1"
+if /I "%VAMP_SAFE_MODE%"=="on" set "SAFE_VISUALS=1"
+if /I "%VAMP_FULL_VISUALS%"=="1" set "SAFE_VISUALS=0"
+if /I "%VAMP_FULL_VISUALS%"=="true" set "SAFE_VISUALS=0"
+if /I "%VAMP_FULL_VISUALS%"=="yes" set "SAFE_VISUALS=0"
+if /I "%VAMP_FULL_VISUALS%"=="on" set "SAFE_VISUALS=0"
+
 set "GODOT_EXE=%VAMP_GODOT_EXE%"
 if defined GODOT_EXE if not exist "%GODOT_EXE%" set "GODOT_EXE="
 if defined GODOT_EXE (
@@ -105,8 +131,21 @@ if "%CHECK_ONLY%"=="1" (
   exit /b %errorlevel%
 )
 
+if "%SAFE_VISUALS%"=="1" (
+	set "VAMP_SAFE_MODE=1"
+	set "VAMP_FULL_VISUALS=0"
+	if not defined VAMP_MAX_FPS set "VAMP_MAX_FPS=30"
+	echo [Launcher] Reduced visual profile requested: optional presentation systems are disabled.
+) else (
+	set "VAMP_SAFE_MODE=0"
+	set "VAMP_FULL_VISUALS=1"
+	if not defined VAMP_MAX_FPS set "VAMP_MAX_FPS=60"
+	echo [Launcher] Normal game profile active: full presentation enabled.
+	echo [Launcher] Emergency reduced visuals remain available with: PlayGame.bat --safe
+)
+
 echo [Launcher] Launching Vampire City...
-"%GODOT_EXE%" --path "%GAME_DIR%" %*
+"%GODOT_EXE%" --path "%GAME_DIR%" %1 %2 %3 %4 %5 %6 %7 %8 %9
 set "LAUNCH_CODE=%errorlevel%"
 
 if %LAUNCH_CODE% neq 0 (

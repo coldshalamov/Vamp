@@ -1,0 +1,47 @@
+Godot Engine v4.7.stable.official.5b4e0cb0f - https://godotengine.org
+
+---  GUT  ---
+[1m[INFO]:  [0musing [C:/Users/93rob/AppData/Roaming/Godot/app_userdata/Vampire City] for temporary output.
+Godot version:  4.7.0
+GUT version:  9.6.0
+[4m
+
+res://test/unit/test_backend_port_systems.gd
+[0m* test_catalog_ports_legacy_power_and_progression_data
+* test_skill_tree_hotbar_and_power_cast_are_authoritative_in_meta
+* test_inventory_economy_haven_coterie_domain_and_mission_backend
+* test_projectiles_vehicles_day_night_and_save_restore_are_deterministic
+* test_elite_affixes_combat_statuses_and_resists_are_deterministic
+* test_ai_uses_pathfinding_and_thrall_follow_attacks
+* test_body_carry_and_evidence_heat_are_authoritative
+* test_carried_body_seen_and_legacy_achievements_are_backend_state
+* test_business_legend_progress_and_domain_caps
+* test_nemesis_escape_return_and_death_are_persistent_backend_state
+* test_emergent_events_domain_raids_and_childer_backend
+* test_persistent_mastery_trophies_codex_alchemy_and_legacy
+[1m12/12 passed.
+[0m
+
+
+
+[33m==============================================
+[0m[33m= Run Summary
+[0m[33m==============================================
+[0m
+Totals
+------
+Scripts               1
+Tests                12
+Passing Tests        12
+Asserts             163
+Time              2.736s
+
+
+Ran Scripts matching "test_backend_port_systems"
+[32m---- All tests passed! ----
+[0mGUT 9.7.0:  https://github.com/bitwes/Gut/releases/tag/v9.7.0 is now available!
+
+WARNING: 231 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2535)
+ERROR: 8 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)

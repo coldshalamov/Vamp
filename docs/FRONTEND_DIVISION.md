@@ -38,7 +38,9 @@
 - Specify Light2D/atmosphere requirements for UI screens (title background, menu ambiance).
 
 ### Phase 3: Screenshot-based QA & iteration
-- Run the game via Playwright or Godot headless+capture and review actual screenshots.
+- LOCAL WINDOWS SAFETY: do not run raw Godot/windowed capture on this machine without explicit
+  user approval. Prefer CI or a bounded safe harness; stop immediately on memory growth.
+- Review actual screenshots only after the run path is explicitly approved and bounded.
 - Check visual hierarchy, readability in dark scenes, contrast, and focus states.
 - Iterate on layout mockups based on real captured frames.
 - Validate reduced-motion mode and colorblind-safe palettes visually.

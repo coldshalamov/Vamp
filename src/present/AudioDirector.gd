@@ -18,6 +18,8 @@
 extends Node
 # NOTE: no class_name — this script IS the `AudioDirector` autoload singleton.
 
+const RuntimeSafetyScript := preload("res://src/core/RuntimeSafety.gd")
+
 # --- bus graph ---
 const BUSES := ["Music", "SFX", "Voice", "Ambient", "UI"]
 
@@ -92,6 +94,10 @@ func _ready() -> void:
 	_build_bus_graph()
 	_apply_saved_volumes()   # restore saved cfg levels BEFORE capturing baselines
 	_capture_baselines()
+	if RuntimeSafetyScript.safe_mode_enabled():
+		print("[AudioDirector] Safe profile: procedural audio generators disabled.")
+		set_process(false)
+		return
 	_build_sfx_pool()
 	_build_heartbeat_voice()
 	_build_ambient_voice()

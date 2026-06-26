@@ -1,7 +1,7 @@
 ## CapturePlay.gd — REAL playtest evidence harness. Drives the actual first-minute play beats the
 ## player complained about (floating character, dead click, empty hotbar, text-only spells, death
 ## soft-lock) and screenshots each, so they are verified by SEEING, not by headless asserts.
-## Run windowed: Godot_v4.7-stable_win64.exe --path . res://test/CapturePlay.tscn
+## LOCAL WINDOWS SAFETY: do not run this raw/windowed without explicit user approval.
 extends Node
 
 const BootScene := preload("res://scenes/Boot.tscn")

@@ -1,6 +1,6 @@
 ## EntityRenderer.gd — presentation manager for articulated humanoids and dynamic entities.
 ##
-## Humanoids are individual CharacterRig2D nodes so Godot can interpolate their transforms and
+## Humanoids are individual CharacterAtlas2D nodes so Godot can interpolate their transforms and
 ## Y-sort them correctly. Projectiles and vehicles remain batched custom drawing to keep node count
 ## bounded. This class is a read-only view over Sim.entities.
 extends Node2D
@@ -8,7 +8,9 @@ class_name EntityRenderer
 
 ## Live actor renderer: authored normal/specular atlas sprites (replaces the procedural
 ## CharacterRig2D "asparagus people"). Same setup/physics_sync/advance_visual/notify_event/
-## set_detail_level contract, so this is a drop-in swap.
+## set_detail_level contract, so this is a drop-in swap. Hero now ships 3D-rendered 192x256
+## Blender cells; the remaining archetypes use 96x128 atlases until re-rendered (CharacterAtlas2D
+## derives cell size per atlas, so the mix is seamless).
 const CharacterRigScript := preload("res://src/present/CharacterAtlas2D.gd")
 const TRAIL_POINTS := 8
 
@@ -40,6 +42,8 @@ func physics_sync(delta: float) -> void:
 		if e == null:
 			continue
 		if e.kind in ["player", "npc"]:
+			if e.kind == "npc" and (e.dead or e.downed):
+				continue
 			active_rigs[e.id] = true
 			var rig = _rigs.get(e.id, null)
 			if rig == null or not is_instance_valid(rig):
@@ -51,6 +55,11 @@ func physics_sync(delta: float) -> void:
 			var distance := e.pos.distance_to(player_pos)
 			rig.set_detail_level(2 if distance < 520.0 else (1 if distance < 920.0 else 0))
 			rig.physics_sync(delta)
+			# A cloaked Stalker (ambush_cloaked) is a faint shadow, not invisible — the player CAN spot
+			# it with attention, and Auspex (detect) reveals it early in the sim. Render it heavily
+			# dimmed so the ambush reads as stealth, not as a normal enemy standing in the open.
+			var dim := 0.18 if bool(e.tags.get("cloaked", false)) else 1.0
+			rig.modulate.a = dim
 		elif e.kind == "projectile" and not e.dead:
 			active_projectiles[e.id] = true
 			var trail: Array = _projectile_trails.get(e.id, [])
@@ -101,23 +110,56 @@ func _draw() -> void:
 	# Batched non-humanoid entities. Self drawing occurs beneath child rigs, which is desirable for
 	# vehicles and projectile shadows; bright projectile cores still read through their additive VFX.
 	for e in _entities:
-		if e == null or e.dead:
+		if e == null:
+			continue
+		if e.kind == "npc" and (e.dead or e.downed):
+			_draw_body(e)
+			continue
+		if e.dead:
 			continue
 		if e.kind == "vehicle":
 			_draw_vehicle(e)
 		elif e.kind == "projectile":
 			_draw_projectile(e)
+	# Loot pickups draw LAST so they read on top — a reward glowing above the carnage, never hidden
+	# behind a corpse or a vehicle. They are inert (no behaviour), so they live in the batched pass.
+	for e in _entities:
+		if e != null and e.kind == "pickup" and not e.dead:
+			_draw_pickup(e)
+
+
+# ----------------------------------------------------------------------------- inert bodies
+
+func _draw_body(e: SimEntity) -> void:
+	var r := maxf(e.radius, 8.0)
+	var body := Color("332b32") if e.dead else Color("423849")
+	var trim := Color("8b7788") if e.dead else Color("a48ca8")
+	var blood := Color(0.52, 0.02, 0.06, 0.40) if e.dead else Color(0.18, 0.02, 0.04, 0.24)
+	draw_set_transform(e.pos + Vector2(0, 3), e.facing, Vector2(1.45, 0.42))
+	draw_circle(Vector2.ZERO, r, Color(0, 0, 0, 0.36))
+	draw_set_transform(e.pos, e.facing + PI * 0.5, Vector2.ONE)
+	draw_line(Vector2(-r * 0.90, 0), Vector2(r * 0.74, 0), body, r * 0.92, true)
+	draw_circle(Vector2(r * 0.98, 0), r * 0.34, body.lightened(0.12))
+	draw_line(Vector2(-r * 0.30, -r * 0.36), Vector2(r * 0.28, r * 0.34), trim, 1.2, true)
+	if e.dead:
+		draw_circle(Vector2(-r * 0.52, r * 0.12), r * 0.55, blood)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 # ----------------------------------------------------------------------------- projectiles
 
 func _draw_projectile(e: SimEntity) -> void:
+	# SimProjectile exposes height/vertical_velocity/spin/ballistic as properties on e.behaviour.
 	var altitude := 0.0
 	var vertical_velocity := 0.0
 	var ballistic := false
 	if e.behaviour != null:
-		altitude = float(e.behaviour.get("altitude"))
-		vertical_velocity = float(e.behaviour.get("vertical_velocity"))
+		var hv = e.behaviour.get("height")
+		if hv != null:
+			altitude = float(hv)
+		var vv = e.behaviour.get("vertical_velocity")
+		if vv != null:
+			vertical_velocity = float(vv)
 		ballistic = bool(e.behaviour.get("ballistic"))
 	var lift := Vector2(0.0, -altitude * 0.42)
 	var pos := e.pos + lift
@@ -182,6 +224,49 @@ func _draw_flask(pos: Vector2, facing: float, r: float, vertical_velocity: float
 	draw_line(neck_a, neck_b, glass.lightened(0.22), r * 0.36, true)
 	draw_line(neck_b - side * r * 0.35, neck_b + side * r * 0.35, Color("c8b49b"), r * 0.42, true)
 	draw_line(body_center - side * r * 0.25 - forward * r * 0.35, body_center - side * r * 0.25 + forward * r * 0.20, Color(1, 1, 1, 0.58), maxf(0.8, r * 0.18), true)
+
+
+# ----------------------------------------------------------------------------- loot pickups
+
+## LOOT DROP visual: a floating, pulsing gem tinted by the item's rarity color (the backend
+## stamps the hex onto every generated item). A soft ground shadow sells the hover; the
+## gem bobs and pulses so loot catches the eye from across a fight. Draws on top of every
+## other entity so a drop is never lost under a body or a vehicle.
+func _draw_pickup(e: SimEntity) -> void:
+	var color_hex := String(e.tags.get("color", "#b8b8c0"))
+	var col := Color.from_string(color_hex, Color("b8b8c0"))
+	var r := 9.0
+	# Bob + pulse: the gem floats and breathes so a drop is readable at a glance.
+	var bob := sin(_time * 3.0 + float(e.id)) * 3.0
+	var pulse := 0.5 + 0.5 * sin(_time * 5.0 + float(e.id) * 1.7)
+	var center := e.pos + Vector2(0.0, -7.0 + bob)
+	# Ground shadow shrinks as the gem rises, mirroring the projectile ballistic shadow.
+	var shadow_scale := clampf(1.0 + bob * 0.03, 0.7, 1.1)
+	draw_set_transform(e.pos + Vector2(0, 3), 0.0, Vector2(1.3 * shadow_scale, 0.42 * shadow_scale))
+	draw_circle(Vector2.ZERO, r * 1.1, Color(0, 0, 0, 0.34))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# Outer glow halo (rarity-tinted): the "look here" beacon.
+	var glow_alpha := 0.20 + pulse * 0.18
+	draw_circle(center, r * (2.6 + pulse * 0.5), Color(col.r, col.g, col.b, glow_alpha * 0.5))
+	draw_circle(center, r * (1.9 + pulse * 0.3), Color(col.r, col.g, col.b, glow_alpha))
+	# The gem itself: a faceted diamond read.
+	var gem := col.lightened(0.18)
+	var gem_hi := col.lightened(0.55)
+	var gem_lo := col.darkened(0.30)
+	var pts := PackedVector2Array([
+		center + Vector2(0, -r * 1.15),
+		center + Vector2(r * 0.78, 0),
+		center + Vector2(0, r * 1.0),
+		center + Vector2(-r * 0.78, 0),
+	])
+	draw_colored_polygon(pts, gem)
+	# Facet lines split the diamond into light/dark halves for a cut-gem look.
+	draw_line(center + Vector2(0, -r * 1.15), center + Vector2(r * 0.78, 0), gem_hi, 1.2, true)
+	draw_line(center + Vector2(0, -r * 1.15), center + Vector2(-r * 0.78, 0), gem_lo, 1.2, true)
+	draw_line(center + Vector2(r * 0.78, 0), center + Vector2(0, r * 1.0), gem_lo, 1.0, true)
+	# Specular glint rides the pulse — the "shiny" tell.
+	var glint_r := r * (0.28 + pulse * 0.12)
+	draw_circle(center + Vector2(-r * 0.22, -r * 0.40), glint_r, Color(1, 1, 1, 0.55 + pulse * 0.20))
 
 
 # ----------------------------------------------------------------------------- vehicles

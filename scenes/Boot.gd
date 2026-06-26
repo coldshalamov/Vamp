@@ -15,16 +15,26 @@ const HUD_SCENE := preload("res://scenes/ui/HUD.tscn")
 const NOTIF_SCENE := preload("res://scenes/ui/NotificationPanel.tscn")
 const CAPTION_SCENE := preload("res://scenes/ui/CaptionOverlay.tscn")
 const FLOATING_SCRIPT := preload("res://src/ui/FloatingText.gd")
+const FEEDING_HUD_SCRIPT := preload("res://src/ui/FeedingHUD.gd")
+const PROGRESSION_HUD_SCRIPT := preload("res://src/ui/ProgressionHUD.gd")
+const THREAT_ARROWS_SCRIPT := preload("res://src/ui/OffscreenThreatArrows.gd")
+const TUTORIAL_SCRIPT := preload("res://src/ui/TutorialDirector.gd")
+const RuntimeSafetyScript := preload("res://src/core/RuntimeSafety.gd")
 
 var _game_view: Node2D = null
 var _hud: Control = null
 var _notifs: Control = null
 var _captions: Control = null
 var _floating: Control = null
+var _feeding_hud: Control = null
+var _progression_hud: Control = null
+var _threat_arrows: Control = null
+var _tutorial: Control = null
 var _in_gameplay: bool = false
 
 
 func _ready() -> void:
+	RuntimeSafetyScript.apply_startup_limits()
 	# Ship hygiene: drop Godot's automatic "(DEBUG)" suffix so the window reads "Vampire City".
 	get_window().title = "Vampire City"
 	# Wire UI intent -> host actions.
@@ -44,6 +54,18 @@ func _ready() -> void:
 	_floating.set_script(FLOATING_SCRIPT)
 	_floating.set_anchors_preset(Control.PRESET_FULL_RECT)
 	UIManager.add_child(_floating)
+	# The four gameplay-feel overlays that were built as files but never mounted — same disease
+	# as WorldIndicatorLayer. They're full-rect Controls that listen to CueBus and read Sim, so
+	# mounting them under the UIManager canvas is all that was missing. Order matters: feed meter
+	# and XP bar sit above gameplay, arrows above the HUD, tutorial prompts on top of everything.
+	_feeding_hud = _mount_overlay(FEEDING_HUD_SCRIPT)
+	_progression_hud = _mount_overlay(PROGRESSION_HUD_SCRIPT)
+	_threat_arrows = _mount_overlay(THREAT_ARROWS_SCRIPT)
+	# TutorialDirector is a logic-only Node (drives toasts via UIManager), not a Control — mount
+	# it bare, without the full-rect anchor preset that only Control supports.
+	_tutorial = Node.new()
+	_tutorial.set_script(TUTORIAL_SCRIPT)
+	UIManager.add_child(_tutorial)
 
 	# HUD starts hidden; we show it when gameplay begins.
 	_hud = HUD_SCENE.instantiate()
@@ -55,6 +77,17 @@ func _ready() -> void:
 
 
 # ---------------------------------------------------------------- flow
+
+## Instantiate a full-rect Control overlay from a script (mirrors the FloatingText pattern).
+## Used for the gameplay-feel overlays (feeding meter, XP bar, threat arrows, tutorial) that exist
+## as scripts but have no .tscn — they were built but never mounted, which is why they never showed.
+func _mount_overlay(script: GDScript) -> Control:
+	var node := Control.new()
+	node.set_script(script)
+	node.set_anchors_preset(Control.PRESET_FULL_RECT)
+	UIManager.add_child(node)
+	return node
+
 
 func _on_new_game() -> void:
 	Sim.new_game(42, "brujah", true)   # populated: a living block for the playable night

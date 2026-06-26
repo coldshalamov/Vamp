@@ -1,8 +1,8 @@
 ## CaptureGraphicsPass.gd — deterministic, windowed visual acceptance harness.
 ##
 ## This scene boots the real GameView and captures the presentation pass under actual
-## Godot rendering. It is not gameplay code and never mutates shipping behavior. Run:
-##   godot --path . res://test/CaptureGraphicsPass.tscn
+## Godot rendering. It is not gameplay code and never mutates shipping behavior.
+## LOCAL WINDOWS SAFETY: do not run this raw/windowed without explicit user approval.
 extends Node2D
 
 const GameViewScene := preload("res://scenes/GameView.tscn")
@@ -239,8 +239,8 @@ func _build_stress_case() -> void:
 		actor.facing = (center - pos).angle()
 	for i in range(28):
 		var angle := TAU * float(i) / 28.0
-		var kind := ["blood_bolt", "poison_vial", "fire_bomb", "shadow_shard"][i % 4]
-		var dtype := ["blood", "poison", "fire", "shadow"][i % 4]
+		var kind: String = ["blood_bolt", "poison_vial", "fire_bomb", "shadow_shard"][i % 4]
+		var dtype: String = ["blood", "poison", "fire", "shadow"][i % 4]
 		(
 			Sim
 			. spawn_projectile(

@@ -1,0 +1,40 @@
+Godot Engine v4.7.stable.official.5b4e0cb0f - https://godotengine.org
+
+---  GUT  ---
+[1m[INFO]:  [0musing [C:/Users/93rob/AppData/Roaming/Godot/app_userdata/Vampire City] for temporary output.
+Godot version:  4.7.0
+GUT version:  9.6.0
+[4m
+
+res://test/unit/test_physics.gd
+[0m* test_impulse_damages_both_bodies
+* test_impact_damage_scales_with_speed
+* test_firebomb_sails_and_ignites_a_hazard
+* test_maw_pulls_entities_inward
+* test_physics_is_deterministic
+[1m5/5 passed.
+[0m
+
+
+
+[33m==============================================
+[0m[33m= Run Summary
+[0m[33m==============================================
+[0m
+Totals
+------
+Scripts               1
+Tests                 5
+Passing Tests         5
+Asserts               6
+Time              1.032s
+
+
+Ran Scripts matching "test_physics"
+[32m---- All tests passed! ----
+[0mGUT 9.7.0:  https://github.com/bitwes/Gut/releases/tag/v9.7.0 is now available!
+
+WARNING: 138 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2535)
+ERROR: 5 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)

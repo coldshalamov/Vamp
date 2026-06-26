@@ -7,6 +7,7 @@ class_name BloodRenderer
 
 var _world: SimWorld = null
 var _t: float = 0.0
+var _was_drawing: bool = false
 
 
 func setup(world: SimWorld) -> void:
@@ -15,6 +16,15 @@ func setup(world: SimWorld) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	if _world == null:
+		return
+	var has_sigils := Sim != null and not Sim.sigils.is_empty()
+	if _world._wet.is_empty() and _world._burning.is_empty() and not has_sigils:
+		if _was_drawing:
+			_was_drawing = false
+			queue_redraw()
+		return
+	_was_drawing = true
 	queue_redraw()
 
 

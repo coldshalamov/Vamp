@@ -1,0 +1,13 @@
+{
+  "average_fps": 13.8,
+  "engine": "4.7-stable (official)",
+  "entity_count": 37,
+  "minimum_sampled_fps": 8.0,
+  "physics_interpolation_fraction": 0.762340000000034,
+  "physics_ticks_per_second": 60,
+  "renderer": "gl_compatibility",
+  "viewport": [
+    1280.0,
+    720.0
+  ]
+}

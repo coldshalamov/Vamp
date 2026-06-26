@@ -18,8 +18,8 @@ const GLOW_SCALE := 1.3
 const TEX_SIZE := 64
 # Additive overlap blows to white fast, so keep the per-light gain restrained: this reads as "bleed",
 # not a blown highlight. Final modulate = color * (BASE_GAIN + ENERGY_GAIN * energy).
-const BASE_GAIN := 0.20
-const ENERGY_GAIN := 0.22
+const BASE_GAIN := 0.075
+const ENERGY_GAIN := 0.09
 # Hard cap so a malformed world can never spawn an unbounded number of nodes (freeze-safe).
 const MAX_GLOWS := 64
 

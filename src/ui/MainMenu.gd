@@ -10,6 +10,7 @@ const BG_PATH := "res://assets/images/title_bg.jpg"
 const PORTRAIT_PATH := "res://assets/images/menu_portrait.png"
 const CHROMA_SHADER := "res://art/shaders/chroma_key.gdshader"
 const SCAN_SHADER := "res://art/shaders/scanlines.gdshader"
+const RuntimeSafetyScript := preload("res://src/core/RuntimeSafety.gd")
 
 var _btn_new: Button = null
 var _btn_continue: Button = null
@@ -138,7 +139,7 @@ func _build() -> void:
 	overlay.set_anchors_preset(PRESET_FULL_RECT)
 	overlay.color = Color(1, 1, 1, 1)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if ResourceLoader.exists(SCAN_SHADER):
+	if not RuntimeSafetyScript.safe_mode_enabled() and ResourceLoader.exists(SCAN_SHADER):
 		var m := ShaderMaterial.new()
 		m.shader = load(SCAN_SHADER)
 		overlay.material = m
@@ -248,7 +249,7 @@ func _gradient(a: Color, b: Color, from: Vector2, to: Vector2) -> GradientTextur
 ## Staggered fade-in reveal once the screen has opened (respects reduced motion).
 ## Modulate-only — position tweens would fight the VBox/anchored layout.
 func _on_opened() -> void:
-	if UIManager != null and UIManager.is_reduced_motion():
+	if RuntimeSafetyScript.safe_mode_enabled() or (UIManager != null and UIManager.is_reduced_motion()):
 		return
 	var delay := 0.0
 	for node in _reveal:

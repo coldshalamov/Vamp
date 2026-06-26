@@ -2,7 +2,7 @@
 ## new HUD/feedback beat (feeding meter, damage numbers, enemy health bars, status icons, alert
 ## indicators, telegraphs, combo text, level-up/XP, loot, heat stars, dawn, cooldown ring, offscreen
 ## threat arrows, death-with-cause) and screenshots each so they are verified by SEEING, not asserts.
-## Run windowed: Godot_v4.7-stable_win64.exe --path . res://test/CaptureHUD.tscn
+## LOCAL WINDOWS SAFETY: do not run this raw/windowed without explicit user approval.
 extends Node
 
 const BootScene := preload("res://scenes/Boot.tscn")

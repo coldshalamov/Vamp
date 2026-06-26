@@ -1,0 +1,28 @@
+{
+  "name": "Vampire City cinematic graphics and ballistic physics upgrade",
+  "repository": "coldshalamov/Vamp",
+  "engine": "Godot 4.7",
+  "delivery_type": "safe overlay with installer and backups",
+  "core_replacements": [
+    "src/present/EntityRenderer.gd",
+    "src/present/WorldFX.gd",
+    "src/entities/SimProjectile.gd",
+    "test/CaptureSlice.gd"
+  ],
+  "additions": [
+    "test/unit/test_ballistic_projectile.gd",
+    ".github/workflows/visual-proof.yml",
+    "docs/CINEMATIC_GRAPHICS_RESEARCH.md",
+    "docs/CINEMATIC_UPGRADE_HANDOFF.md",
+    "docs/evidence/rig_preview_v1.png",
+    "docs/evidence/rig_preview_v2.png",
+    "docs/evidence/rig_preview_comparison.png"
+  ],
+  "architecture_invariants": [
+    "Sim remains authoritative",
+    "presentation remains read-only",
+    "fixed 60 Hz simulation remains intact",
+    "legacy non-ballistic projectiles remain compatible",
+    "all new ballistic state is hashed"
+  ]
+}

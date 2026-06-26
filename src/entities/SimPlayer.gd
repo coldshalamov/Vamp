@@ -186,6 +186,7 @@ func step(delta: float, sim) -> void:
 	else:
 		move_vel = Vector2.ZERO
 	_tick_drink(sim)
+	_tick_pickups(sim)
 	entity.exposure = _compute_exposure(sim)
 	entity.tags["cloaked"] = buffs.has("obf_cloak") or buffs.has("obf_vanish")
 	entity.tags["frenzied"] = frenzied
@@ -203,6 +204,32 @@ func _tick_drink(sim) -> void:
 		heal_blood(float(taken) * 0.5)
 		if sim.tick % 12 == 0:
 			sim.emit_cue("blood.drink", { "pos": entity.pos, "amount": taken })
+
+## LOOT PICKUP: walk over a dropped item and collect it. Routes through meta.add_item(),
+## so a full 40-slot bag auto-sells the overflow to coin (the value is never wasted). A
+## pickup within reach is collected deterministically — the lowest-id nearest one wins,
+## so two equidistant pickups resolve identically across runs.
+func _tick_pickups(sim) -> void:
+	if feeding_target_id != 0 or sim.meta == null or carrying_body_id != 0:
+		return
+	var reach := 22.0   # tight: you walk INTO the loot, not vacuum it from across the room
+	var pickup: SimEntity = sim.nearest_entity(entity.pos, reach, func(e: SimEntity) -> bool:
+		return e.kind == "pickup" and not e.dead
+	) as SimEntity
+	if pickup == null:
+		return
+	var item: Dictionary = pickup.tags.get("item", {})
+	if item.is_empty():
+		pickup.dead = true
+		return
+	sim.meta.add_item(item, sim)
+	pickup.dead = true
+	sim.emit_cue("pickup.collect", {
+		"entity_id": pickup.id, "pos": pickup.pos,
+		"rarity": String(item.get("rarity", "common")),
+		"color": String(item.get("color", "#b8b8c0")),
+		"name": String(item.get("name", "")),
+	})
 
 func cast_power(power_id: String, sim) -> bool:
 	var def: Dictionary = PowerCatalogScript.get_def(power_id)
@@ -511,6 +538,7 @@ func try_toggle_carry(sim) -> bool:
 	target.current_action = null
 	target.action_frame = 0
 	target.downed = true
+	target.tags["downed_tick"] = sim.tick
 	target.ai_state = "carried"
 	target.perception_state = "hidden"
 	if sim.meta != null:
@@ -652,6 +680,7 @@ func _try_finish(sim) -> bool:
 		return false
 	target.hp = 0.0
 	target.dead = true
+	target.tags["death_tick"] = sim.tick
 	if target.innocent or target.downed or bool(target.tags.get("fed_on", false)):
 		target.tags["player_body"] = true
 		target.tags["body_discovered"] = false
@@ -739,6 +768,8 @@ func _tick_feeding(delta: float, sim) -> void:
 	if holding_feed and not feed_brink and feed_drained >= target.blood_yield * 0.95:
 		feed_brink = true   # the Brink: one more pull tips spare into kill
 		sim.emit_cue("feed.brink", { "target_id": target.id, "pos": target.pos })
+		# FeedingHUD listens for `feed.choice` to arm the kill/spare prompt — alias it here.
+		sim.emit_cue("feed.choice", { "target_id": target.id, "pos": target.pos, "can_spare": true })
 	# Heartbeat / drain pulse cue (audio + vignette), distinct from the gulp window beat.
 	if feed_progress >= 0.2 and int(feed_progress * 10.0) % 7 == 0:
 		sim.emit_cue("feed.drain", { "target_id": target.id, "pos": target.pos, "magnitude": gain, "hunger": hunger })
@@ -758,6 +789,7 @@ func _finish_feed(sim, lethal: bool) -> void:
 	if lethal:
 		target.dead = true
 		target.downed = false
+		target.tags["death_tick"] = sim.tick
 		target.tags["player_body"] = true
 		target.tags["body_discovered"] = false
 		target.tags["fed_on"] = true
@@ -788,6 +820,7 @@ func _finish_feed(sim, lethal: bool) -> void:
 			sim.emit_cue("power.cloak.shadowkill", { "target_id": target.id, "pos": entity.pos, "ticks": cloak_ticks })
 	else:
 		target.downed = true
+		target.tags["downed_tick"] = sim.tick
 		target.ai_state = "downed"
 		target.perception_state = "helpless"
 		target.tags["player_body"] = true
@@ -807,6 +840,9 @@ func _finish_feed(sim, lethal: bool) -> void:
 	feed_drained = 0.0
 	feed_brink = false
 	_reset_gulp(0)
+	# FeedingHUD/HUD listen for `feed.end` to tear down the feed meter + surge the vitae vial. Fire
+	# it on every clean conclusion (kill or spare) of a feed.
+	sim.emit_cue("feed.end", { "target_id": target.id, "pos": entity.pos, "lethal": lethal })
 
 
 ## Resonance (Blood Grammar): the victim's humour grants a matching 30s buff — so WHO you feed on,
@@ -857,6 +893,8 @@ func _interrupt_feed(sim) -> void:
 	holding_feed = false
 	_reset_gulp(0)
 	sim.emit_cue("feed.interrupt", { "pos": entity.pos })
+	# An interrupted feed is still an END of the feed — tell FeedingHUD/HUD to tear down the meter.
+	sim.emit_cue("feed.end", { "target_id": feeding_target_id, "pos": entity.pos, "lethal": false, "interrupted": true })
 
 
 # --- Gulp timing mini-game: deterministic windows; a well-timed ATTACK during a window grants bonus

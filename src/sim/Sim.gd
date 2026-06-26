@@ -40,6 +40,15 @@ var investigations: Array[Dictionary] = []
 var last_body_carried_seen_tick: int = -999999
 
 const CUE_LOG_CAP := 1024  # bound the debug cue log; nothing reads it historically, so trimming is safe. This is the ~30s memory-growth freeze.
+const RECORDED_INPUT_CAP := 4096
+const ACTIVE_WELL_CAP := 8
+const ACTIVE_SIGIL_CAP := 16
+const INVESTIGATION_CAP := 16
+const ENTITY_CAP := 96
+const ACTIVE_PROJECTILE_CAP := 64
+const CORPSE_RETENTION_TICKS := 600
+const BODY_EVIDENCE_RETENTION_TICKS := 1800
+const DOWNED_BODY_RETENTION_TICKS := 1800
 var cue_events: Array[Dictionary] = []
 var cue_events_this_tick: Array[Dictionary] = []
 var _last_vitals_emit_tick: int = -999999
@@ -140,6 +149,8 @@ func tick_sim(delta: float) -> void:
 func apply_input(action: InputAction) -> void:
 	if _recording:
 		_recorded_inputs.append({ "tick": tick, "seq": _input_seq, "action": action.serialize() })
+		while _recorded_inputs.size() > RECORDED_INPUT_CAP:
+			_recorded_inputs.pop_front()
 		_input_seq += 1
 	if action.kind == InputAction.Kind.INTERACT:
 		_try_interact()
@@ -166,6 +177,8 @@ func tick_combat() -> void:
 		for target in entities:
 			if target == attacker or target.dead:
 				continue
+			if target.kind == "pickup":
+				continue   # loot drops are inert: a swing passes through them, never blocked by them
 			if attacker.current_action.hit_targets.has(target.id):
 				continue
 			var to_target := target.pos - attacker.pos
@@ -191,6 +204,10 @@ func tick_combat() -> void:
 func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, opts: Dictionary = {}) -> float:
 	if target == null or target.dead:
 		return 0.0
+	# Pickups (loot drops) are inert rewards, not combatants: a swing passing through a dropped
+	# gem must not consume a hit or roll RNG (which would perturb determinism downstream).
+	if target.kind == "pickup":
+		return 0.0
 	var dmg: float = maxf(0.0, base_damage)
 	var dot := bool(opts.get("dot", false))
 	# THE ONE GUARD: dash i-frames (and the for_unkill / aus_premon buffs that ride on them) make
@@ -201,6 +218,10 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 		return 0.0
 	if attacker == player and target.tags.has("damage_bonus"):
 		dmg *= 1.0 + float(target.tags.get("damage_bonus", 0.0))
+	# Attacker-side transient bonus (e.g. the Stalker's pounce): applies to any attacker, consumed by
+	# the pounce_bonus_ticks decay in SimEntity.step so it can't be farmed indefinitely.
+	if attacker != null and attacker.tags.has("outgoing_bonus"):
+		dmg *= 1.0 + float(attacker.tags.get("outgoing_bonus", 0.0))
 	if target.has_status("mark"):
 		dmg *= 1.0 + float(target.status_data.get("mark", {}).get("amount", 0.25))
 	if attacker == player and target.has_status("mesmerized"):
@@ -275,6 +296,25 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 			dmg -= absorb
 			ward["shield"] = float(ward.get("shield", 0.0)) - absorb
 			player_buffs["bs_ward"] = ward
+	var damage_type := String(opts.get("damage_type", opts.get("dmgType", "")))
+	if not dot and base_damage > 0.0 and dmg > 0.0 and damage_type == "blood" and target.has_status("bleeding"):
+		var before_combo := dmg
+		dmg *= 1.5
+		var bonus_damage := dmg - before_combo
+		target.clear_status("bleeding")
+		emit_cue("combo.trigger", {
+			"entity_id": attacker.id if attacker != null else 0,
+			"target_id": target.id,
+			"combo_name": "hemorrhage",
+			"bonus_damage": bonus_damage,
+			"pos": target.pos,
+		})
+		emit_cue("status.detonated", {
+			"target_id": target.id,
+			"status": "bleeding",
+			"bonus_damage": bonus_damage,
+			"pos": target.pos,
+		})
 	dmg = (max(0.0, dmg) if dot else (max(1.0, dmg) if base_damage > 0.0 else 0.0))
 	target.hp = max(0.0, target.hp - dmg)
 	# SPILL (Blood Grammar): a real wound bleeds onto the ground, scaled by the blow.
@@ -298,7 +338,7 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 			"amount": float(opts.get("status_amount", 0.25)),
 			"damage_type": String(opts.get("damage_type", status_id)),
 			"src_id": attacker.id if attacker != null else 0,
-		})
+		}, self)
 	if attacker != null:
 		attacker.on_damage_dealt(dmg)
 		# Slice lifesteal: the opts-driven weapon lifesteal plus any active "lifesteal" buff key.
@@ -330,8 +370,15 @@ func damage_entity(attacker: SimEntity, target: SimEntity, base_damage: float, o
 		if meta != null and meta.try_nemesis_escape(target, self, opts):
 			return dmg
 		target.dead = true
+		target.tags["death_tick"] = tick
 		_on_entity_killed(attacker, target, opts)
 		if target == player:
+			# DeathScreen listens for `player.death` (with cause/explanation) — the canonical
+			# death cue. `player.died` is kept as a legacy alias for any other consumer. cue_events
+			# is NOT in state_hash(), so adding a cue does not perturb determinism.
+			var cause := String(opts.get("damage_type", opts.get("dmgType", "physical")))
+			var explanation := _death_explanation(attacker, cause)
+			emit_cue("player.death", { "pos": target.pos, "killer_id": attacker.id if attacker != null else 0, "cause": cause, "explanation": explanation })
 			emit_cue("player.died", { "pos": target.pos, "killer_id": attacker.id if attacker != null else 0 })
 	elif target == player and meta != null:
 		meta.gain_mastery("survival", dmg * 0.18, self)
@@ -341,11 +388,27 @@ func _default_status_dps(status_id: String) -> float:
 	match status_id:
 		"burn":
 			return 4.0
-		"bleed":
+		"bleed", "bleeding":
 			return 2.4
 		"poison":
 			return 1.8
 	return 0.0
+
+## Human-readable death explanation for the death screen. Picks a verb from the damage type and
+## names the attacker archetype so the player understands what killed them. Pure string work —
+## deterministic, never fed back into Sim state.
+func _death_explanation(attacker: SimEntity, cause: String) -> String:
+	var verb := "cut down"
+	match cause:
+		"fire", "burn": verb = "burned to ash"
+		"blood": verb = "drained of blood"
+		"shadow": verb = "consumed by darkness"
+		"bleed", "bleeding": verb = "bled out"
+		"poison": verb = "poisoned"
+	var foe := "the night"
+	if attacker != null and attacker.kind == "npc":
+		foe = "a %s" % String(attacker.type_id).to_lower()
+	return "%s by %s" % [verb, foe]
 
 ## Wake from torpor: revive the player at their haven/spawn instead of leaving a dead, frozen world.
 ## Costs Humanity (the Beast claws you back). Called by the death screen on "rise again".
@@ -384,9 +447,18 @@ func _populate_ambient_crowd() -> void:
 	]
 	for ci in range(CROWD.size()):
 		spawn_npc("ped", CROWD[ci], { "state": "wander" })
-	# Two neutral toughs give the street some teeth — dangerous if you cross them, calm if left alone.
-	spawn_npc("thug", Vector2(980, 1140), { "state": "wander" })
-	spawn_npc("thug", Vector2(1500, 602), { "state": "wander" })
+	# An AUTHORED encounter that forces the player's verbs: a Bulwark holding the choke (flank or
+	# bleed-detonate it), a Choir healing the squad from the backline (mark/shatter it first), and a
+	# Mortar lobbing fire to deny standing ground (reposition / Maw it). All start NEUTRAL until the
+	# player draws heat — they're the city's teeth, not a guaranteed fight. Melee types for Bulwark/
+	# Stalker so their block/pounce matter in melee; the Mortar is a gunner (it lobs, doesn't shoot).
+	spawn_npc("thug", Vector2(980, 1140), { "state": "guard", "archetype": "bulwark" })
+	spawn_npc("thug", Vector2(1040, 1190), { "state": "guard", "archetype": "choir" })
+	spawn_npc("gunner", Vector2(1500, 602), { "state": "guard", "archetype": "mortar" })
+	# A Stalker waits cloaked in a side alley — the ambush the player only survives by keeping Auspex
+	# up or dashing the pounce. It does not aggro until the player crosses its ambush radius. MELEE
+	# type so it pounces instead of sniping from the dark.
+	spawn_npc("thug", Vector2(360, 1120), { "state": "guard", "archetype": "stalker" })
 
 
 func spawn_npc(type_id: String, pos: Vector2, opts: Dictionary = {}) -> SimEntity:
@@ -406,6 +478,7 @@ func spawn_projectile(pos: Vector2, velocity: Vector2, opts: Dictionary = {}) ->
 	projectile_opts["vy"] = velocity.y
 	SimProjectileScript.configure(e, projectile_opts)
 	entities.append(e)
+	_enforce_projectile_budget()
 	emit_cue("projectile.spawn", { "entity_id": e.id, "kind": e.type_id, "pos": e.pos, "velocity": velocity })
 	return e
 
@@ -415,6 +488,28 @@ func spawn_vehicle(type_id: String, pos: Vector2, opts: Dictionary = {}) -> SimE
 	SimVehicleScript.configure(e, type_id, opts)
 	entities.append(e)
 	emit_cue("vehicle.spawn", { "entity_id": e.id, "type": type_id, "pos": pos })
+	return e
+
+## LOOT DROP: spawn a walk-over pickup carrying an item payload at a position.
+## The pickup is a lightweight SimEntity (kind "pickup"); the item itself lives in
+## tags["item"] (already covered by SimEntity.state_hash via _hash_dict, so determinism
+## is preserved with no new hashed field). Pickups have no behaviour and never move;
+## the player collects them on overlap (SimPlayer._tick_pickups), which routes the item
+## through meta.add_item() — the existing 40-cap overflow auto-sells to coin, so a full
+## bag never wastes a drop.
+func spawn_pickup(pos: Vector2, item: Dictionary) -> SimEntity:
+	var e := SimEntity.new(next_entity_id(), "pickup")
+	e.pos = pos
+	e.radius = 9.0
+	e.tags["item"] = item.duplicate(true)
+	e.tags["spawn_tick"] = tick
+	entities.append(e)
+	emit_cue("pickup.spawn", {
+		"entity_id": e.id, "pos": pos,
+		"rarity": String(item.get("rarity", "common")),
+		"color": String(item.get("color", "#b8b8c0")),
+		"name": String(item.get("name", "")),
+	})
 	return e
 
 func get_entity(entity_id: int) -> SimEntity:
@@ -475,6 +570,9 @@ func add_heat(amount: float, reason: String = "") -> void:
 	var after := heat_stars()
 	if after > before:
 		emit_cue("heat.rise", { "stars": after, "heat": heat, "reason": reason, "pos": last_seen_pos })
+		# CaptionOverlay/HUD listen for `player.spotted` — fire it the instant heat first rises,
+		# so the "you've been spotted" caption pops the moment the city notices you.
+		emit_cue("player.spotted", { "pos": last_seen_pos, "stars": after })
 	else:
 		emit_cue("heat.changed", { "stars": after, "heat": heat, "reason": reason })
 
@@ -697,6 +795,8 @@ func _update_heat(delta: float) -> void:
 				e.ai_state = "wander"
 				e.perception_state = "calm"
 		emit_cue("heat.lost_them", { "pos": player.pos })
+		# CaptionOverlay/HUD listen for `player.lost` — alias it so the "lost them" caption fires.
+		emit_cue("player.lost", { "pos": player.pos })
 		return
 	responder_spawn_ticks -= 1
 	var desired := _desired_responders()
@@ -800,6 +900,8 @@ func _offer_contract() -> void:
 ## The Maw: open a gravity well that drags NPCs inward (real inward impulse + tumble, via the
 ## knockback channel ImpulsePhysics rides), then collapses for a damage burst. Deterministic.
 func spawn_well(pos: Vector2, radius: float, strength: float, ticks: int) -> void:
+	while wells.size() >= ACTIVE_WELL_CAP:
+		wells.pop_front()
 	wells.append({ "pos": pos, "radius": radius, "strength": strength, "ticks": ticks })
 	emit_cue("power.dark.maw_open", { "pos": pos, "radius": radius })
 
@@ -915,6 +1017,8 @@ func _tick_fire() -> void:
 
 ## INSCRIBE: paint a blood-sigil that rewrites one rule within its radius until it fades.
 func inscribe_sigil(pos: Vector2, rule: String, radius: float, ticks: int) -> void:
+	while sigils.size() >= ACTIVE_SIGIL_CAP:
+		sigils.pop_front()
 	sigils.append({ "pos": pos, "rule": rule, "radius": radius, "ticks": ticks })
 	emit_cue("sigil.inscribe", { "pos": pos, "rule": rule, "radius": radius })
 
@@ -950,6 +1054,60 @@ func _kill_xp(target: SimEntity) -> int:
 		"civ": return 6
 	return 10
 
+## LOOT DROP: decide whether a slain enemy leaves a real item on the ground (a walk-over
+## pickup), and if so, roll one via the deterministic item generator and spawn it.
+## Worth determines the floor: harmless civilians rarely drop; armed enemies usually do;
+## elites/bosses/the nemesis always drop, and better enemies roll a rarer item. All draws
+## go through sim.draw_float() so the run stays deterministic and replayable.
+func _maybe_drop_loot(target: SimEntity) -> void:
+	if meta == null:
+		return
+	if target.kind != "npc":
+		return
+	var is_nemesis := target.tags.has("nemesis_name")
+	var is_boss := bool(target.tags.get("boss", false))
+	var is_elite := target.tags.has("elite")
+	var armed := target.faction in ["police", "gang", "inquis"]
+	# Chance gate per tier. A civilian leaves loot ~12% of the time (the occasional ring);
+	# an armed thug ~55%; an elite/boss/nemesis always leaves something. Deterministic draws.
+	var chance := 0.12
+	if armed:
+		chance = 0.55
+	if is_elite or is_boss or is_nemesis:
+		chance = 1.0
+	if draw_float() > chance:
+		return
+	# Rarity floor climbs with threat: normals roll the full curve; elites skip common;
+	# bosses/nemesis skip common+uncommon and force rare+ (the "boss always pays" rule).
+	var forced := ""
+	if is_nemesis or is_boss:
+		forced = "rare"
+	elif is_elite:
+		forced = "uncommon"
+	var luck := 0.0
+	if is_elite:
+		luck = 0.10
+	if is_boss:
+		luck = 0.25
+	if is_nemesis:
+		luck = 0.30
+	var rarity: String = meta.roll_rarity(meta.level, luck, self)
+	if forced != "" and _rarity_rank(rarity) < _rarity_rank(forced):
+		rarity = forced
+	var item: Dictionary = meta.generate_item(meta.level, rarity, "", self)
+	spawn_pickup(target.pos, item)
+
+## Rank 0..5 for common..relic, used to enforce rarity floors on elite/boss drops.
+func _rarity_rank(key: String) -> int:
+	match key:
+		"common": return 0
+		"uncommon": return 1
+		"rare": return 2
+		"epic": return 3
+		"legendary": return 4
+		"relic": return 5
+	return 0
+
 
 func _on_entity_killed(attacker: SimEntity, target: SimEntity, _opts: Dictionary) -> void:
 	if world != null:
@@ -973,6 +1131,7 @@ func _on_entity_killed(attacker: SimEntity, target: SimEntity, _opts: Dictionary
 		var kxp := _kill_xp(target)
 		meta.gain_xp(kxp, self)
 		emit_cue("player.xp", { "amount": kxp, "pos": target.pos, "reason": "kill" })
+		_maybe_drop_loot(target)
 	if meta != null and target.faction in ["police", "gang", "inquis"]:
 		meta.change_reputation(target.faction, -2.0 if target.faction == "police" else -1.5, self)
 	if attacker == player and player.behaviour != null:
@@ -1110,6 +1269,8 @@ func _update_investigations(_delta: float) -> void:
 		investigations[i] = inv
 
 func _add_investigation(body: SimEntity, witness: SimEntity) -> void:
+	while investigations.size() >= INVESTIGATION_CAP:
+		investigations.pop_front()
 	var rec := {
 		"body_id": body.id,
 		"pos": body.pos,
@@ -1143,6 +1304,8 @@ func _update_witness_alarms() -> void:
 		last_provoke_tick = tick
 		add_heat(1.0 * domain_mult, "witness_alarm")
 		emit_cue("witness.alarm", { "witness_id": e.id, "body_id": int(e.tags.get("witness_body_id", 0)), "pos": alarm_pos, "heat": heat })
+		# CaptionOverlay/HUD listen for `npc.alarm` — alias it so the "alarm" caption fires.
+		emit_cue("npc.alarm", { "entity_id": e.id, "pos": alarm_pos })
 		_clear_witness_alarm(e)
 
 func _update_carried_body_witnesses() -> void:
@@ -1210,6 +1373,8 @@ func _clean_investigations(source) -> Array[Dictionary]:
 			"hot": bool(rec.get("hot", false)),
 			"witness_id": max(0, int(rec.get("witness_id", 0))),
 		})
+		while out.size() > INVESTIGATION_CAP:
+			out.pop_front()
 	return out
 
 func _hash_variant(value) -> int:
@@ -1233,5 +1398,85 @@ func _hash_variant(value) -> int:
 func _cleanup_dead_transients() -> void:
 	for i in range(entities.size() - 1, -1, -1):
 		var e := entities[i]
-		if e != null and e.dead and e.kind in ["projectile"]:
+		if e == null:
 			entities.remove_at(i)
+			continue
+		# Pickups (loot drops) are collected, not killed: once dead they are gone for good.
+		if e.kind == "pickup":
+			if e.dead:
+				entities.remove_at(i)
+			continue
+		if e.dead and e.kind in ["projectile"]:
+			entities.remove_at(i)
+			continue
+		if e == player or e.kind != "npc" or bool(e.tags.get("carried", false)):
+			continue
+		if e.dead:
+			if not e.tags.has("death_tick"):
+				e.tags["death_tick"] = tick
+			var dead_age := tick - int(e.tags.get("death_tick", tick))
+			if bool(e.tags.get("dumped", false)) or dead_age >= _corpse_retention_ticks(e):
+				_drop_investigations_for_body(e.id)
+				entities.remove_at(i)
+			continue
+		if e.downed:
+			if not e.tags.has("downed_tick"):
+				e.tags["downed_tick"] = tick
+			var downed_age := tick - int(e.tags.get("downed_tick", tick))
+			if bool(e.tags.get("dumped", false)) or downed_age >= DOWNED_BODY_RETENTION_TICKS:
+				_drop_investigations_for_body(e.id)
+				entities.remove_at(i)
+	_enforce_entity_budget()
+
+func _corpse_retention_ticks(e: SimEntity) -> int:
+	if bool(e.tags.get("player_body", false)) and not bool(e.tags.get("body_discovered", false)):
+		return BODY_EVIDENCE_RETENTION_TICKS
+	return CORPSE_RETENTION_TICKS
+
+func _drop_investigations_for_body(body_id: int) -> void:
+	for i in range(investigations.size() - 1, -1, -1):
+		var rec: Dictionary = investigations[i]
+		if int(rec.get("body_id", 0)) == body_id:
+			investigations.remove_at(i)
+
+func _enforce_entity_budget() -> void:
+	while entities.size() > ENTITY_CAP:
+		var candidate_idx := -1
+		var oldest_age := -1
+		for i in range(entities.size()):
+			var e := entities[i]
+			if e == null:
+				candidate_idx = i
+				break
+			if e == player or e.kind != "npc" or bool(e.tags.get("carried", false)):
+				continue
+			if not (e.dead or e.downed):
+				continue
+			var born := int(e.tags.get("death_tick", e.tags.get("downed_tick", tick)))
+			var age := tick - born
+			if age > oldest_age:
+				oldest_age = age
+				candidate_idx = i
+		if candidate_idx < 0:
+			return
+		var doomed := entities[candidate_idx]
+		if doomed != null:
+			_drop_investigations_for_body(doomed.id)
+		entities.remove_at(candidate_idx)
+
+func _enforce_projectile_budget() -> void:
+	var active_projectiles := 0
+	for e in entities:
+		if e != null and e.kind == "projectile" and not e.dead:
+			active_projectiles += 1
+	while active_projectiles > ACTIVE_PROJECTILE_CAP:
+		var removed := false
+		for i in range(entities.size()):
+			var e := entities[i]
+			if e != null and e.kind == "projectile":
+				entities.remove_at(i)
+				active_projectiles -= 1
+				removed = true
+				break
+		if not removed:
+			return

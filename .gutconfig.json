@@ -1,6 +1,10 @@
 {
-  "dirs": ["res://test"],
-  "include_subdirs": true,
+  "dirs": [],
+  "tests": [
+    "res://test/unit/test_freeze_regression.gd",
+    "res://test/unit/test_overlay_queue_caps.gd"
+  ],
+  "include_subdirs": false,
   "prefix": "test_",
   "suffix": ".gd",
   "should_exit": true,

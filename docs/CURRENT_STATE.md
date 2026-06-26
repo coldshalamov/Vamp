@@ -28,9 +28,9 @@ sounds, feels, and reads like a real game.
 | Check | Result | Evidence |
 |---|---|---|
 | Engine | Godot **4.7.stable** (`5b4e0cb0f`) present at `~/bin/Godot_v4.7-stable_win64.exe` | `--version` |
-| Headless boot | `Boot.tscn` boots clean, **zero script/resource errors** | `--headless --quit-after 2` |
-| Test suite | **38/38 GUT tests pass** in 8.9s, 291 asserts, 7 files | `gut_cmdln -gexit` |
-| Windowed render | `GameView` renders a playable scene; **player moves, camera follows, power cast surfaces on-screen ("Quicken")**, 6 live entities, 31 cue events, HP 100, over 273 ticks | `test/CaptureSlice.tscn`, screenshots in `docs/evidence/` |
+| Local Windows safety | Raw recursive GUT is unsafe on this machine; use the bounded wrapper only. The normal game launcher still runs the full presentation when the user approves a launch. | `scripts/RunGutSafe.ps1`, `AGENTS.md`, `PlayGame.bat` |
+| Test suite | Full suite belongs in CI via `.gutconfig.ci.json`; local `.gutconfig.json` is intentionally limited to freeze/overlay safety tests | GitHub Actions + safe local config |
+| Windowed render | Do not run locally without explicit approval. `PlayGame.bat` is the normal full-presentation launcher; `PlayGame.bat --safe` is only an emergency reduced-visual fallback. | `PlayGame.bat` |
 | Determinism | LCG RNG, all randomness via `Sim.rng`; **zero** `randf/randi/Time.*` in `src/sim` + `src/entities` | determinism cross-check + `test_determinism.gd` |
 
 **Boot is genuinely clean except one real error:** `project.godot` points `config/icon` at

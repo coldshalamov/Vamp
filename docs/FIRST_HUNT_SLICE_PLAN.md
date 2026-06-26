@@ -4,6 +4,8 @@
 > built on **code truth**: the backend spine already exists and is tested, so this is a *convergence +
 > authoring* plan, not a build-from-scratch plan. Read with `CUT_OR_DELAY_LIST.md` (what we refuse to
 > touch until this is fun) and `AGENT_WORKSTREAM_PLAN.md` (who builds what, in parallel).
+> Local Windows safety: use only `scripts/RunGutSafe.ps1` for bounded local smoke. Full recursive GUT,
+> repeated clean boots, and windowed evidence capture belong in CI or on an explicitly approved machine.
 
 ## 0. The highest-value path (the strategic call)
 
@@ -88,8 +90,9 @@ From `REVAMP_SPEC.md §6`, scoped to what the slice must actually prove:
 
 ## 5. Build order (milestones → this slice)
 
-- **M1 (runs clean):** icon fix, CueBus merge-define, full-save from Boot, a windowed clean-run evidence
-  bundle (the `CaptureSlice` harness is the seed). *Mostly done; small fixes.*
+- **M1 (runs clean):** icon fix, CueBus merge-define, full-save from Boot, and a CI/approved-machine
+  clean-run evidence bundle (the `CaptureSlice` harness is the seed). Locally on Windows, use only the
+  bounded smoke wrapper. *Mostly done; small fixes.*
 - **M2 (player feel):** player follow-light, camera shake restored, hitstop tuning, dash/attack/feed
   feedback <100ms, the slice skill-gap benchmark. First authored player sprite.
 - **M3 (feeding/humanity):** gulp window, resonance read + buff, humanity→world hook (NPC flinch +
@@ -101,7 +104,8 @@ From `REVAMP_SPEC.md §6`, scoped to what the slice must actually prove:
 - **M6 (the slice):** author the block + the night's beats end-to-end; 5 clean runs; blind playtest.
 
 Each milestone ships an **evidence bundle** (screenshots via `CaptureSlice`, GUT green, a short
-clip-or-frames capture, changed-files + risks) per the handoff rules.
+clip-or-frames capture, changed-files + risks) per the handoff rules. On local Windows, capture/GUT
+must stay bounded through the safe wrapper; full evidence is CI/approved-machine work.
 
 ## 6. What this slice is NOT (guardrails)
 

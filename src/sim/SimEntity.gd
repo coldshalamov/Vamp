@@ -49,6 +49,8 @@ var last_seen_pos: Vector2 = Vector2.ZERO
 var search_ticks: int = 0
 var idle_ticks: int = 0
 var exposure: float = 0.65
+var telegraph_ticks: int = 0   # >0 = winding up a heavy attack; reads as a dodgeable telegraph
+var role_tick: int = 0          # archetype cooldown timer (heal pulse, mortar lob, ambush reveal)
 
 # Feeding/victim data.
 var victim_type: String = ""
@@ -78,6 +80,31 @@ func step(delta: float, sim) -> void:
 		stun -= 1
 	if attack_cooldown > 0:
 		attack_cooldown -= 1
+	if telegraph_ticks > 0:
+		telegraph_ticks -= 1
+	if role_tick > 0:
+		role_tick -= 1
+	# Decay a borrowed Choir blessing: a ward granted by a Choir healer expires (so it can't be made
+	# permanent), but a NATIVE warded_mind (elites/bosses/Choir themselves) is never stripped here.
+	var bless: int = int(tags.get("choir_blessed", 0))
+	if bless > 0:
+		bless -= 1
+		if bless <= 0:
+			tags.erase("choir_blessed")
+			# Only remove the ward if this entity isn't natively warded (preset/elite/boss granted it).
+			if not bool(tags.get("native_warded_mind", false)):
+				tags.erase("warded_mind")
+		else:
+			tags["choir_blessed"] = bless
+	# Decay the Stalker's pounce bonus: it must expire right after the strike lands, not persist.
+	var pbt: int = int(tags.get("pounce_bonus_ticks", 0))
+	if pbt > 0:
+		pbt -= 1
+		if pbt <= 0:
+			tags.erase("pounce_bonus_ticks")
+			tags.erase("outgoing_bonus")
+		else:
+			tags["pounce_bonus_ticks"] = pbt
 	if current_action != null:
 		action_frame += 1
 		if action_frame >= current_action.def.total_ticks():
@@ -152,16 +179,22 @@ func can_cancel_into(next_def: ActionDef) -> bool:
 		return false
 	return current_action.def.cancel_into.has(next_def.id)
 
-func apply_status(status_id: String, ticks: int, data: Dictionary = {}) -> void:
+func apply_status(status_id: String, ticks: int, data: Dictionary = {}, sim = null) -> void:
 	if status_id == "" or ticks <= 0:
 		return
-	if bool(tags.get("warded_mind", false)) and status_id == "fear":
+	var canonical := _canonical_status_id(status_id)
+	if bool(tags.get("warded_mind", false)) and canonical == "fear":
 		statuses["warded"] = max(int(statuses.get("warded", 0)), 30)
 		return
-	statuses[status_id] = max(int(statuses.get(status_id, 0)), ticks)
+	statuses[canonical] = max(int(statuses.get(canonical, 0)), ticks)
+	var record: Dictionary = status_data.get(canonical, {}).duplicate(true)
 	if not data.is_empty():
-		status_data[status_id] = data.duplicate(true)
-	match status_id:
+		for key in data:
+			record[key] = data[key]
+	record["stack_count"] = int(record.get("stack_count", 0)) + 1
+	status_data[canonical] = record
+	_emit_status_cue(sim, "status.applied", canonical, { "duration": ticks, "source_id": int(record.get("src_id", 0)) })
+	match canonical:
 		"stun", "mesmerized":
 			stun = max(stun, ticks)
 		"fear":
@@ -171,7 +204,15 @@ func apply_status(status_id: String, ticks: int, data: Dictionary = {}) -> void:
 			stun = max(stun, min(ticks, 12))
 
 func has_status(status_id: String) -> bool:
-	return int(statuses.get(status_id, 0)) > 0
+	return int(statuses.get(_canonical_status_id(status_id), 0)) > 0
+
+func status_record(status_id: String) -> Dictionary:
+	return status_data.get(_canonical_status_id(status_id), {}).duplicate(true)
+
+func clear_status(status_id: String) -> void:
+	var canonical := _canonical_status_id(status_id)
+	statuses.erase(canonical)
+	status_data.erase(canonical)
 
 func speed_factor() -> float:
 	var factor := 1.0
@@ -197,7 +238,7 @@ func state_hash() -> int:
 		ai_state, perception_state, responder, hostile_to_player, target_id,
 		snapped(home_pos.x, 0.001), snapped(home_pos.y, 0.001),
 		snapped(last_seen_pos.x, 0.001), snapped(last_seen_pos.y, 0.001),
-		search_ticks, idle_ticks, snapped(exposure, 0.001),
+		search_ticks, idle_ticks, snapped(exposure, 0.001), telegraph_ticks, role_tick,
 		victim_type, snapped(blood_yield, 0.001), snapped(blood_left, 0.001),
 		innocent, snapped(mass, 0.001), tumble_ticks
 	])
@@ -216,7 +257,7 @@ func _tick_statuses(delta: float, sim) -> void:
 		if int(statuses[key]) <= 0:
 			expired.append(key)
 			continue
-		if key in ["burn", "bleed", "poison"]:
+		if key in ["burn", "bleeding", "poison"]:
 			var data: Dictionary = status_data.get(key, {})
 			var dps := float(data.get("dps", 0.0))
 			if dps > 0.0 and sim != null and sim.has_method("damage_entity"):
@@ -225,11 +266,12 @@ func _tick_statuses(delta: float, sim) -> void:
 					"cue": "status.%s" % key,
 					"crit_chance": 0.0,
 					"dot": true,
-					"damage_type": String(data.get("damage_type", key)),
+					"damage_type": String(data.get("damage_type", "blood" if key == "bleeding" else key)),
 				})
 	for key in expired:
 		statuses.erase(key)
 		status_data.erase(key)
+		_emit_status_cue(sim, "status.expired", key, {})
 
 func _hash_dict(seed_hash: int, dict: Dictionary) -> int:
 	var h := seed_hash
@@ -238,3 +280,20 @@ func _hash_dict(seed_hash: int, dict: Dictionary) -> int:
 	for key in keys:
 		h = hash([h, key, dict[key]])
 	return h
+
+func _canonical_status_id(status_id: String) -> String:
+	match status_id:
+		"bleed":
+			return "bleeding"
+	return status_id
+
+func _emit_status_cue(sim, event_id: String, status_id: String, extra: Dictionary) -> void:
+	if sim == null or not sim.has_method("emit_cue"):
+		return
+	var payload := {
+		"target_id": id,
+		"status": status_id,
+	}
+	for key in extra:
+		payload[key] = extra[key]
+	sim.emit_cue(event_id, payload)

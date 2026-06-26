@@ -151,11 +151,11 @@ NEW CUES YOU MAY NEED TO EMIT (presentation-only, for other presentation nodes):
 - vfx.screen.flash: trigger screen overlay effects
 
 VERIFICATION:
-- Run the game: the Godot binary is at C:/Users/93rob/Documents/GitHub/Vamp/Godot_v4.4.1-stable_win64.exe
-  Launch with: Godot_v4.4.1-stable_win64.exe --path . --windowed --resolution 1280x720
-- Run GUT tests: Godot_v4.4.1-stable_win64.exe --path . -s addons/gut/gut_cmdln.gd -gexit
-  All existing tests MUST still pass. You are not expected to break sim determinism since you
-  only touch presentation files, but verify anyway.
+- LOCAL WINDOWS SAFETY: do not run raw Godot or recursive GUT on this machine. Use
+  `powershell -ExecutionPolicy Bypass -File .\scripts\RunGutSafe.ps1` for local checks.
+  Full recursive GUT belongs in CI or requires an explicit `VAMP_ALLOW_FULL_GUT=1` override.
+- Do not launch the game locally unless the user explicitly asks. `PlayGame.bat` is the normal
+  full-presentation launcher; `PlayGame.bat --safe` is only an emergency reduced-visual fallback.
 - LOOK AT IT. Take a screenshot. Does it look like a real game? Compare mentally to Hades or
   Dead Cells. If it still looks like colored circles on a black background, you're not done.
 
@@ -426,15 +426,15 @@ World: masquerade.breach, heat.changed, dawn.warning, dawn.arrived
 State: humanity.changed, blood.changed
 
 VERIFICATION:
-- Run GUT tests: the Godot binary is at C:/Users/93rob/Documents/GitHub/Vamp/Godot_v4.4.1-stable_win64.exe
-  Command: Godot_v4.4.1-stable_win64.exe --path . -s addons/gut/gut_cmdln.gd -gexit
-  ALL existing tests must pass. Your changes must not break determinism.
+- LOCAL WINDOWS SAFETY: do not run raw Godot or recursive GUT on this machine. Use
+  `powershell -ExecutionPolicy Bypass -File .\scripts\RunGutSafe.ps1` for local checks.
+  Full recursive GUT belongs in CI or requires an explicit `VAMP_ALLOW_FULL_GUT=1` override.
 - Write NEW GUT tests for: status effects (apply, tick, expire), combo triggers (bleed→bolt=
   hemorrhage), enemy archetypes (rusher charges, healer heals), feeding progress (stop early=
   spare, drain fully=kill), XP/leveling.
 - DETERMINISM CHECK: run the sim for 600 ticks twice with the same seed. state_hash must match.
-- After tests pass, launch the game windowed and PLAY it:
-  Godot_v4.4.1-stable_win64.exe --path . --windowed --resolution 1280x720
+- Do not launch the game locally unless the user explicitly asks. `PlayGame.bat` is the normal
+  full-presentation launcher; `PlayGame.bat --safe` is only an emergency reduced-visual fallback.
   Can you make decisions? Do combos work? Does feeding feel like gaining power? Do enemies
   behave differently? If not, you're not done.
 
@@ -576,10 +576,12 @@ YOUR DELIVERABLES (in priority order):
    flags on the player or in a separate tutorial state.
 
 VERIFICATION:
-- Run GUT tests: Godot_v4.4.1-stable_win64.exe --path . -s addons/gut/gut_cmdln.gd -gexit
-  All tests must pass.
-- Launch the game and PLAY the first 10 minutes:
-  Godot_v4.4.1-stable_win64.exe --path . --windowed --resolution 1280x720
+- LOCAL WINDOWS SAFETY: do not run raw Godot or recursive GUT on this machine. Use
+  `powershell -ExecutionPolicy Bypass -File .\scripts\RunGutSafe.ps1` for local checks.
+  Full recursive GUT belongs in CI or requires an explicit `VAMP_ALLOW_FULL_GUT=1` override.
+- Do not launch the game locally unless the user explicitly asks. If playtesting is approved, use
+  `PlayGame.bat` for the normal full-presentation game and stop immediately on memory growth.
+  `PlayGame.bat --safe` is only an emergency reduced-visual fallback.
   Walk through the vertical slice minute by minute:
   1. Do you start calm? No screaming timer?
   2. Can you find and feed on someone? Does the blood meter fill? Does the choice work?

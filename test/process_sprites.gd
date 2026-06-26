@@ -2,8 +2,8 @@
 ##
 ## Converts the magenta-background sprites grok generates in assets/sprites/gen/ into clean
 ## transparent game-ready PNGs in assets/sprites/. Keys out #FF00FF, despills the fringe,
-## crops to content, and caps the long edge at 256px. Run headless:
-##   Godot_..._console.exe --headless --path . -s res://test/process_sprites.gd
+## crops to content, and caps the long edge at 256px.
+## LOCAL WINDOWS SAFETY: do not run raw Godot scripts on this machine without explicit user approval.
 extends SceneTree
 
 const GEN_DIR := "res://assets/sprites/gen/"

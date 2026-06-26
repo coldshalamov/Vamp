@@ -27,6 +27,7 @@ const ParallaxBackdropScript := preload("res://src/present/ParallaxBackdrop.gd")
 const CityDetailLayerScript := preload("res://src/present/CityDetailLayer.gd")
 const AtmosphereScript := preload("res://src/present/AtmosphereDirector.gd")
 const NocturneGradeScript := preload("res://src/present/NocturneGrade.gd")
+const PostProcessScript := preload("res://src/present/PostProcess.gd")
 const DebugOverlayScript := preload("res://src/present/DebugOverlay.gd")
 const DeathScreenScript := preload("res://src/ui/DeathScreen.gd")
 
@@ -49,6 +50,7 @@ var _lighting: Node2D = null
 var _camera: Camera2D = null
 var _visual_fx: CanvasLayer = null
 var _nocturne: CanvasLayer = null
+var _post_process: CanvasLayer = null
 var _debug_overlay: CanvasLayer = null
 var _death_screen: CanvasLayer = null
 var _game_active: bool = true
@@ -165,6 +167,12 @@ func _ready() -> void:
 	_screen_fx = ScreenFXScript.new()
 	_screen_fx.name = "ScreenFX"
 	add_child(_screen_fx)
+
+	# Final filmic master pass on layer 4 (ACES tonemap + teal/amber grade + grain + vignette),
+	# above the world/mood/damage grades and below all UI. See PostProcess.gd / post_process.gdshader.
+	_post_process = PostProcessScript.new()
+	_post_process.name = "PostProcess"
+	add_child(_post_process)
 
 	_visual_fx = VisualFXScript.new()
 	_visual_fx.name = "VisualFX"

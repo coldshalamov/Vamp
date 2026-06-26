@@ -26,7 +26,7 @@ func push_notification(text: String, color: Color = Color.WHITE) -> void:
 	# Trim oldest if at capacity.
 	var toast_box := _toast_box()
 	while toast_box.get_child_count() >= MAX_TOASTS:
-		toast_box.get_child(0).queue_free()
+		_remove_child_now(toast_box, toast_box.get_child(0))
 	var label := Label.new()
 	label.text = text
 	label.add_theme_color_override("font_color", color)
@@ -39,9 +39,7 @@ func push_notification(text: String, color: Color = Color.WHITE) -> void:
 func push_banner(title: String, body: String, color: Color = Color.WHITE) -> void:
 	var banner_box := _banner_box()
 	while banner_box.get_child_count() >= MAX_BANNERS:
-		var oldest := banner_box.get_child(0)
-		if is_instance_valid(oldest):
-			oldest.queue_free()
+		_remove_child_now(banner_box, banner_box.get_child(0))
 	var card := PanelContainer.new()
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var vbox := VBoxContainer.new()
@@ -93,10 +91,11 @@ func clear_banners() -> void:
 
 func _fade_out(label: Label, dwell: float) -> void:
 	var reduced := UIManager.is_reduced_motion() if UIManager != null else false
+	var tw := label.create_tween()
 	if reduced:
-		get_tree().create_timer(dwell).timeout.connect(label.queue_free)
+		tw.tween_interval(dwell)
+		tw.tween_callback(label.queue_free)
 		return
-	var tw := create_tween()
 	tw.tween_interval(dwell)
 	tw.tween_property(label, "modulate:a", 0.0, 0.4)
 	tw.tween_callback(label.queue_free)
@@ -104,6 +103,13 @@ func _fade_out(label: Label, dwell: float) -> void:
 
 func _size() -> int:
 	return UIManager.theme_font_size("font_size", "Label", 16) if UIManager != null else 16
+
+
+func _remove_child_now(parent: Node, child: Node) -> void:
+	if parent == null or child == null or not is_instance_valid(child):
+		return
+	parent.remove_child(child)
+	child.queue_free()
 
 
 # Lazily-built toast (bottom-right) and banner (center) containers. Built on first use so

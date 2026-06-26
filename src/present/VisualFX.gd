@@ -8,6 +8,7 @@ class_name VisualFX
 const DAMAGE_FONT_SIZE := 18
 const DAMAGE_RISE := 48.0
 const DAMAGE_DURATION := 0.7
+const MAX_FLOATING_TEXTS := 48
 
 @export var flash_overlay: ColorRect = null
 @export var caption_label: Label = null
@@ -161,6 +162,11 @@ func _update_captions(delta: float) -> void:
 				_caption_timer = 3.0
 
 func spawn_floating_text(world_pos: Vector2, text: String, color: Color, is_crit: bool = false) -> void:
+	while _floating_texts.size() >= MAX_FLOATING_TEXTS:
+		var old: Dictionary = _floating_texts.pop_front()
+		var old_label = old.get("label", null)
+		if old_label != null and is_instance_valid(old_label):
+			old_label.queue_free()
 	var label := Label.new()
 	label.text = text
 	label.add_theme_font_size_override("font_size", DAMAGE_FONT_SIZE + (4 if is_crit else 0))

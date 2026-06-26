@@ -1,0 +1,8 @@
+Godot Engine v4.7.stable.official.5b4e0cb0f - https://godotengine.org
+
+---  GUT  ---
+[1m[INFO]:  [0musing [C:/Users/93rob/AppData/Roaming/Godot/app_userdata/Vampire City] for temporary output.
+Godot version:  4.7.0
+GUT version:  9.6.0
+[31m[ERROR]:  [0mCould not find script matching 'test_physics,test_feeding_hud,test_backend_port_systems'.
+Check your directory settings and Script Prefix/Suffix settings.

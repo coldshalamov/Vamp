@@ -4,7 +4,7 @@
 ## actual Boot.tscn so the HUD / NotificationPanel / CaptionOverlay / FloatingText (all added by
 ## Boot into the UIManager layer) are present. It captures the main menu, then drives the wired
 ## UIManager.cb_new_game callback to enter gameplay and captures the HUD over the live game.
-## Run windowed: Godot_v4.7-stable_win64.exe --path . res://test/CaptureBoot.tscn
+## LOCAL WINDOWS SAFETY: do not run this raw/windowed without explicit user approval.
 extends Node
 
 const BootScene := preload("res://scenes/Boot.tscn")

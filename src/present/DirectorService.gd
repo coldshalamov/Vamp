@@ -6,9 +6,10 @@
 ## the REVAMP_SYNTHESIS "consequence layer" the Blood Grammar feeds.
 extends Node
 
-const StyleProfileScript := preload("res://glowup_2026/reference/PlayerStyleProfile.gd")
-const RumorGraphScript := preload("res://glowup_2026/reference/RumorGraph.gd")
-const OppDirectorScript := preload("res://glowup_2026/reference/OpportunityDirector.gd")
+const RuntimeSafetyScript := preload("res://src/core/RuntimeSafety.gd")
+const STYLE_PROFILE_PATH := "res://glowup_2026/reference/PlayerStyleProfile.gd"
+const RUMOR_GRAPH_PATH := "res://glowup_2026/reference/RumorGraph.gd"
+const OPP_DIRECTOR_PATH := "res://glowup_2026/reference/OpportunityDirector.gd"
 const TEMPLATES_PATH := "res://glowup_2026/content/opportunity_templates.json"
 
 var style = null   # NightglassPlayerStyleProfile
@@ -22,10 +23,14 @@ const FEED_INTENSITY := 1.0
 
 
 func _ready() -> void:
-	style = StyleProfileScript.new()
-	rumor = RumorGraphScript.new()
-	opp = OppDirectorScript.new()
-	opp.configure(_load_templates())
+	if RuntimeSafetyScript.safe_mode_enabled():
+		print("[DirectorService] Safe profile: hidden observer systems disabled.")
+		return
+	style = _new_optional_ref(STYLE_PROFILE_PATH)
+	rumor = _new_optional_ref(RUMOR_GRAPH_PATH)
+	opp = _new_optional_ref(OPP_DIRECTOR_PATH)
+	if opp != null:
+		opp.configure(_load_templates())
 	if CueBus != null:
 		CueBus.cue_emitted.connect(_on_cue)
 
@@ -97,8 +102,8 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 		return
 	match event_id:
 		"level.loaded":
-			style = StyleProfileScript.new()   # fresh model each new night
-			rumor = RumorGraphScript.new()
+			style = _new_optional_ref(STYLE_PROFILE_PATH)   # fresh model each new night
+			rumor = _new_optional_ref(RUMOR_GRAPH_PATH)
 			_opp_cache = {}
 		"feed.kill":
 			style.record_method("force", 1.0, "feed.kill")
@@ -188,3 +193,11 @@ func style_distribution() -> Dictionary:
 
 func dominant_style() -> Dictionary:
 	return style.dominant() if style != null else { "axis": "—", "share": 0.0, "entropy": 0.0 }
+
+
+func _new_optional_ref(path: String):
+	var script := load(path)
+	if script == null:
+		push_error("DirectorService: could not load optional reference script %s" % path)
+		return null
+	return script.new()

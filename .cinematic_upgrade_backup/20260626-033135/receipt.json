@@ -1,0 +1,22 @@
+{
+  "package": "Vampire City cinematic graphics upgrade",
+  "installed_at": "2026-06-26T07:31:35.580103+00:00",
+  "repository": "C:\\Users\\93rob\\Documents\\GitHub\\Vamp",
+  "backup": "C:\\Users\\93rob\\Documents\\GitHub\\Vamp\\.cinematic_upgrade_backup\\20260626-033135",
+  "overwritten_files": [
+    "docs/CINEMATIC_GRAPHICS_RESEARCH.md",
+    "docs/CINEMATIC_UPGRADE_HANDOFF.md",
+    "src/entities/SimProjectile.gd",
+    "src/present/EntityRenderer.gd",
+    "src/present/WorldFX.gd",
+    "test/CaptureSlice.gd"
+  ],
+  "added_files": [
+    ".github/workflows/visual-proof.yml",
+    "docs/evidence/rig_preview_comparison.png",
+    "docs/evidence/rig_preview_v1.png",
+    "docs/evidence/rig_preview_v2.png",
+    "test/unit/test_ballistic_projectile.gd"
+  ],
+  "validation_warnings": []
+}

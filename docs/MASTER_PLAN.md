@@ -5,6 +5,8 @@
 > drove the dedup below — each feature merges the best concrete details from every agent that proposed
 > it. Number in `[×N]` = how many independent agents converged on it (a confidence signal).
 > Everything ships on `master`. Verification gate per feature: GUT green + windowed capture + clean boot.
+> On local Windows, use only the bounded `scripts/RunGutSafe.ps1` smoke wrapper; full recursive GUT,
+> clean-boot loops, and windowed capture belong in CI or on an explicitly approved machine.
 
 ## Already done (do NOT re-implement — several agents proposed these; they're live)
 CueBus merge-define fix (camera shake restored) `[×6]` • player follow-light • wired environment
@@ -129,5 +131,7 @@ props • blood projectile • New Game hang fix • Settings tabs fix • scree
   carefully and serialized (director-led or one-agent-per-cluster) — these are taste-critical and conflict-heavy.
 - **Waves 3-8 (more independent subsystems):** fanned out to parallel implementation agents, merged to
   master, each iterated 1-3× based on review quality.
-- Every feature: GUT green + windowed capture + clean boot before commit. Determinism gate held when
-  touching authoritative sim. Final director pass reconciles incongruities across all merged work.
+- Every feature: GUT green + windowed capture + clean boot before commit, but local Windows runs must
+  stay bounded through `scripts/RunGutSafe.ps1`; full capture/boot loops belong in CI or on an
+  explicitly approved machine. Determinism gate held when touching authoritative sim. Final director
+  pass reconciles incongruities across all merged work.

@@ -84,6 +84,7 @@ jobs:
         run: |
           godot --headless --display-driver headless --audio-driver Dummy \
             -s res://addons/gut/gut_cmdln.gd \
+            -gconfig=res://.gutconfig.ci.json \
             -gjunit_xml_file=res://test_results.xml \
             -gexit
 
@@ -169,6 +170,7 @@ jobs:
         run: |
           godot --headless --display-driver headless --audio-driver Dummy \
             -s res://addons/gut/gut_cmdln.gd \
+            -gconfig=res://.gutconfig.ci.json \
             -gselect=test_determinism \
             -gjunit_xml_file=res://determinism_results.xml \
             -gexit

@@ -14,6 +14,8 @@
 extends CanvasLayer
 # NOTE: no class_name — this script IS the `UIManager` autoload singleton.
 
+const RuntimeSafetyScript := preload("res://src/core/RuntimeSafety.gd")
+
 signal screen_stack_changed()
 signal gameplay_input_block_changed(blocked: bool)
 signal pause_changed(paused: bool)
@@ -324,11 +326,22 @@ func _rebuild_theme() -> void:
 
 
 func is_reduced_motion() -> bool:
+	if RuntimeSafetyScript.safe_mode_enabled():
+		return true
 	# Delegate to the optional Accessibility autoload when present; fall back to our theme.
 	var a11y := _accessibility_node()
 	if a11y != null:
 		return bool(a11y.get("reduced_motion"))
 	return theme_resource != null and theme_resource.reduced_motion
+
+
+func is_reduced_flash() -> bool:
+	if RuntimeSafetyScript.safe_mode_enabled():
+		return true
+	var a11y := _accessibility_node()
+	if a11y != null:
+		return bool(a11y.get("reduced_flash"))
+	return theme_resource != null and theme_resource.reduced_flash
 
 
 ## Safe lookup of the optional Accessibility autoload. Returns null when absent so callers
@@ -425,6 +438,7 @@ func _persist_and_rebuild() -> void:
 func _sync_accessibility_to_cuebus() -> void:
 	if CueBus != null:
 		CueBus.reduced_motion = is_reduced_motion()
+		CueBus.reduced_flash = is_reduced_flash()
 		var a11y := _accessibility_node()
 		if a11y != null:
 			CueBus.captions_enabled = bool(a11y.get("captions_enabled"))

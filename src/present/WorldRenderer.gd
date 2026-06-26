@@ -28,6 +28,7 @@ var _wall_tex: Texture2D = null
 
 
 const WET_SHADER := "res://glowup_2026/shaders/wet_asphalt.gdshader"
+const RuntimeSafetyScript := preload("res://src/core/RuntimeSafety.gd")
 
 
 func setup(world: SimWorld) -> void:
@@ -41,6 +42,8 @@ func setup(world: SimWorld) -> void:
 
 ## Apply the merged glowup wet-asphalt shader as a subtle wet-street sheen over the tiles.
 func _apply_wet_material() -> void:
+	if RuntimeSafetyScript.safe_mode_enabled():
+		return
 	if not ResourceLoader.exists(WET_SHADER):
 		return
 	var mat := ShaderMaterial.new()

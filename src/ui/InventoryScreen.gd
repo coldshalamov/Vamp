@@ -1,17 +1,15 @@
-## InventoryScreen.gd — grid + tooltips + equip/use verbs (functional placeholder).
+## InventoryScreen.gd — the loot + gear center.
 ##
-## Reads item data from a pluggable source (`items` array, set by the game host). The slice
-## ships with a small placeholder catalog so the screen renders without a backend economy.
+## Reads the player's LIVE Sim.meta.inventory (the items that actually drop/are bought) and the four
+## equipment slots. Clicking an item equips it (meta.equip_item, which swaps the previous item back
+## to inventory and recomputes derived stats + pushes them into the running Sim) or sells it
+## (meta.sell_item, adds coin). This is where the loot loop's payoff lives.
 extends BaseScreen
 
 var _grid: GridContainer = null
 var _tooltip: RichTextLabel = null
-var _items: Array = [
-	{ "id": "vial", "name": "Blood Vial", "lore": "Stored vitae. Restores 20 blood.", "stat": "+20 vitae", "usable": true },
-	{ "id": "stake", "name": "Wooden Stake", "lore": "A classic. Pincushion a vampire.", "stat": "Stun on hit", "equippable": true },
-	{ "id": "cloak_pin", "name": "Cloak Pin", "lore": "A petty Obfuscate focus.", "stat": "+10% cloak", "equippable": true },
-	{ "id": "uv_grenade", "name": "UV Grenade", "lore": "Sunlight in a can.", "stat": "150 sun dmg", "usable": true },
-]
+var _equipment_label: Label = null
+var _money_label: Label = null
 
 
 func _ready() -> void:
@@ -32,9 +30,12 @@ func _build() -> void:
 	var vbox := VBoxContainer.new()
 	margin.add_child(vbox)
 
-	var heading := Label.new()
-	heading.text = tr("MENU_INVENTORY")
-	vbox.add_child(heading)
+	# Header: money + currently-equipped loadout (so the player sees what swapping changes).
+	_money_label = Label.new()
+	vbox.add_child(_money_label)
+	_equipment_label = Label.new()
+	_equipment_label.text = ""
+	vbox.add_child(_equipment_label)
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -50,14 +51,46 @@ func _build() -> void:
 	_tooltip.custom_minimum_size = Vector2(0, 80)
 	vbox.add_child(_tooltip)
 
-	for item in _items:
+	_refresh()
+
+
+func _refresh() -> void:
+	if Sim == null or Sim.meta == null:
+		return
+	for c in _grid.get_children():
+		c.queue_free()
+	# Header: coin + the equipped loadout.
+	_money_label.text = "%s: %d" % [tr("MENU_COIN") if tr("MENU_COIN") != "MENU_COIN" else "Coin", int(Sim.meta.money)]
+	var eq: Dictionary = Sim.meta.equipment
+	var eq_names := []
+	for slot in ["weapon", "attire", "charm1", "charm2"]:
+		var it = eq.get(slot, null)
+		eq_names.append("%s: %s" % [slot.capitalize(), (String(it.get("name", "—")) if it != null else "—")])
+	_equipment_label.text = "   |   ".join(eq_names)
+	# Grid: one cell per carried item, color-coded by rarity.
+	for item in Sim.meta.inventory:
 		_grid.add_child(_make_cell(item))
+
+
+func _rarity_color(item: Dictionary) -> Color:
+	# The backend stamps a rarity hex color on every generated item (Catalog.RARITY[rarity].color).
+	# Prefer that source of truth over a local mirror, which drifts (e.g. the relic tier was missing).
+	var hex := String(item.get("color", ""))
+	if hex.begins_with("#") and hex.length() == 7:
+		return Color(hex)
+	match String(item.get("rarity", "common")):
+		"legendary", "relic": return Color(1.0, 0.75, 0.2)
+		"epic": return Color(0.75, 0.45, 1.0)
+		"rare": return Color(0.35, 0.6, 1.0)
+		"uncommon": return Color(0.5, 0.9, 0.5)
+		_: return Color(0.85, 0.85, 0.85)
 
 
 func _make_cell(item: Dictionary) -> Control:
 	var btn := Button.new()
-	btn.text = String(item.get("name", item.get("id", "?")))
-	btn.custom_minimum_size = Vector2(120, 80)
+	btn.text = "%s\n[%s L%d]" % [String(item.get("name", "?")), String(item.get("rarity", "common")).capitalize(), int(item.get("level", 1))]
+	btn.custom_minimum_size = Vector2(150, 80)
+	btn.modulate = _rarity_color(item)
 	btn.focus_mode = Control.FOCUS_ALL
 	btn.focus_entered.connect(_show_item.bind(item))
 	btn.pressed.connect(_on_use_or_equip.bind(item))
@@ -65,19 +98,48 @@ func _make_cell(item: Dictionary) -> Control:
 
 
 func _show_item(item: Dictionary) -> void:
-	_tooltip.text = "[b]%s[/b]\n%s\n[color=gold]%s[/color]" % [
+	if item.is_empty():
+		_tooltip.text = ""
+		return
+	var mods: Dictionary = item.get("mods", { "add": {}, "pct": {} })
+	var add: Dictionary = mods.get("add", {})
+	var pct: Dictionary = mods.get("pct", {})
+	var lines: Array = []
+	for k in add:
+		lines.append("+%s %s" % [str(add[k]), k])
+	for k in pct:
+		lines.append("+%d%% %s" % [int(round(float(pct[k]) * 100.0)), k])
+	var stat_line := "   ".join(lines) if not lines.is_empty() else "(no mods)"
+	var affixes: Array = item.get("affixes", [])
+	var affix_line := ", ".join(affixes) if not affixes.is_empty() else ""
+	_tooltip.text = "[b]%s[/b]   [%s]   Lv %d\n%s\n[color=gold]%s[/color]\n[color=gray]Sell value: %d[/color]" % [
 		String(item.get("name", "")),
-		String(item.get("lore", "")),
-		String(item.get("stat", "")),
+		String(item.get("rarity", "")).capitalize(),
+		int(item.get("level", 1)),
+		stat_line,
+		affix_line,
+		int(Sim.meta.sell_value(item)),
 	]
 
 
+## Equip (primary action) or Sell (shift-click). Both mutate Sim.meta and push to runtime.
 func _on_use_or_equip(item: Dictionary) -> void:
 	_show_item(item)
-	if bool(item.get("usable", false)):
-		UIManager.show_notification("%s: %s" % [tr("NOTIFY_USED"), String(item.get("name", ""))])
-	elif bool(item.get("equippable", false)):
-		UIManager.show_notification("%s: %s" % [tr("NOTIFY_EQUIPPED"), String(item.get("name", ""))])
+	if Sim == null or Sim.meta == null:
+		return
+	var item_id := int(item.get("id", -1))
+	if item_id < 0:
+		return
+	# Shift-click (or hold a modifier) sells instead of equipping — a fast way to clear trash loot.
+	if Input.is_key_pressed(KEY_SHIFT):
+		if Sim.meta.sell_item(item_id, Sim):
+			_refresh()
+		return
+	if Sim.meta.equip_item(item_id, Sim):
+		# equip_item already swapped the previous item back, recomputed derived, emitted inventory.equipped.
+		_refresh()
+	else:
+		UIManager.show_notification("Can't equip %s." % String(item.get("name", "")))
 
 
 func default_focus_control() -> Control:

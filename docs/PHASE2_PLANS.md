@@ -719,8 +719,10 @@ For TileSet: create a Godot TileSet resource (.tres) with terrain sets for autot
 Multiple layers (ground, wall, detail, foreground) as separate TileMapLayer nodes.
 
 VERIFICATION:
-- Every asset: open in the game (Godot_v4.4.1-stable_win64.exe --path . --windowed) and
-  screenshot. Does it look right? Is it readable at game zoom? Does it match the noir palette?
+- LOCAL WINDOWS SAFETY: do not run raw Godot/windowed capture on this machine without explicit
+  user approval. If approved, use `PlayGame.bat` for the normal full-presentation game and stop
+  immediately on memory growth. `PlayGame.bat --safe` is only an emergency reduced-visual fallback.
+  Does it look right? Is it readable at game zoom? Does it match the noir palette?
 - Character atlases: verify all 16 rows render correctly in CharacterAtlas2D.
 - Tiles: verify autotiling works at district boundaries.
 - Particles: verify they look good when spawned by GPUParticles2D (not just as static images).
@@ -815,8 +817,9 @@ melee.perfect_chain, melee.early_cancel, melee.riposte, launch.start, launch.jug
 launch.land, flow_storm.trigger
 
 VERIFICATION:
-- GUT tests: Godot_v4.4.1-stable_win64.exe --path . -s addons/gut/gut_cmdln.gd -gexit
-  ALL existing tests must pass.
+- LOCAL WINDOWS SAFETY: do not run raw Godot or recursive GUT on this machine. Use
+  `powershell -ExecutionPolicy Bypass -File .\scripts\RunGutSafe.ps1` for local checks.
+  Full recursive GUT belongs in CI or requires an explicit `VAMP_ALLOW_FULL_GUT=1` override.
 - Write NEW GUT tests for each mechanic:
   * Witch-time: dash at tick T, attack resolves at T+5 (within 6-tick window) → witch_time applied
   * Witch-time: dash at tick T, attack resolves at T+10 (outside window) → no witch_time
@@ -828,7 +831,8 @@ VERIFICATION:
   * Launch: pot_slam on entity → launched status, hit during launch extends duration
   * Flow storm: momentum 90 → flow_storm → AoE deals damage, momentum resets to 0
 - DETERMINISM: 20-run hash check with these mechanics active.
-- PLAY IT: launch windowed, fight enemies, try to chain witch-time → riposte → momentum →
+- Do not launch locally unless the user explicitly asks. If playtesting is approved, use
+  `PlayGame.bat` for the normal full-presentation game, fight enemies, try to chain witch-time → riposte → momentum →
   frenzy → flow storm. Does it feel like Hades? If not, tune the numbers.
 
 DO NOT:

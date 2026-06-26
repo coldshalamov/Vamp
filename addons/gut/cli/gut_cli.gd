@@ -227,6 +227,7 @@ option.   Option priority is:  command-line, .gutconfig, default)."""
 
 func _run_tests(opt_resolver):
 	_final_opts = opt_resolver.get_resolved_values();
+	_vamp_apply_windows_safety(_final_opts)
 	_gut_config.options = _final_opts
 
 	var runner = GutRunner.instantiate()
@@ -237,6 +238,43 @@ func _run_tests(opt_resolver):
 		runner.run_from_editor()
 	else:
 		runner.run_tests()
+
+
+func _vamp_apply_windows_safety(opts):
+	if(!_vamp_is_unsafe_windows_full_suite(opts)):
+		return
+	print("\n[Vamp Safety] Refusing to run the full recursive GUT suite on Windows.")
+	print("[Vamp Safety] Running only local freeze/overlay safety tests. Set VAMP_ALLOW_FULL_GUT=1 to override deliberately.")
+	opts.dirs = []
+	opts.include_subdirs = false
+	opts.tests = [
+		"res://test/unit/test_freeze_regression.gd",
+		"res://test/unit/test_overlay_queue_caps.gd",
+	]
+	opts.selected = ""
+	opts.unit_test_name = ""
+	opts.should_exit = true
+	opts.log_level = min(int(opts.log_level), 1)
+
+
+func _vamp_is_unsafe_windows_full_suite(opts):
+	if(OS.get_name() != "Windows"):
+		return false
+	if(_vamp_truthy(OS.get_environment("VAMP_ALLOW_FULL_GUT"))):
+		return false
+	if(opts.tests.size() > 0 or String(opts.selected) != "" or String(opts.unit_test_name) != ""):
+		return false
+	if(!bool(opts.include_subdirs)):
+		return false
+	for dir in opts.dirs:
+		if(String(dir) == "res://test"):
+			return true
+	return false
+
+
+func _vamp_truthy(value):
+	var normalized = String(value).strip_edges().to_lower()
+	return normalized in ["1", "true", "yes", "on", "full"]
 
 
 var update_detector = null

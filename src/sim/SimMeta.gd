@@ -125,6 +125,8 @@ var event_timer: float = 75.0
 var active_events: Array[Dictionary] = []
 var pending_raids: Array[Dictionary] = []
 var next_event_id: int = 1
+const ACTIVE_EVENT_CAP := 16
+const PENDING_RAID_CAP := 8
 var mastery: Dictionary = {}
 var trophies: Dictionary = {}
 var codex: Dictionary = {}
@@ -1305,6 +1307,7 @@ func maybe_inject_nemesis(sim) -> SimEntity:
 	nemesis.tags["nemesis_rank"] = rank
 	nemesis.tags["nemesis_scar"] = String(rec.get("scar", "scarred"))
 	nemesis.tags["warded_mind"] = true
+	nemesis.tags["native_warded_mind"] = true
 	nemesis.armor = minf(0.65, nemesis.armor + 0.06 * float(rank))
 	nemesis.attack_damage *= 1.0 + float(rank) * 0.12
 	if nemesis.behaviour != null:
@@ -1811,6 +1814,8 @@ func resolve_dawn(sim) -> void:
 				sim.emit_cue("player.torpor", { "day": day, "pos": sim.player.pos })
 	sim.reduce_heat(1.5, "dawn")
 	sim.emit_cue("dawn.arrive", { "day": day, "cash": cash, "vitae": vitae, "gross_cash": gross_cash, "gross_vitae": gross_vitae, "upkeep_cash": upkeep_cash, "upkeep_vitae": upkeep_vitae, "clock": clock })
+	# AmbientFX listens for `dawn.arrived` (past tense) — alias it so the dawn ambient fade fires.
+	sim.emit_cue("dawn.arrived", { "day": day, "clock": clock })
 
 func _update_active_mission(delta: float, sim) -> void:
 	if active_mission.is_empty() or String(active_mission.get("state", "")) != "active":
@@ -2034,6 +2039,12 @@ func _event_domainraid(sim) -> bool:
 		"deadline_tick": sim.tick + 90 * 60,
 		"pos": pos,
 	})
+	while pending_raids.size() > PENDING_RAID_CAP:
+		var dropped = pending_raids.pop_front()
+		if dropped is Dictionary:
+			var dropped_id := int(dropped.get("event_id", 0))
+			_remove_active_event_record(dropped_id)
+			_remove_event_entities(sim, dropped_id)
 	sim.emit_cue("domain.raid_started", { "event_id": event_id, "domain_id": domain_id, "pos": pos, "raiders": raiders, "deadline_tick": sim.tick + 90 * 60 })
 	return true
 
@@ -2058,18 +2069,28 @@ func _resolve_pending_raids(sim) -> void:
 			raise_prosperity_by_id(domain_id, 0.10, sim, "raid_defended")
 			add_legend(8, sim, "raid_defended")
 			sim.emit_cue("domain.raid_defended", { "event_id": event_id, "domain_id": domain_id, "pos": raid.get("pos", Vector2.ZERO) })
+		_remove_active_event_record(event_id)
+		_remove_event_entities(sim, event_id)
 		pending_raids.remove_at(i)
 
 func _prune_active_events(sim) -> void:
 	for i in range(active_events.size() - 1, -1, -1):
 		var rec: Dictionary = active_events[i]
 		if sim.tick >= int(rec.get("expires_tick", 0)):
+			_remove_pending_raid_record(int(rec.get("id", 0)))
+			_remove_event_entities(sim, int(rec.get("id", 0)))
 			active_events.remove_at(i)
 
 func _register_event(event_type: String, pos: Vector2, ttl_seconds: float, sim) -> int:
 	var event_id := next_event_id
 	next_event_id += 1
 	active_events.append({ "id": event_id, "type": event_type, "pos": pos, "started_tick": sim.tick, "expires_tick": sim.tick + roundi(ttl_seconds * 60.0) })
+	while active_events.size() > ACTIVE_EVENT_CAP:
+		var dropped = active_events.pop_front()
+		if dropped is Dictionary:
+			var dropped_id := int(dropped.get("id", 0))
+			_remove_pending_raid_record(dropped_id)
+			_remove_event_entities(sim, dropped_id)
 	sim.emit_cue("event.started", { "event_id": event_id, "type": event_type, "name": EVENT_DEFS.get(event_type, {}).get("name", event_type), "pos": pos })
 	return event_id
 
@@ -2078,6 +2099,38 @@ func _spawn_event_npc(sim, type_id: String, pos: Vector2, event_id: int, opts: D
 	npc.tags["event_id"] = event_id
 	npc.tags["event_type"] = active_events.back().get("type", "")
 	return npc
+
+func _remove_active_event_record(event_id: int) -> void:
+	if event_id <= 0:
+		return
+	for i in range(active_events.size() - 1, -1, -1):
+		if int(active_events[i].get("id", 0)) == event_id:
+			active_events.remove_at(i)
+
+func _remove_pending_raid_record(event_id: int) -> void:
+	if event_id <= 0:
+		return
+	for i in range(pending_raids.size() - 1, -1, -1):
+		if int(pending_raids[i].get("event_id", 0)) == event_id:
+			pending_raids.remove_at(i)
+
+func _remove_event_entities(sim, event_id: int) -> void:
+	if sim == null or event_id <= 0:
+		return
+	for i in range(sim.entities.size() - 1, -1, -1):
+		var e = sim.entities[i]
+		if e == null:
+			sim.entities.remove_at(i)
+			continue
+		if e == sim.player:
+			continue
+		var tagged_event := int(e.tags.get("event_id", 0)) == event_id
+		var tagged_raid := int(e.tags.get("raid_id", 0)) == event_id
+		if not tagged_event and not tagged_raid:
+			continue
+		if e.tags.has("mission_id") or e.tags.has("coterie_id"):
+			continue
+		sim.entities.remove_at(i)
 
 func _pick_event_pos(sim, min_d: float, max_d: float) -> Vector2:
 	if sim == null or sim.player == null or sim.world == null:
@@ -2438,7 +2491,7 @@ func _clean_events(source) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if source is Array:
 		for item in source:
-			if not (item is Dictionary) or out.size() >= 16:
+			if not (item is Dictionary) or out.size() >= ACTIVE_EVENT_CAP:
 				continue
 			var rec: Dictionary = item
 			out.append({
@@ -2455,7 +2508,7 @@ func _clean_raids(source) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if source is Array:
 		for item in source:
-			if not (item is Dictionary) or out.size() >= 8:
+			if not (item is Dictionary) or out.size() >= PENDING_RAID_CAP:
 				continue
 			var rec: Dictionary = item
 			var domain_id := String(rec.get("domain_id", ""))

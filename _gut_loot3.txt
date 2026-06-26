@@ -1,0 +1,38 @@
+Godot Engine v4.7.stable.official.5b4e0cb0f - https://godotengine.org
+
+[AudioDirector] Safe profile: procedural audio generators disabled.
+[DirectorService] Safe profile: hidden observer systems disabled.
+---  GUT  ---
+[1m[INFO]:  [0musing [C:/Users/93rob/AppData/Roaming/Godot/app_userdata/Vampire City] for temporary output.
+Godot version:  4.7.0
+GUT version:  9.6.0
+[4m
+
+res://test/unit/test_loot_pickup.gd
+[0m* test_elite_kill_spawns_a_pickup
+* test_walking_over_a_pickup_collects_the_item
+* test_full_bag_auto_sells_overflow_to_coin
+* test_pickup_is_inert_to_combat
+* test_loot_loop_is_deterministic
+[1m5/5 passed.
+[0m
+
+
+
+[33m==============================================
+[0m[33m= Run Summary
+[0m[33m==============================================
+[0m
+Totals
+------
+Scripts               1
+Tests                 5
+Passing Tests         5
+Asserts              21
+Time              5.502s
+
+
+Ran Scripts matching "test_loot_pickup"
+[32m---- All tests passed! ----
+[0mGUT 9.7.0:  https://github.com/bitwes/Gut/releases/tag/v9.7.0 is now available!
+

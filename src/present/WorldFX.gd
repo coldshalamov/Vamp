@@ -1,17 +1,25 @@
-## WorldFX.gd — transient world-space combat, projectile, and spell visuals.
+## WorldFX.gd — cinematic world-space combat, projectile, and discipline effects.
 ##
-## Effects are semantic-cue driven and deterministic in layout: no random calls, no gameplay state.
-## The visual layer can therefore be lavish without contaminating replay/state hashes.
+## CPU-pooled and draw-call bounded. Effects are procedural and continuously animated; they do
+## not depend on short sprite loops. This node remains a read-only CueBus subscriber.
 extends Node2D
 class_name WorldFX
 
-const MAX_FX := 144
-var _fx: Array[Dictionary] = []
+const MAX_EFFECTS := 96
+const MAX_PARTICLES := 280
+const LOW_FPS_THRESHOLD := 46
+
+var _effects: Array[Dictionary] = []
+var _particles: Array[Dictionary] = []
+var _seed: int = 0x5EED123
+var _quality: float = 1.0
+var _quality_timer: float = 0.0
+var _time: float = 0.0
 
 
 func _ready() -> void:
 	z_index = 50
-	if CueBus != null:
+	if CueBus != null and not CueBus.cue_emitted.is_connected(_on_cue):
 		CueBus.cue_emitted.connect(_on_cue)
 
 
@@ -19,334 +27,430 @@ func _on_cue(event_id: String, payload: Dictionary) -> void:
 	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
 	match event_id:
 		"attack.start":
-			_add({"type": "swing", "pos": pos, "rot": _facing_of(int(payload.get("entity_id", 0))), "t": 0.0, "dur": 0.24, "reach": 42.0})
-		# B4 — melee connect: a directional impact spark oriented along the attack direction.
-		# Larger and brighter on crit. WorldFX receives this via cue_emitted signal so it fires
-		# alongside VisualFX hitstop and CameraDirector kick without extra wiring.
-		"hit.connect":
-			var dir: Vector2 = payload.get("dir", Vector2.ZERO)
-			var is_crit: bool = bool(payload.get("crit", false))
-			var dur: float = 0.30 if is_crit else 0.22
-			# A directional burst: spark centered at impact pos, pushed slightly along dir
-			_add({"type": "impact_burst", "pos": pos, "dir": dir, "t": 0.0, "dur": dur,
-				"col": Color("ffcc88") if is_crit else Color("ffd2a0"), "crit": is_crit})
-		"damage.dealt":
-			_add({"type": "spark", "pos": pos, "t": 0.0, "dur": 0.22, "col": Color("ffd2a0"), "crit": bool(payload.get("crit", false))})
+			_add_effect({
+				"kind": "slash", "pos": pos, "rot": _facing_of(int(payload.get("entity_id", 0))),
+				"age": 0.0, "life": 0.25, "reach": 43.0, "heavy": bool(payload.get("heavy", false)),
+			})
+		"damage.dealt", "hit.connect":
+			var crit := bool(payload.get("crit", false))
+			var dtype := String(payload.get("damage_type", "physical"))
+			_add_hit(pos, dtype, crit, false)
 		"damage.player":
-			_add({"type": "spark", "pos": pos, "t": 0.0, "dur": 0.22, "col": Color("ff5a5a"), "crit": false})
-		# power.cast is now owned by SpellFX (distinct per-archetype visuals); WorldFX no longer draws
-		# the generic expanding ring that made every spell look identical. (_on_power_cast retained
-		# for the potence hit cues below.)
-		"power.potence.quake_hit":
-			_add({"type": "shock", "pos": pos, "t": 0.0, "dur": 0.50, "rmax": 190.0, "col": Color("e0883a")})
-		"power.potence.hit":
-			_add({"type": "shock", "pos": pos, "t": 0.0, "dur": 0.36, "rmax": 105.0, "col": Color("e0883a")})
-		"power.potence.charge_hit":
-			_add({"type": "shock", "pos": pos, "t": 0.0, "dur": 0.30, "rmax": 60.0, "col": Color("e0a040")})
-		"player.heal":
-			_add({"type": "ring", "pos": pos, "t": 0.0, "dur": 0.40, "rmax": 36.0, "col": Color("7fe0a0")})
-		# B2 — perfect gulp: Bleeding Occult Sigil contracts over the throat at pos.
-		# Registered for BOTH cue strings to survive the dot/underscore naming conflict
-		# (SimPlayer currently emits "feed.gulp.perfect"; contract says "feed.gulp_perfect").
-		"feed.gulp.perfect", "feed.gulp_perfect":
-			_add({"type": "sigil", "pos": pos, "t": 0.0, "dur": 0.58,
-				"rmax": 28.0, "col": Color("c0304a")})
-		"blood.drink":
-			_add({"type": "ring", "pos": pos, "t": 0.0, "dur": 0.32, "rmax": 22.0, "col": Color("c0304a")})
-		"blood.command":
-			_add({"type": "ring", "pos": pos, "t": 0.0, "dur": 0.30, "rmax": 52.0, "col": Color("c01028")})
-			_add({"type": "aoe", "pos": pos, "t": 0.0, "dur": 0.25, "rmax": 44.0, "col": Color("9a0c20")})
+			_add_hit(pos, String(payload.get("damage_type", "physical")), false, true)
+		"projectile.spawn":
+			_add_effect({"kind": "projectile_wake", "pos": pos, "age": 0.0, "life": 0.16, "entity_id": int(payload.get("entity_id", 0))})
 		"projectile.bounce":
-			_add({"type": "bounce", "pos": pos, "t": 0.0, "dur": 0.22, "col": Color("ffd08a"), "seed": int(payload.get("entity_id", 0)) + int(payload.get("bounce", 0)) * 17})
-		"projectile.explode":
-			_on_projectile_explode(payload)
-		"projectile.aoe":
-			_add({"type": "spark", "pos": pos, "t": 0.0, "dur": 0.24, "col": _damage_color(String(payload.get("damage_type", "physical"))), "crit": false})
+			_add_effect({"kind": "ground_kiss", "pos": pos, "age": 0.0, "life": 0.20, "color": Color("#d4a96d")})
+			_emit_sparks(pos, Color("#d4a96d"), 5, 54.0)
+		"projectile.explode", "projectile.aoe":
+			var dtype2 := String(payload.get("damage_type", "fire"))
+			var radius := float(payload.get("radius", 86.0))
+			_add_explosion(pos, radius, dtype2)
+		"projectile.end":
+			_add_effect({"kind": "fade_pop", "pos": pos, "age": 0.0, "life": 0.20, "color": Color("#b8263c")})
+		"power.cast":
+			_add_power_cast(String(payload.get("power_id", "")), pos)
+		"power.potence.quake_hit":
+			_add_shock(pos, 190.0, Color("#d67a35"), 0.62)
+		"power.potence.hit":
+			_add_shock(pos, 110.0, Color("#d67a35"), 0.40)
+		"power.potence.charge_hit":
+			_add_shock(pos, 70.0, Color("#e0a34a"), 0.34)
+		"player.heal", "feed.gulp.perfect":
+			_add_effect({"kind": "helix", "pos": pos, "age": 0.0, "life": 0.55, "color": Color("#79d49a"), "radius": 34.0})
+		"blood.drink":
+			_add_effect({"kind": "siphon", "pos": pos, "age": 0.0, "life": 0.42, "color": Color("#a81831"), "radius": 26.0})
+		"blood.command":
+			_add_effect({"kind": "blood_rune", "pos": pos, "age": 0.0, "life": 0.58, "color": Color("#ad1028"), "radius": 56.0})
 		"player.respawn":
-			_add({"type": "shock", "pos": pos, "t": 0.0, "dur": 0.60, "rmax": 90.0, "col": Color("9a6fff")})
+			_add_shock(pos, 94.0, Color("#8b68c7"), 0.68)
 		"player.level_up":
-			if Sim != null and Sim.player != null:
-				_add({"type": "shock", "pos": Sim.player.pos, "t": 0.0, "dur": 0.70, "rmax": 95.0, "col": Color("f0c040")})
-				_add({"type": "ring", "pos": Sim.player.pos, "t": 0.0, "dur": 0.50, "rmax": 60.0, "col": Color("ffe080")})
-		_:
-			pass
+			_add_shock(pos, 100.0, Color("#e8c45e"), 0.74)
+		"status.burn":
+			_emit_embers(pos, 7)
+		"status.bleed":
+			_emit_blood(pos, Vector2.ZERO, 4, false)
 
 
-func _on_power_cast(power_id: String, pos: Vector2) -> void:
-	match power_id:
-		"pot_quake":
-			_add({"type": "shock", "pos": pos, "t": 0.0, "dur": 0.50, "rmax": 190.0, "col": Color("e0883a")})
-		"pot_slam", "pot_charge":
-			_add({"type": "shock", "pos": pos, "t": 0.0, "dur": 0.36, "rmax": 105.0, "col": Color("e0883a")})
-		"bs_storm", "bs_cauldron":
-			_add({"type": "aoe", "pos": pos, "t": 0.0, "dur": 0.70, "rmax": 120.0, "col": Color("c01028")})
-		"cel_dash", "cel_haste", "cel_flurry":
-			_add({"type": "ring", "pos": pos, "t": 0.0, "dur": 0.30, "rmax": 44.0, "col": Color("8fd6ff")})
-		"pre_dread", "pre_majesty", "dom_command", "dom_mesmer":
-			_add({"type": "ring", "pos": pos, "t": 0.0, "dur": 0.50, "rmax": 80.0, "col": Color("b98cff")})
-		_:
-			_add({"type": "cast", "pos": pos, "t": 0.0, "dur": 0.30, "col": Color("c01028")})
+func _add_hit(pos: Vector2, damage_type: String, crit: bool, player_hit: bool) -> void:
+	var color := _damage_color(damage_type)
+	if player_hit:
+		color = Color("#ff4e55")
+	_add_effect({
+		"kind": "impact", "pos": pos, "age": 0.0, "life": 0.22 if not crit else 0.31,
+		"color": color, "crit": crit,
+	})
+	_emit_sparks(pos, color, 6 if not crit else 13, 95.0 if not crit else 145.0)
+	if damage_type in ["physical", "blood", "bleed"]:
+		_emit_blood(pos, Vector2.ZERO, 5 if not crit else 10, crit)
 
 
-func _on_projectile_explode(payload: Dictionary) -> void:
-	var pos: Vector2 = payload.get("pos", Vector2.ZERO)
-	var radius := maxf(24.0, float(payload.get("radius", 42.0)))
-	var damage_type := String(payload.get("damage_type", "physical"))
-	var status := String(payload.get("status", ""))
-	var surface := String(payload.get("surface_effect", ""))
-	var col := _damage_color(damage_type)
-	var seed := int(payload.get("entity_id", 0)) * 31 + int(payload.get("bounces", 0)) * 7
-	_add({"type": "shock", "pos": pos, "t": 0.0, "dur": 0.42, "rmax": radius, "col": col})
-	_add({"type": "shards", "pos": pos, "t": 0.0, "dur": 0.52, "rmax": radius * 0.72, "col": col.lightened(0.20), "seed": seed})
-	if surface == "fire" or damage_type == "fire":
-		_add({"type": "cloud", "pos": pos, "t": 0.0, "dur": 0.72, "rmax": radius * 0.72, "col": Color("f06a2d"), "seed": seed, "hot": true})
-	elif status == "poison" or damage_type == "poison":
-		_add({"type": "cloud", "pos": pos, "t": 0.0, "dur": 1.05, "rmax": radius, "col": Color("65b968"), "seed": seed, "hot": false})
-	elif damage_type == "blood" or surface == "blood":
-		_add({"type": "splash", "pos": pos, "t": 0.0, "dur": 0.55, "rmax": radius * 0.70, "col": Color("b30f2a"), "seed": seed})
-
-
-func _add(fx: Dictionary) -> void:
-	_fx.append(fx)
-	while _fx.size() > MAX_FX:
-		_fx.pop_front()
-
-
-## The Predator cursor: a context mark that reads what's under it — fangs over prey, a target-lock
-## over a hostile, a sharp predatory diamond otherwise. Replaces the incongruous "bullseye".
-func _draw_reticle() -> void:
-	var m := get_global_mouse_position()
-	if Sim == null or Sim.player == null or Sim.player.dead:
-		return
-	var crimson := Color(0.86, 0.14, 0.20, 0.9)
-	draw_line(Sim.player.pos, m, Color(0.86, 0.14, 0.20, 0.10), 1.0)   # faint aim line from the predator
-	var hover := _hover_entity(m)
-	if hover != null and (hover.faction == "civ" or hover.downed):
-		# PREY: fangs over a feedable mortal + a soft highlight on them
-		draw_arc(hover.pos, hover.radius + 5.0, 0, TAU, 20, Color(0.86, 0.14, 0.20, 0.5), 1.4)
-		var fcol := Color(0.96, 0.86, 0.86, 0.95)
-		draw_line(m + Vector2(-4, -7), m + Vector2(-2, 2), fcol, 1.8)   # left fang
-		draw_line(m + Vector2(4, -7), m + Vector2(2, 2), fcol, 1.8)     # right fang
-		draw_line(m + Vector2(-5, -7), m + Vector2(5, -7), fcol, 1.2)   # gumline
-	elif hover != null and hover.hostile_to_player:
-		# ENEMY: a target lock (corner brackets) — kill this one
-		var r := 11.0
-		for ix in range(2):
-			for iy in range(2):
-				var sx := -1.0 if ix == 0 else 1.0
-				var sy := -1.0 if iy == 0 else 1.0
-				var c := m + Vector2(sx * r, sy * r)
-				draw_line(c, c - Vector2(sx * 5.0, 0.0), crimson, 1.8)
-				draw_line(c, c - Vector2(0.0, sy * 5.0), crimson, 1.8)
+func _add_explosion(pos: Vector2, radius: float, damage_type: String) -> void:
+	var color := _damage_color(damage_type)
+	_add_effect({"kind": "explosion", "pos": pos, "age": 0.0, "life": 0.72, "radius": radius, "color": color})
+	_add_effect({"kind": "shock", "pos": pos, "age": 0.0, "life": 0.56, "radius": radius * 1.12, "color": color})
+	if damage_type == "fire":
+		_emit_embers(pos, 26)
+		_emit_smoke(pos, 11)
+	elif damage_type == "poison":
+		_emit_motes(pos, Color("#6ea543"), 22, 82.0)
 	else:
-		# DEFAULT: a sharp predatory diamond mark, no bullseye
-		for k in range(4):
-			var a := PI * 0.5 * float(k) + PI * 0.25
-			draw_line(m + Vector2.RIGHT.rotated(a) * 4.0, m + Vector2.RIGHT.rotated(a) * 10.0, crimson, 1.6)
-		draw_circle(m, 1.4, crimson)
+		_emit_sparks(pos, color, 20, 170.0)
 
 
-## The NPC the cursor is over (for the context cursor + future hover dossier). Presentation read only.
-func _hover_entity(m: Vector2) -> SimEntity:
-	if Sim == null:
-		return null
-	var best: SimEntity = null
-	var best_d := 99999.0
-	for e in Sim.entities:
-		if e == null or e.dead or e.kind != "npc":
-			continue
-		var d: float = e.pos.distance_to(m)
-		if d <= float(e.radius) + 14.0 and d < best_d:
-			best_d = d
-			best = e
-	return best
+func _add_power_cast(power_id: String, pos: Vector2) -> void:
+	var prefix := power_id.split("_")[0] if power_id.contains("_") else power_id
+	var color := _discipline_color(prefix)
+	match prefix:
+		"pot":
+			_add_effect({"kind": "ground_crack", "pos": pos, "age": 0.0, "life": 0.48, "color": color, "radius": 74.0})
+		"cel":
+			_add_effect({"kind": "speed_ring", "pos": pos, "age": 0.0, "life": 0.34, "color": color, "radius": 48.0})
+		"obf":
+			_add_effect({"kind": "veil", "pos": pos, "age": 0.0, "life": 0.72, "color": color, "radius": 52.0})
+		"aus":
+			_add_effect({"kind": "eye_wave", "pos": pos, "age": 0.0, "life": 0.62, "color": color, "radius": 92.0})
+		"dom", "pre":
+			_add_effect({"kind": "command_wave", "pos": pos, "age": 0.0, "life": 0.58, "color": color, "radius": 88.0})
+		"bs":
+			_add_effect({"kind": "blood_rune", "pos": pos, "age": 0.0, "life": 0.62, "color": color, "radius": 62.0})
+		"shd":
+			_add_effect({"kind": "shadow_tendrils", "pos": pos, "age": 0.0, "life": 0.78, "color": color, "radius": 72.0})
+		_:
+			_add_effect({"kind": "cast_ring", "pos": pos, "age": 0.0, "life": 0.38, "color": color, "radius": 42.0})
 
 
-func _facing_of(id: int) -> float:
-	if Sim == null or id == 0:
-		return 0.0
-	var e: SimEntity = Sim.get_entity(id) as SimEntity
-	return e.facing if e != null else 0.0
+func _add_shock(pos: Vector2, radius: float, color: Color, life: float) -> void:
+	_add_effect({"kind": "shock", "pos": pos, "age": 0.0, "life": life, "radius": radius, "color": color})
+	_emit_sparks(pos, color, 10, radius * 0.75)
+
+
+func _add_effect(effect: Dictionary) -> void:
+	_effects.append(effect)
+	if _effects.size() > MAX_EFFECTS:
+		_effects.pop_front()
 
 
 func _process(delta: float) -> void:
-	for i in range(_fx.size() - 1, -1, -1):
-		_fx[i]["t"] = float(_fx[i]["t"]) + delta
-		if float(_fx[i]["t"]) >= float(_fx[i]["dur"]):
-			_fx.remove_at(i)
-	queue_redraw()   # always, so the aim reticle tracks the cursor
+	_time += delta
+	_quality_timer += delta
+	if _quality_timer >= 0.75:
+		_quality_timer = 0.0
+		var fps := Engine.get_frames_per_second()
+		var target := 0.58 if fps > 0 and fps < LOW_FPS_THRESHOLD else 1.0
+		_quality = lerpf(_quality, target, 0.35)
+
+	for i in range(_effects.size() - 1, -1, -1):
+		_effects[i]["age"] = float(_effects[i]["age"]) + delta
+		if float(_effects[i]["age"]) >= float(_effects[i]["life"]):
+			_effects.remove_at(i)
+
+	for i in range(_particles.size() - 1, -1, -1):
+		var p := _particles[i]
+		p["age"] = float(p["age"]) + delta
+		if float(p["age"]) >= float(p["life"]):
+			_particles.remove_at(i)
+			continue
+		var vel: Vector2 = p["vel"]
+		vel.y += float(p.get("gravity", 0.0)) * delta
+		vel *= pow(float(p.get("drag", 1.0)), delta * 60.0)
+		p["vel"] = vel
+		var particle_pos: Vector2 = p["pos"]
+		p["pos"] = particle_pos + vel * delta
+		if p.has("height"):
+			p["height"] = maxf(0.0, float(p["height"]) + float(p.get("vertical_velocity", 0.0)) * delta)
+			p["vertical_velocity"] = float(p.get("vertical_velocity", 0.0)) - float(p.get("vertical_gravity", 0.0)) * delta
+		_particles[i] = p
+	queue_redraw()
 
 
 func _draw() -> void:
-	_draw_reticle()
-	for fx in _fx:
-		var p := clampf(float(fx["t"]) / float(fx["dur"]), 0.0, 1.0)
-		var a := 1.0 - p
-		var pos: Vector2 = fx["pos"]
-		match String(fx["type"]):
-			"swing":
-				var reach := float(fx["reach"]) * (0.90 + 0.22 * p)
-				var rot := float(fx["rot"])
-				var from := rot - 1.05 + p * 1.25
-				var to := from + 0.95
-				var col := Color(1.0, 0.96, 0.86, a * 0.95)
-				draw_arc(pos, reach, from, to, 18, col, 5.0 * (1.0 - p) + 2.0, true)
-				draw_arc(pos, reach * 0.80, from, to, 14, Color(col.r, col.g, col.b, a * 0.38), 2.0, true)
-			"spark":
-				var rad := 10.0 if bool(fx.get("crit", false)) else 6.0
-				var col: Color = fx["col"]
-				draw_circle(pos, rad * (1.0 + p), Color(col.r, col.g, col.b, a * 0.42))
-				draw_circle(pos, rad * 0.50 * (1.0 - p), Color(1, 1, 1, a))
-				for k in range(6):
-					var ang := TAU * float(k) / 6.0 + float(int(pos.x)) * 0.3
-					var d := rad + 14.0 * p
-					draw_line(pos + Vector2.RIGHT.rotated(ang) * rad, pos + Vector2.RIGHT.rotated(ang) * d, Color(col.r, col.g, col.b, a * 0.70), 2.0, true)
-			# B4 — directional impact burst on melee connect. Sparks fan outward along dir
-			# with a secondary burst in the opposite direction (recoil spray).
-			"impact_burst":
-				var is_crit: bool = bool(fx.get("crit", false))
-				var rad2 := 12.0 if is_crit else 7.0
-				var col2: Color = fx["col"]
-				var dir2: Vector2 = fx.get("dir", Vector2.RIGHT)
-				if dir2.length_squared() < 0.01:
-					dir2 = Vector2.RIGHT
-				# Core flash at impact
-				draw_circle(pos, rad2 * (0.9 + 0.5 * p), Color(1, 1, 1, a * 0.60))
-				# Directional sparks fan in a 90-degree cone along dir
-				var fan_count := 7 if is_crit else 5
-				for k in range(fan_count):
-					var spread := lerpf(-0.7, 0.7, float(k) / float(fan_count - 1))
-					var ang3 := dir2.angle() + spread
-					var d3 := (rad2 + 18.0 * p) * (0.65 + 0.35 * float(k % 2))
-					var from3 := pos + Vector2.RIGHT.rotated(ang3) * rad2 * 0.6
-					var to3 := pos + Vector2.RIGHT.rotated(ang3) * d3
-					draw_line(from3, to3, Color(col2.r, col2.g, col2.b, a * 0.85), 2.2 if is_crit else 1.6, true)
-				# Recoil sparks opposite dir (smaller)
-				for k in range(3):
-					var spread2 := lerpf(-0.35, 0.35, float(k) / 2.0)
-					var ang4 := dir2.angle() + PI + spread2
-					var d4 := (rad2 * 0.5 + 10.0 * p)
-					draw_line(pos, pos + Vector2.RIGHT.rotated(ang4) * d4, Color(col2.r, col2.g, col2.b, a * 0.45), 1.4, true)
-			"shock":
-				var rr := float(fx["rmax"]) * _ease_out(p)
-				var col: Color = fx["col"]
-				draw_arc(pos, rr, 0, TAU, 44, Color(col.r, col.g, col.b, a * 0.82), 5.0 * (1.0 - p) + 1.5, true)
-				draw_arc(pos, rr * 0.70, 0, TAU, 38, Color(col.r, col.g, col.b, a * 0.34), 2.0, true)
-			"aoe":
-				var rr := float(fx["rmax"]) * (0.40 + 0.60 * p)
-				var col: Color = fx["col"]
-				draw_circle(pos, rr, Color(col.r, col.g, col.b, a * 0.16))
-				draw_arc(pos, rr, 0, TAU, 42, Color(col.r, col.g, col.b, a * 0.68), 2.5, true)
-			"ring":
-				var rr := float(fx["rmax"]) * _ease_out(p)
-				var col: Color = fx["col"]
-				draw_arc(pos, rr, 0, TAU, 34, Color(col.r, col.g, col.b, a * 0.78), 3.0, true)
-			"cast":
-				var rr := 26.0 * p
-				var col: Color = fx["col"]
-				draw_arc(pos, rr, 0, TAU, 30, Color(col.r, col.g, col.b, a * 0.78), 3.0 * (1.0 - p) + 1.0, true)
-			"bounce":
-				_draw_shards(fx, p, a, 5, 18.0)
-			"shards":
-				_draw_shards(fx, p, a, 11, float(fx["rmax"]))
-			"cloud":
-				_draw_cloud(fx, p, a)
-			"splash":
-				_draw_splash(fx, p, a)
-			# B2 — Bleeding Occult Sigil: a contracting occult circle with radial glyphs
-			# that contracts inward toward pos (the throat) as the kiss "lands."
-			# Pure draw-math — no random, no sim reads. Deterministic for a given p.
-			"sigil":
-				_draw_sigil(fx, p, a)
+	for effect in _effects:
+		_draw_effect(effect)
+	for particle in _particles:
+		_draw_particle(particle)
 
 
-func _draw_shards(fx: Dictionary, p: float, a: float, count: int, distance: float) -> void:
+func _draw_effect(fx: Dictionary) -> void:
+	var age := float(fx["age"])
+	var life := maxf(float(fx["life"]), 0.001)
+	var p := clampf(age / life, 0.0, 1.0)
+	var fade := 1.0 - p
 	var pos: Vector2 = fx["pos"]
-	var col: Color = fx["col"]
-	var seed := int(fx.get("seed", 1))
-	for k in range(count):
-		var ang := TAU * float(k) / float(count) + float((seed * 37 + k * 17) % 100) * 0.011
-		var speed_scale := 0.55 + float((seed + k * 23) % 41) / 100.0
-		var d := distance * _ease_out(p) * speed_scale
-		var gravity_drop := p * p * 12.0
-		var center := pos + Vector2.RIGHT.rotated(ang) * d + Vector2(0, gravity_drop)
-		var tangent := Vector2.RIGHT.rotated(ang + 0.45) * (4.0 + 5.0 * (1.0 - p))
-		draw_line(center - tangent, center + tangent, Color(col.r, col.g, col.b, a * 0.82), 1.7, true)
+	var color: Color = fx.get("color", Color.WHITE)
+	match String(fx["kind"]):
+		"slash":
+			var rot := float(fx.get("rot", 0.0))
+			var reach := float(fx.get("reach", 42.0)) * (0.80 + p * 0.32)
+			var sweep := rot - 1.18 + p * 1.55
+			var width := (7.0 if bool(fx.get("heavy", false)) else 4.5) * fade + 1.0
+			draw_arc(pos, reach, sweep, sweep + 0.92, 20, Color(0.95, 0.96, 1.0, fade * 0.82), width, true)
+			draw_arc(pos, reach * 0.77, sweep + 0.08, sweep + 0.86, 18, Color(0.62, 0.67, 0.76, fade * 0.34), 1.4, true)
+		"impact":
+			var crit := bool(fx.get("crit", false))
+			var radius := (15.0 if crit else 9.0) * (0.35 + p)
+			_draw_ellipse(pos, Vector2(radius, radius * 0.72), _alpha(color, fade * 0.22), 18)
+			for k in range(5 if not crit else 9):
+				var a := TAU * float(k) / float(5 if not crit else 9) + float(int(pos.x + pos.y)) * 0.07
+				var inner := Vector2.RIGHT.rotated(a) * radius * 0.30
+				var outer := Vector2.RIGHT.rotated(a) * radius * (0.8 + p * 0.65)
+				draw_line(pos + inner, pos + outer, _alpha(color, fade * 0.76), 1.7 if not crit else 2.3, true)
+		"shock":
+			var radius2 := float(fx.get("radius", 90.0)) * _ease(p)
+			draw_arc(pos, radius2, 0.0, TAU, 48, _alpha(color, fade * 0.70), 5.5 * fade + 1.0, true)
+			draw_arc(pos, radius2 * 0.73, 0.0, TAU, 42, _alpha(color, fade * 0.25), 1.4, true)
+		"explosion":
+			var max_r := float(fx.get("radius", 84.0))
+			var core_r := max_r * (0.12 + 0.52 * sin(minf(p, 0.5) * PI))
+			_draw_ellipse(pos, Vector2(core_r, core_r * 0.72), _alpha(color.lightened(0.26), fade * 0.58), 28)
+			_draw_ellipse(pos, Vector2(core_r * 0.62, core_r * 0.48), _alpha(Color("#fff0c4"), fade * 0.72), 24)
+		"ground_kiss":
+			var r := 14.0 * p
+			draw_arc(pos, r, PI, TAU, 18, _alpha(color, fade * 0.60), 1.8, true)
+		"fade_pop":
+			var r2 := 18.0 * p
+			draw_arc(pos, r2, 0.0, TAU, 20, _alpha(color, fade * 0.55), 1.5, true)
+		"cast_ring":
+			_draw_cast_ring(pos, p, fade, float(fx.get("radius", 42.0)), color, 0)
+		"speed_ring":
+			_draw_cast_ring(pos, p, fade, float(fx.get("radius", 48.0)), color, 3)
+		"command_wave":
+			var rr := float(fx.get("radius", 88.0)) * _ease(p)
+			draw_arc(pos, rr, -1.15, 1.15, 30, _alpha(color, fade * 0.55), 2.1, true)
+			draw_arc(pos, rr * 0.72, -0.95, 0.95, 26, _alpha(color, fade * 0.28), 1.2, true)
+		"eye_wave":
+			var er := float(fx.get("radius", 92.0)) * _ease(p)
+			draw_arc(pos, er, -0.55, 0.55, 24, _alpha(color, fade * 0.62), 2.0, true)
+			draw_arc(pos, er, PI - 0.55, PI + 0.55, 24, _alpha(color, fade * 0.62), 2.0, true)
+			_draw_ellipse(pos, Vector2(er * 0.15, er * 0.09), _alpha(color, fade * 0.28), 18)
+		"veil":
+			var vr := float(fx.get("radius", 52.0)) * (0.45 + p * 0.55)
+			for k in range(4):
+				var offset := Vector2(cos(_time * 1.2 + k * 1.7), sin(_time * 0.8 + k * 2.0)) * vr * 0.18
+				_draw_ellipse(pos + offset, Vector2(vr * 0.68, vr * 0.32), _alpha(color, fade * 0.045), 24)
+		"blood_rune":
+			_draw_blood_rune(pos, p, fade, float(fx.get("radius", 58.0)), color)
+		"ground_crack":
+			_draw_ground_crack(pos, p, fade, float(fx.get("radius", 74.0)), color)
+		"shadow_tendrils":
+			_draw_tendrils(pos, p, fade, float(fx.get("radius", 72.0)), color)
+		"helix":
+			_draw_helix(pos, p, fade, float(fx.get("radius", 34.0)), color)
+		"siphon":
+			_draw_siphon(pos, p, fade, float(fx.get("radius", 26.0)), color)
+		"projectile_wake":
+			var entity := _entity_by_id(int(fx.get("entity_id", 0)))
+			if entity != null:
+				draw_line(pos, entity.pos, Color(0.7, 0.08, 0.16, fade * 0.25), 2.0, true)
 
 
-func _draw_cloud(fx: Dictionary, p: float, a: float) -> void:
-	var pos: Vector2 = fx["pos"]
-	var col: Color = fx["col"]
-	var seed := int(fx.get("seed", 1))
-	var rmax := float(fx["rmax"])
-	var hot := bool(fx.get("hot", false))
-	for k in range(9):
-		var ang := TAU * float(k) / 9.0 + float(seed % 19) * 0.07
-		var spread := rmax * (0.12 + 0.52 * p) * (0.55 + float((seed + k * 13) % 37) / 100.0)
-		var lift := Vector2(0, -p * (18.0 + float(k % 3) * 6.0))
-		var center := pos + Vector2.RIGHT.rotated(ang) * spread + lift
-		var radius := rmax * (0.16 + 0.10 * float(k % 3)) * (0.45 + 0.75 * p)
-		var local_alpha := a * (0.16 if hot else 0.12)
-		draw_circle(center, radius, Color(col.r, col.g, col.b, local_alpha))
-	if hot:
-		draw_circle(pos + Vector2(0, -6.0 * p), rmax * 0.22 * (1.0 - p * 0.45), Color(1.0, 0.78, 0.28, a * 0.32))
+func _draw_particle(particle: Dictionary) -> void:
+	var age := float(particle["age"])
+	var life := maxf(float(particle["life"]), 0.001)
+	var t := clampf(age / life, 0.0, 1.0)
+	var fade := 1.0 - t
+	var pos: Vector2 = particle["pos"]
+	if particle.has("height"):
+		pos.y -= float(particle["height"]) * 0.78
+	var color: Color = particle["color"]
+	var size := float(particle.get("size", 2.0))
+	match String(particle.get("kind", "spark")):
+		"spark":
+			var vel: Vector2 = particle["vel"]
+			var dir := vel.normalized() if vel.length_squared() > 0.1 else Vector2.RIGHT
+			draw_line(pos - dir * size * 2.8, pos + dir * size * 0.5, _alpha(color, fade * 0.82), maxf(0.7, size * fade), true)
+		"blood":
+			_draw_ellipse(pos, Vector2(size * (0.6 + t), size * 0.42), _alpha(color, fade * 0.72), 10)
+		"ember":
+			draw_line(pos + Vector2(0, size), pos - Vector2(0, size * 1.8), _alpha(color, fade * 0.88), maxf(0.7, size * fade), true)
+		"smoke":
+			var rr := size * (0.55 + t * 1.45)
+			_draw_ellipse(pos, Vector2(rr, rr * 0.66), _alpha(color, fade * 0.16), 16)
+		"mote":
+			_draw_ellipse(pos, Vector2(size, size * 0.62), _alpha(color, fade * 0.36), 12)
 
 
-func _draw_splash(fx: Dictionary, p: float, a: float) -> void:
-	var pos: Vector2 = fx["pos"]
-	var col: Color = fx["col"]
-	var seed := int(fx.get("seed", 1))
-	var rmax := float(fx["rmax"])
-	draw_set_transform(pos + Vector2(0, 2), 0.0, Vector2(1.25, 0.52))
-	draw_circle(Vector2.ZERO, rmax * _ease_out(p), Color(col.r, col.g, col.b, a * 0.22))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	for k in range(8):
-		var ang := TAU * float(k) / 8.0 + float(seed % 23) * 0.03
-		var end := pos + Vector2.RIGHT.rotated(ang) * rmax * p
-		draw_line(pos, end, Color(col.r, col.g, col.b, a * 0.48), 2.2 * (1.0 - p) + 0.6, true)
+func _draw_cast_ring(pos: Vector2, p: float, fade: float, radius: float, color: Color, spokes: int) -> void:
+	var r := radius * _ease(p)
+	draw_arc(pos, r, 0.0, TAU, 36, _alpha(color, fade * 0.62), 2.2, true)
+	if spokes > 0:
+		for k in range(spokes):
+			var a := TAU * float(k) / float(spokes) + p * 0.9
+			draw_line(pos + Vector2.RIGHT.rotated(a) * r * 0.35, pos + Vector2.RIGHT.rotated(a) * r, _alpha(color, fade * 0.34), 1.2, true)
+
+
+func _draw_blood_rune(pos: Vector2, p: float, fade: float, radius: float, color: Color) -> void:
+	var r := radius * (0.45 + 0.55 * _ease(p))
+	draw_arc(pos, r, 0.0, TAU, 42, _alpha(color, fade * 0.52), 2.0, true)
+	for k in range(6):
+		var a := TAU * float(k) / 6.0 + p * 0.55
+		var a2 := a + 2.1
+		draw_line(pos + Vector2.RIGHT.rotated(a) * r * 0.28, pos + Vector2.RIGHT.rotated(a2) * r * 0.82, _alpha(color, fade * 0.35), 1.1, true)
+
+
+func _draw_ground_crack(pos: Vector2, p: float, fade: float, radius: float, color: Color) -> void:
+	for k in range(10):
+		var a := TAU * float(k) / 10.0 + float(int(pos.x)) * 0.013
+		var start := pos + Vector2.RIGHT.rotated(a) * radius * 0.12
+		var mid := pos + Vector2.RIGHT.rotated(a + sin(float(k)) * 0.12) * radius * (0.32 + 0.18 * p)
+		var end := pos + Vector2.RIGHT.rotated(a - cos(float(k)) * 0.10) * radius * _ease(p)
+		draw_polyline(PackedVector2Array([start, mid, end]), _alpha(color, fade * 0.54), 1.5, true)
+
+
+func _draw_tendrils(pos: Vector2, p: float, fade: float, radius: float, color: Color) -> void:
+	for k in range(7):
+		var a := TAU * float(k) / 7.0 + float(k % 2) * 0.22
+		var pts: Array[Vector2] = [pos]
+		for s in range(1, 5):
+			var q := float(s) / 4.0
+			var wobble := sin(_time * 4.0 + float(k * 3 + s)) * 0.15 * q
+			pts.append(pos + Vector2.RIGHT.rotated(a + wobble) * radius * q * _ease(p))
+		draw_polyline(PackedVector2Array(pts), _alpha(color, fade * 0.34), 3.2 * (1.0 - p) + 0.8, true)
+
+
+func _draw_helix(pos: Vector2, p: float, fade: float, radius: float, color: Color) -> void:
+	for strand in [-1.0, 1.0]:
+		var pts: Array[Vector2] = []
+		for i in range(18):
+			var q := float(i) / 17.0
+			var a: float = q * TAU * 1.8 + strand * PI * 0.5 + p * 2.5
+			pts.append(pos + Vector2(cos(a) * radius * (1.0 - q) * 0.45, -q * radius * 1.25))
+		draw_polyline(PackedVector2Array(pts), _alpha(color, fade * 0.48), 1.4, true)
+
+
+func _draw_siphon(pos: Vector2, p: float, fade: float, radius: float, color: Color) -> void:
+	for k in range(5):
+		var a := TAU * float(k) / 5.0 + p * 1.8
+		var outer := pos + Vector2.RIGHT.rotated(a) * radius * (1.0 - p * 0.55)
+		var inner := pos + Vector2(0, -14.0 * p)
+		draw_line(outer, inner, _alpha(color, fade * 0.42), 1.5, true)
+
+
+func _emit_sparks(pos: Vector2, color: Color, count: int, speed: float) -> void:
+	var actual := maxi(1, int(float(count) * _quality))
+	for i in range(actual):
+		var a := _rand_range(0.0, TAU)
+		var s := _rand_range(speed * 0.45, speed)
+		_add_particle({
+			"kind": "spark", "pos": pos, "vel": Vector2.RIGHT.rotated(a) * s,
+			"age": 0.0, "life": _rand_range(0.12, 0.31), "color": color,
+			"size": _rand_range(0.8, 1.9), "gravity": 88.0, "drag": 0.94,
+		})
+
+
+func _emit_blood(pos: Vector2, bias: Vector2, count: int, heavy: bool) -> void:
+	var actual := maxi(1, int(float(count) * _quality))
+	for i in range(actual):
+		var a := _rand_range(-PI, PI)
+		var speed := _rand_range(32.0, 105.0 if heavy else 72.0)
+		_add_particle({
+			"kind": "blood", "pos": pos, "vel": bias + Vector2.RIGHT.rotated(a) * speed,
+			"age": 0.0, "life": _rand_range(0.22, 0.48), "color": Color("#8f1026"),
+			"size": _rand_range(1.2, 2.7), "gravity": 145.0, "drag": 0.93,
+			"height": _rand_range(4.0, 13.0), "vertical_velocity": _rand_range(28.0, 70.0), "vertical_gravity": 135.0,
+		})
+
+
+func _emit_embers(pos: Vector2, count: int) -> void:
+	var actual := maxi(1, int(float(count) * _quality))
+	for i in range(actual):
+		var a := _rand_range(-PI, PI)
+		_add_particle({
+			"kind": "ember", "pos": pos, "vel": Vector2.RIGHT.rotated(a) * _rand_range(18.0, 95.0) + Vector2(0, -34.0),
+			"age": 0.0, "life": _rand_range(0.35, 0.92), "color": Color("#ff8f2d"),
+			"size": _rand_range(1.0, 2.2), "gravity": -18.0, "drag": 0.97,
+		})
+
+
+func _emit_smoke(pos: Vector2, count: int) -> void:
+	var actual := maxi(1, int(float(count) * _quality))
+	for i in range(actual):
+		_add_particle({
+			"kind": "smoke", "pos": pos + Vector2(_rand_range(-12.0, 12.0), _rand_range(-6.0, 4.0)),
+			"vel": Vector2(_rand_range(-14.0, 14.0), _rand_range(-48.0, -18.0)),
+			"age": 0.0, "life": _rand_range(0.60, 1.35), "color": Color("#2b2528"),
+			"size": _rand_range(5.0, 11.0), "gravity": -4.0, "drag": 0.985,
+		})
+
+
+func _emit_motes(pos: Vector2, color: Color, count: int, speed: float) -> void:
+	var actual := maxi(1, int(float(count) * _quality))
+	for i in range(actual):
+		var a := _rand_range(0.0, TAU)
+		_add_particle({
+			"kind": "mote", "pos": pos, "vel": Vector2.RIGHT.rotated(a) * _rand_range(speed * 0.25, speed),
+			"age": 0.0, "life": _rand_range(0.45, 1.0), "color": color,
+			"size": _rand_range(1.8, 4.5), "gravity": -10.0, "drag": 0.97,
+		})
+
+
+func _add_particle(particle: Dictionary) -> void:
+	_particles.append(particle)
+	if _particles.size() > MAX_PARTICLES:
+		_particles.pop_front()
+
+
+func _facing_of(id: int) -> float:
+	var e := _entity_by_id(id)
+	return e.facing if e != null else 0.0
+
+
+func _entity_by_id(id: int) -> SimEntity:
+	if Sim == null or id <= 0:
+		return null
+	return Sim.get_entity(id) as SimEntity
 
 
 func _damage_color(damage_type: String) -> Color:
 	match damage_type:
-		"fire": return Color("f07832")
-		"poison": return Color("6bc46d")
-		"blood": return Color("d51b38")
-		"shadow": return Color("7652a8")
-		"sun": return Color("ffe4a0")
-	return Color("d7d2c8")
+		"blood", "bleed": return Color("#b51b37")
+		"fire", "burn": return Color("#e4772c")
+		"poison": return Color("#6b9b3b")
+		"shock": return Color("#78bde0")
+		"sun": return Color("#f0d797")
+		"shadow": return Color("#735a98")
+	return Color("#e0d6c4")
 
 
-func _ease_out(x: float) -> float:
-	x = clampf(x, 0.0, 1.0)
-	return 1.0 - pow(1.0 - x, 3.0)
+func _discipline_color(prefix: String) -> Color:
+	match prefix:
+		"cel": return Color("#7fbad6")
+		"pot": return Color("#c66f32")
+		"for": return Color("#6da782")
+		"obf": return Color("#77678c")
+		"aus": return Color("#91b7c8")
+		"dom": return Color("#9b75b8")
+		"pre": return Color("#c7a651")
+		"bs": return Color("#a50d28")
+		"pro": return Color("#718252")
+		"shd": return Color("#58486f")
+	return Color("#a4112a")
 
 
-## B2 — Bleeding Occult Sigil: a contracting blood-red occult circle with radial rune-strokes
-## that collapses inward toward pos (the throat) over the gulp duration.
-## No random calls — all geometry is pure deterministic math on p, k, pos.
-## Contracts from rmax down to 0 as p goes 0 -> 1, creating the "kiss lands" convergence.
-func _draw_sigil(fx: Dictionary, p: float, a: float) -> void:
-	var pos: Vector2 = fx["pos"]
-	var col: Color = fx["col"]
-	var rmax: float = float(fx["rmax"])
-	# The ring contracts inward: radius starts at rmax and shrinks to 0 as p approaches 1.
-	# ease_in so it accelerates into the kiss.
-	var contract_p: float = p * p   # ease-in
-	var r: float = rmax * (1.0 - contract_p)
-	if r < 1.0:
-		return
-	# Outer occult ring — thick, bleeds outward
-	draw_arc(pos, r, 0, TAU, 40, Color(col.r, col.g, col.b, a * 0.88), 3.2 * (1.0 - p) + 0.8, true)
-	# Inner ring — thinner, slightly offset rotation for depth
-	draw_arc(pos, r * 0.72, 0, TAU, 32, Color(col.r, col.g, col.b, a * 0.52), 1.6, true)
-	# Radial rune-strokes: 8 spokes connecting outer to inner ring, like a sigil wheel.
-	var spoke_count := 8
-	for k in range(spoke_count):
-		var ang := TAU * float(k) / float(spoke_count) + p * 0.8   # slow rotation as it contracts
-		var outer := pos + Vector2.RIGHT.rotated(ang) * r
-		var inner := pos + Vector2.RIGHT.rotated(ang + 0.22) * r * 0.72
-		draw_line(outer, inner, Color(col.r, col.g, col.b, a * 0.72), 1.8, true)
-	# Heartbeat dot at center — pulses brighter as sigil contracts
-	var core_r: float = 3.0 * contract_p
-	if core_r > 0.5:
-		draw_circle(pos, core_r, Color(1.0, 0.55, 0.65, a * 0.90))
+func _rand_u32() -> int:
+	_seed = int((_seed ^ (_seed << 13)) & 0x7fffffff)
+	_seed = int((_seed ^ (_seed >> 17)) & 0x7fffffff)
+	_seed = int((_seed ^ (_seed << 5)) & 0x7fffffff)
+	return _seed
+
+
+func _rand_range(lo: float, hi: float) -> float:
+	var unit := float(_rand_u32() & 0xffff) / 65535.0
+	return lerpf(lo, hi, unit)
+
+
+func _ease(v: float) -> float:
+	var x := clampf(v, 0.0, 1.0)
+	return x * x * (3.0 - 2.0 * x)
+
+
+func _alpha(color: Color, alpha: float) -> Color:
+	return Color(color.r, color.g, color.b, clampf(alpha, 0.0, 1.0))
+
+
+func _draw_ellipse(center: Vector2, radii: Vector2, color: Color, segments: int) -> void:
+	var pts: Array[Vector2] = []
+	for i in range(segments):
+		var a := TAU * float(i) / float(segments)
+		pts.append(center + Vector2(cos(a) * radii.x, sin(a) * radii.y))
+	draw_colored_polygon(PackedVector2Array(pts), color)
